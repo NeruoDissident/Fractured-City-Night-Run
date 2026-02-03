@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fractured City - Roguelike</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="game-container">
+        <div id="main-view">
+            <canvas id="game-canvas"></canvas>
+        </div>
+        
+        <div id="ui-panels">
+            <div id="log-panel" class="panel">
+                <h3>Log</h3>
+                <div id="log-content"></div>
+            </div>
+            
+            <div id="character-panel" class="panel">
+                <h3>Character</h3>
+                <div id="character-content"></div>
+            </div>
+            
+            <div id="inventory-panel" class="panel">
+                <h3>Inventory</h3>
+                <div id="inventory-content"></div>
+            </div>
+            
+            <div id="context-panel" class="panel">
+                <h3>Target Info</h3>
+                <div id="context-content"></div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="character-creation" class="modal hidden">
+        <div class="modal-content">
+            <h2>Character Creation</h2>
+            <div id="creation-form"></div>
+        </div>
+    </div>
+    
+    <div id="detailed-character" class="modal hidden">
+        <div class="modal-content">
+            <h2>Character Sheet</h2>
+            <div id="detailed-character-content"></div>
+            <button id="close-character-btn">Close [C]</button>
+        </div>
+    </div>
+    
+    <div id="detailed-inventory" class="modal hidden">
+        <div class="modal-content">
+            <h2>Inventory</h2>
+            <div id="detailed-inventory-content"></div>
+            <button id="close-inventory-btn">Close [I]</button>
+        </div>
+    </div>
+    
+    <div id="help-screen" class="modal hidden">
+        <div class="modal-content">
+            <h2>Help & Controls</h2>
+            <div id="help-content"></div>
+            <button id="close-help-btn">Close [?]</button>
+        </div>
+    </div>
+    
+    <script type="module" src="src/main.js"></script>
+</body>
+</html>

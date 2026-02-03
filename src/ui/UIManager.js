@@ -1,0 +1,1850 @@
+export class UIManager {
+    constructor(game) {
+        this.game = game;
+        this.logPanel = null;
+        this.characterPanel = null;
+        this.inventoryPanel = null;
+        this.contextPanel = null;
+        this.logEntries = [];
+        this.maxLogEntries = 50;
+    }
+    
+    init() {
+        this.logPanel = document.getElementById('log-content');
+        this.characterPanel = document.getElementById('character-content');
+        this.inventoryPanel = document.getElementById('inventory-content');
+        this.contextPanel = document.getElementById('context-content');
+        
+        this.detailedCharacterModal = document.getElementById('detailed-character');
+        this.detailedInventoryModal = document.getElementById('detailed-inventory');
+        this.helpModal = document.getElementById('help-screen');
+        
+        document.getElementById('close-character-btn').addEventListener('click', () => {
+            this.detailedCharacterModal.classList.add('hidden');
+        });
+        
+        document.getElementById('close-inventory-btn').addEventListener('click', () => {
+            this.detailedInventoryModal.classList.add('hidden');
+        });
+        
+        document.getElementById('close-help-btn').addEventListener('click', () => {
+            this.helpModal.classList.add('hidden');
+        });
+    }
+    
+    log(message, type = 'info') {
+        this.logEntries.push({ message, type, turn: this.game.turnCount });
+        
+        if (this.logEntries.length > this.maxLogEntries) {
+            this.logEntries.shift();
+        }
+        
+        this.updateLog();
+    }
+    
+    updateLog() {
+        if (!this.logPanel) return;
+        
+        this.logPanel.innerHTML = '';
+        
+        for (let i = this.logEntries.length - 1; i >= 0; i--) {
+            const entry = this.logEntries[i];
+            const div = document.createElement('div');
+            div.className = `log-entry ${entry.type}`;
+            div.textContent = `[${entry.turn}] ${entry.message}`;
+            this.logPanel.appendChild(div);
+        }
+    }
+    
+    updatePanels() {
+        this.updateCharacterPanel();
+        this.updateInventoryPanel();
+        this.updateContextPanel();
+    }
+    
+    updateCharacterPanel() {
+        if (!this.characterPanel || !this.game.player) return;
+        
+        const player = this.game.player;
+        const mode = player.movementModes[player.movementMode];
+        
+        let html = '';
+        html += `<div class="stat-line"><span class="stat-label">Name:</span> <span class="stat-value">${player.name}</span></div>`;
+        html += `<div class="stat-line"><span class="stat-label">HP:</span> <span class="stat-value">${player.hp}/${player.maxHP}</span></div>`;
+        html += `<div class="stat-line"><span class="stat-label">Mode:</span> <span class="stat-value" style="color: ${mode.color};">${mode.name}</span></div>`;
+        html += `<div class="stat-line"><span class="stat-label">Turn:</span> <span class="stat-value">${this.game.turnCount}</span></div>`;
+        html += '<br>';
+        
+        const encumbrance = player.getEncumbranceLevel();
+        const encumbranceColors = {
+            light: '#00ff00',
+            medium: '#ffaa00',
+            heavy: '#ff8800',
+            overencumbered: '#ff4444'
+        };
+        const weight = player.containerSystem.formatWeight(player.getCurrentCarryWeight());
+        const maxWeight = player.containerSystem.formatWeight(player.maxWeight);
+        html += `<div class="stat-line"><span class="stat-label">Weight:</span> <span class="stat-value" style="color: ${encumbranceColors[encumbrance]};">${weight}/${maxWeight}</span></div>`;
+        
+        this.characterPanel.innerHTML = html;
+    }
+    
+    updateInventoryPanel() {
+        if (!this.inventoryPanel || !this.game.player) return;
+        
+        const player = this.game.player;
+        
+        let html = '';
+        
+        if (player.inventory.length === 0) {
+            html += '<div style="color: #666;">Empty</div>';
+        } else {
+            for (const item of player.inventory) {
+                html += `<div style="color: ${item.color};">${item.name}</div>`;
+            }
+        }
+        
+        this.inventoryPanel.innerHTML = html;
+    }
+    
+    updateContextPanel() {
+        if (!this.contextPanel || !this.game.player) return;
+        
+        const player = this.game.player;
+        const tile = this.game.world.getTile(player.x, player.y);
+        
+        let html = '';
+        html += `<div class="stat-line"><span class="stat-label">Tile:</span> <span class="stat-value">${tile.name}</span></div>`;
+        html += `<div class="stat-line"><span class="stat-label">Pos:</span> <span class="stat-value">(${player.x}, ${player.y})</span></div>`;
+        
+        if (this.game.world.extractionPoint) {
+            const ex = this.game.world.extractionPoint;
+            const dist = Math.floor(Math.sqrt(Math.pow(ex.x - player.x, 2) + Math.pow(ex.y - player.y, 2)));
+            html += `<div class="stat-line"><span class="stat-label">Extraction:</span> <span class="stat-value" style="color: #00ff00;">${dist} tiles</span></div>`;
+        }
+        
+        const accessCard = this.game.world.items.find(item => item.id === 'access_card');
+        if (accessCard && !player.inventory.some(item => item.id === 'access_card')) {
+            const dist = Math.floor(Math.sqrt(Math.pow(accessCard.x - player.x, 2) + Math.pow(accessCard.y - player.y, 2)));
+            html += `<div class="stat-line"><span class="stat-label">Access Card:</span> <span class="stat-value" style="color: #00ff00;">${dist} tiles</span></div>`;
+        }
+        
+        const items = this.game.world.getItemsAt(player.x, player.y);
+        if (items.length > 0) {
+            html += '<br><div style="color: #ffaa00;">Items here:</div>';
+            for (const item of items) {
+                html += `<div style="color: ${item.color};">${item.name}</div>`;
+            }
+        }
+        
+        this.contextPanel.innerHTML = html;
+    }
+    
+    updateInspectInfo(x, y) {
+        if (!this.contextPanel) return;
+        
+        let html = '<h4 style="color: #ffff00; margin-bottom: 8px; border-bottom: 2px solid #ffff00; padding-bottom: 5px;">🔍 INSPECTING</h4>';
+        
+        if (!this.game.fov) {
+            html += '<div style="color: #ff0000;">FoV system not initialized</div>';
+            this.contextPanel.innerHTML = html;
+            return;
+        }
+        
+        const isVisible = this.game.fov.isVisible(x, y);
+        const isExplored = this.game.fov.isExplored(x, y);
+        
+        html += `<div style="margin-bottom: 10px; padding: 5px; background: #1a1a1a; border-left: 3px solid #ffff00;">`;
+        html += `<div style="font-size: 15px; color: #aaa;">Location: <span style="color: #ffff00;">(${x}, ${y})</span></div>`;
+        
+        if (!isExplored) {
+            html += '<div style="color: #666; margin-top: 5px;">⚫ Area not yet explored</div>';
+            html += '</div>';
+            this.contextPanel.innerHTML = html;
+            return;
+        }
+        
+        const tile = this.game.world.getTile(x, y);
+        html += `<div style="font-size: 15px; color: #aaa;">Terrain: <span style="color: #00ffff;">${tile.name}</span></div>`;
+        
+        if (!isVisible) {
+            html += '<div style="color: #888; margin-top: 5px;">👁️ Out of current sight</div>';
+            html += '<div style="font-size: 14px; color: #888;">(Previously explored)</div>';
+            html += '</div>';
+            this.contextPanel.innerHTML = html;
+            return;
+        }
+        
+        html += '<div style="color: #00ff00; margin-top: 5px; font-size: 14px;">✓ Currently visible</div>';
+        html += '</div>';
+        
+        const extraction = this.game.world.extractionPoint;
+        if (extraction && extraction.x === x && extraction.y === y) {
+            html += '<div style="margin-top: 10px; padding: 5px; background: #0a1a0a; border-left: 3px solid #00ff00;">';
+            html += '<div style="color: #00ff00; font-weight: bold; margin-bottom: 3px;">🚪 EXTRACTION POINT</div>';
+            html += `<div style="color: ${extraction.color}; font-weight: bold; font-size: 16px;">${extraction.name}</div>`;
+            html += `<div style="font-size: 15px; color: #aaa; margin-top: 5px;">${extraction.getRequirementText()}</div>`;
+            if (extraction.canUse(this.game.player)) {
+                html += '<div style="font-size: 15px; color: #00ff00; margin-top: 5px;">✓ Ready to extract</div>';
+            } else {
+                html += '<div style="font-size: 15px; color: #ffaa00; margin-top: 5px;">⚠ Missing requirements</div>';
+            }
+            html += '</div>';
+        }
+        
+        const entity = this.game.world.getEntityAt(x, y);
+        if (entity) {
+            html += '<div style="margin-top: 10px; padding: 5px; background: #1a0a0a; border-left: 3px solid #ff4444;">';
+            html += '<div style="color: #ff4444; font-weight: bold; margin-bottom: 3px;">👤 ENTITY</div>';
+            html += `<div style="color: ${entity.color}; font-weight: bold; font-size: 16px;">${entity.name}</div>`;
+            if (entity.hp !== undefined) {
+                const hpPercent = (entity.hp / entity.maxHP) * 100;
+                let hpColor = '#00ff00';
+                if (hpPercent < 50) hpColor = '#ffaa00';
+                if (hpPercent < 25) hpColor = '#ff4444';
+                html += `<div style="font-size: 15px; color: ${hpColor};">HP: ${entity.hp}/${entity.maxHP}</div>`;
+            }
+            html += '</div>';
+        }
+        
+        const items = this.game.world.getItemsAt(x, y);
+        if (items.length > 0) {
+            html += '<div style="margin-top: 10px; padding: 5px; background: #1a1a0a; border-left: 3px solid #ffaa00;">';
+            html += '<div style="color: #ffaa00; font-weight: bold; margin-bottom: 3px;">📦 ITEMS ON GROUND</div>';
+            for (const item of items) {
+                html += `<div style="color: ${item.color}; font-size: 15px; margin-bottom: 2px;">• ${item.name}</div>`;
+                if (item.type) {
+                    html += `<div style="font-size: 14px; color: #888; margin-left: 10px;">Type: ${item.type}</div>`;
+                }
+            }
+            html += '</div>';
+        }
+        
+        if (!entity && items.length === 0) {
+            html += '<div style="margin-top: 10px; padding: 5px; color: #888; font-size: 15px;">Nothing of interest here.</div>';
+        }
+        
+        this.contextPanel.innerHTML = html;
+    }
+    
+    showCharacterCreation() {
+        const modal = document.getElementById('character-creation');
+        const form = document.getElementById('creation-form');
+        
+        const charSys = this.game.charCreationSystem;
+        
+        let html = '';
+        
+        html += '<div style="max-height: 70vh; overflow-y: auto; padding-right: 10px;">';
+        
+        html += '<div class="form-group">';
+        html += '<label style="color: #00ffff; font-size: 16px;">Name:</label>';
+        html += '<div style="display: flex; gap: 10px;">';
+        html += '<input type="text" id="char-name" value="Survivor" style="flex: 1; padding: 8px; font-size: 14px;" />';
+        html += '<button id="random-name-btn" type="button" style="padding: 8px 16px;">Random</button>';
+        html += '</div>';
+        html += '</div>';
+        
+        html += '<div class="form-group" style="margin-top: 20px;">';
+        html += '<label style="color: #00ffff; font-size: 16px;">Gender:</label>';
+        html += '<select id="char-gender" style="width: 100%; padding: 8px; font-size: 14px;">';
+        html += '<option value="male">Male</option>';
+        html += '<option value="female">Female</option>';
+        html += '<option value="other">Other</option>';
+        html += '</select>';
+        html += '</div>';
+        
+        html += '<div class="form-group" style="margin-top: 20px;">';
+        html += '<label style="color: #00ffff; font-size: 16px; margin-bottom: 10px; display: block;">Background:</label>';
+        const backgrounds = charSys.getAllBackgrounds();
+        for (const bg of backgrounds) {
+            html += '<div class="background-option" style="margin-bottom: 15px; padding: 10px; background: #1a1a1a; border: 2px solid #333; cursor: pointer;" data-bg-id="' + bg.id + '">';
+            html += '<div style="color: #ffaa00; font-weight: bold; font-size: 14px;">' + bg.name + '</div>';
+            html += '<div style="color: #aaa; font-size: 15px; margin: 5px 0; line-height: 1.4;">' + bg.description + '</div>';
+            html += '<div style="color: #00ffff; font-size: 15px;">Stats: ';
+            const statMods = [];
+            for (const [stat, mod] of Object.entries(bg.statMods)) {
+                const sign = mod > 0 ? '+' : '';
+                statMods.push(stat.toUpperCase() + ' ' + sign + mod);
+            }
+            html += statMods.join(', ');
+            html += '</div>';
+            html += '</div>';
+        }
+        html += '</div>';
+        
+        html += '<div class="form-group" style="margin-top: 20px;">';
+        html += '<label style="color: #00ffff; font-size: 16px;">Distribute 50 points across stats:</label>';
+        html += '<div style="margin-top: 10px;"><label>Strength:</label> <input type="number" id="stat-str" value="10" min="1" max="20" class="stat-input" /></div>';
+        html += '<div><label>Agility:</label> <input type="number" id="stat-agi" value="10" min="1" max="20" class="stat-input" /></div>';
+        html += '<div><label>Endurance:</label> <input type="number" id="stat-end" value="10" min="1" max="20" class="stat-input" /></div>';
+        html += '<div><label>Intelligence:</label> <input type="number" id="stat-int" value="10" min="1" max="20" class="stat-input" /></div>';
+        html += '<div><label>Perception:</label> <input type="number" id="stat-per" value="10" min="1" max="20" class="stat-input" /></div>';
+        html += '<div id="stat-total" style="margin-top: 10px; color: #ffaa00; font-weight: bold;">Total: 50/50</div>';
+        html += '</div>';
+        
+        html += '<div class="form-group" style="margin-top: 20px;">';
+        html += '<label style="color: #00ffff; font-size: 16px; margin-bottom: 10px; display: block;">Traits (3 points available):</label>';
+        html += '<div id="trait-points" style="margin-bottom: 10px; color: #ffaa00; font-weight: bold;">Points: 3</div>';
+        
+        html += '<div style="margin-bottom: 15px;">';
+        html += '<div style="color: #00ff00; font-weight: bold; margin-bottom: 5px;">Positive Traits (Cost Points):</div>';
+        const posTraits = charSys.getPositiveTraits();
+        for (const trait of posTraits) {
+            html += '<div style="margin-bottom: 8px; padding: 8px; background: #0a1a0a; border-left: 3px solid #00ff00;">';
+            html += '<label style="cursor: pointer; display: block;">';
+            html += '<input type="checkbox" class="trait-checkbox" data-trait-id="' + trait.id + '" data-trait-cost="' + trait.cost + '" /> ';
+            html += '<span style="color: #00ff00; font-weight: bold; font-size: 18px;">' + trait.name + '</span> <span style="color: #ffaa00; font-size: 16px;">(Cost: ' + trait.cost + ')</span>';
+            html += '<div style="color: #ccc; font-size: 16px; margin-top: 5px; line-height: 1.4;">' + trait.description + '</div>';
+            html += '</label>';
+            html += '</div>';
+        }
+        html += '</div>';
+        
+        html += '<div>';
+        html += '<div style="color: #ff4444; font-weight: bold; margin-bottom: 5px;">Negative Traits (Give Points):</div>';
+        const negTraits = charSys.getNegativeTraits();
+        for (const trait of negTraits) {
+            html += '<div style="margin-bottom: 8px; padding: 8px; background: #1a0a0a; border-left: 3px solid #ff4444;">';
+            html += '<label style="cursor: pointer; display: block;">';
+            html += '<input type="checkbox" class="trait-checkbox" data-trait-id="' + trait.id + '" data-trait-cost="' + trait.cost + '" /> ';
+            html += '<span style="color: #ff4444; font-weight: bold; font-size: 18px;">' + trait.name + '</span> <span style="color: #00ff00; font-size: 16px;">(Gives: ' + Math.abs(trait.cost) + ')</span>';
+            html += '<div style="color: #ccc; font-size: 16px; margin-top: 5px; line-height: 1.4;">' + trait.description + '</div>';
+            html += '</label>';
+            html += '</div>';
+        }
+        html += '</div>';
+        html += '</div>';
+        
+        html += '</div>';
+        
+        html += '<div style="display: flex; gap: 10px; margin-top: 20px;">';
+        html += '<button id="play-now-btn" style="flex: 1; padding: 12px; font-size: 16px; background: #ff8800; border: 2px solid #ffaa00;">⚡ Play Now</button>';
+        html += '<button id="start-game-btn" style="flex: 1; padding: 12px; font-size: 16px;">Start Game</button>';
+        html += '</div>';
+        
+        form.innerHTML = html;
+        modal.classList.remove('hidden');
+        
+        let selectedBackground = null;
+        
+        const bgOptions = form.querySelectorAll('.background-option');
+        bgOptions.forEach(option => {
+            option.addEventListener('click', () => {
+                bgOptions.forEach(o => o.style.border = '2px solid #333');
+                option.style.border = '2px solid #00ffff';
+                selectedBackground = option.getAttribute('data-bg-id');
+            });
+        });
+        
+        const statInputs = form.querySelectorAll('.stat-input');
+        const updateStatTotal = () => {
+            let total = 0;
+            statInputs.forEach(input => {
+                total += parseInt(input.value) || 0;
+            });
+            const totalDiv = document.getElementById('stat-total');
+            totalDiv.textContent = `Total: ${total}/50`;
+            totalDiv.style.color = total === 50 ? '#00ff00' : (total > 50 ? '#ff4444' : '#ffaa00');
+        };
+        
+        statInputs.forEach(input => {
+            input.addEventListener('input', updateStatTotal);
+        });
+        
+        const traitCheckboxes = form.querySelectorAll('.trait-checkbox');
+        const updateTraitPoints = () => {
+            let points = 3;
+            traitCheckboxes.forEach(cb => {
+                if (cb.checked) {
+                    points -= parseInt(cb.getAttribute('data-trait-cost'));
+                }
+            });
+            const pointsDiv = document.getElementById('trait-points');
+            pointsDiv.textContent = `Points: ${points}`;
+            pointsDiv.style.color = points >= 0 ? '#00ff00' : '#ff4444';
+        };
+        
+        traitCheckboxes.forEach(cb => {
+            cb.addEventListener('change', updateTraitPoints);
+        });
+        
+        const generateCyberpunkName = () => {
+            const firstNames = ['Raze', 'Cipher', 'Vex', 'Nyx', 'Kade', 'Zara', 'Jax', 'Nova', 'Ash', 'Rook', 'Blade', 'Echo', 'Hex', 'Sable', 'Wraith'];
+            const lastNames = ['Chrome', 'Steel', 'Volt', 'Neon', 'Razor', 'Ghost', 'Wire', 'Byte', 'Shade', 'Spark', 'Edge', 'Frost', 'Blaze', 'Storm', 'Void'];
+            const first = firstNames[Math.floor(Math.random() * firstNames.length)];
+            const last = lastNames[Math.floor(Math.random() * lastNames.length)];
+            return `${first} ${last}`;
+        };
+        
+        document.getElementById('random-name-btn').addEventListener('click', () => {
+            document.getElementById('char-name').value = generateCyberpunkName();
+        });
+        
+        document.getElementById('play-now-btn').addEventListener('click', () => {
+            const backgrounds = charSys.getAllBackgrounds();
+            const randomBg = backgrounds[Math.floor(Math.random() * backgrounds.length)];
+            
+            const genders = ['male', 'female', 'other'];
+            const randomGender = genders[Math.floor(Math.random() * genders.length)];
+            
+            const allTraits = [...charSys.getPositiveTraits(), ...charSys.getNegativeTraits()];
+            const selectedTraits = [];
+            let points = 3;
+            
+            const shuffled = allTraits.sort(() => Math.random() - 0.5);
+            for (const trait of shuffled) {
+                if (points - trait.cost >= 0 && selectedTraits.length < 3) {
+                    selectedTraits.push(trait.id);
+                    points -= trait.cost;
+                }
+            }
+            
+            const stats = [10, 10, 10, 10, 10];
+            let remaining = 0;
+            for (let i = 0; i < 5; i++) {
+                const add = Math.floor(Math.random() * 6);
+                stats[i] += add;
+                remaining += add;
+            }
+            
+            const characterData = {
+                name: generateCyberpunkName(),
+                gender: randomGender,
+                background: randomBg.id,
+                traits: selectedTraits,
+                strength: stats[0],
+                agility: stats[1],
+                endurance: stats[2],
+                intelligence: stats[3],
+                perception: stats[4]
+            };
+            
+            modal.classList.add('hidden');
+            this.game.startGame(characterData);
+        });
+        
+        document.getElementById('start-game-btn').addEventListener('click', () => {
+            if (!selectedBackground) {
+                alert('Please select a background!');
+                return;
+            }
+            
+            const total = Array.from(statInputs).reduce((sum, input) => sum + (parseInt(input.value) || 0), 0);
+            if (total !== 50) {
+                alert('Stats must total exactly 50 points!');
+                return;
+            }
+            
+            let traitPoints = 3;
+            const selectedTraits = [];
+            traitCheckboxes.forEach(cb => {
+                if (cb.checked) {
+                    selectedTraits.push(cb.getAttribute('data-trait-id'));
+                    traitPoints -= parseInt(cb.getAttribute('data-trait-cost'));
+                }
+            });
+            
+            if (traitPoints < 0) {
+                alert('Not enough trait points!');
+                return;
+            }
+            
+            const characterData = {
+                name: document.getElementById('char-name').value,
+                gender: document.getElementById('char-gender').value,
+                background: selectedBackground,
+                traits: selectedTraits,
+                strength: parseInt(document.getElementById('stat-str').value),
+                agility: parseInt(document.getElementById('stat-agi').value),
+                endurance: parseInt(document.getElementById('stat-end').value),
+                intelligence: parseInt(document.getElementById('stat-int').value),
+                perception: parseInt(document.getElementById('stat-per').value)
+            };
+            
+            modal.classList.add('hidden');
+            this.game.startGame(characterData);
+        });
+    }
+    
+    toggleCharacterScreen() {
+        if (!this.detailedCharacterModal) return;
+        
+        if (this.detailedCharacterModal.classList.contains('hidden')) {
+            this.showDetailedCharacter();
+            this.detailedCharacterModal.classList.remove('hidden');
+        } else {
+            this.detailedCharacterModal.classList.add('hidden');
+        }
+    }
+    
+    showDetailedCharacter() {
+        if (!this.game.player) return;
+        
+        const player = this.game.player;
+        const content = document.getElementById('detailed-character-content');
+        
+        let html = '';
+        html += '<div style="margin-bottom: 20px;">';
+        html += `<h3 style="color: #00ffff; margin-bottom: 10px;">${player.name}</h3>`;
+        if (player.background) {
+            html += `<div class="stat-line"><span class="stat-label">Background:</span> <span class="stat-value" style="color: #ffaa00;">${player.background}</span></div>`;
+        }
+        if (player.gender) {
+            html += `<div class="stat-line"><span class="stat-label">Gender:</span> <span class="stat-value">${player.gender}</span></div>`;
+        }
+        html += `<div class="stat-line"><span class="stat-label">HP:</span> <span class="stat-value">${player.hp}/${player.maxHP}</span></div>`;
+        html += `<div class="stat-line"><span class="stat-label">Turn:</span> <span class="stat-value">${this.game.turnCount}</span></div>`;
+        html += '</div>';
+        
+        if (player.selectedTraits && player.selectedTraits.length > 0) {
+            html += '<div style="margin-bottom: 20px;">';
+            html += '<h4 style="color: #00ffff; margin-bottom: 8px;">Traits</h4>';
+            const charSys = this.game.charCreationSystem;
+            for (const traitId of player.selectedTraits) {
+                const trait = charSys.getTrait(traitId);
+                if (trait) {
+                    const color = trait.type === 'positive' ? '#00ff00' : '#ff4444';
+                    html += `<div style="margin-bottom: 5px;"><span style="color: ${color}; font-weight: bold;">${trait.name}</span></div>`;
+                    html += `<div style="color: #aaa; font-size: 15px; margin-left: 10px; margin-bottom: 8px; line-height: 1.4;">${trait.description}</div>`;
+                }
+            }
+            html += '</div>';
+        }
+        
+        html += '<div style="margin-bottom: 20px;">';
+        html += '<h4 style="color: #00ffff; margin-bottom: 8px;">Stats</h4>';
+        html += `<div class="stat-line"><span class="stat-label">Strength:</span> <span class="stat-value">${player.stats.strength}</span></div>`;
+        html += `<div class="stat-line"><span class="stat-label">Agility:</span> <span class="stat-value">${player.stats.agility}</span></div>`;
+        html += `<div class="stat-line"><span class="stat-label">Endurance:</span> <span class="stat-value">${player.stats.endurance}</span></div>`;
+        html += `<div class="stat-line"><span class="stat-label">Intelligence:</span> <span class="stat-value">${player.stats.intelligence}</span></div>`;
+        html += `<div class="stat-line"><span class="stat-label">Perception:</span> <span class="stat-value">${player.stats.perception}</span></div>`;
+        html += '</div>';
+        
+        html += '<div style="margin-bottom: 20px;">';
+        html += '<h4 style="color: #00ffff; margin-bottom: 12px;">Anatomy</h4>';
+        html += '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">';
+        html += '<div>' + this.renderAnatomySection('Head', player.anatomy.parts.head) + '</div>';
+        html += '<div>' + this.renderAnatomySection('Torso', player.anatomy.parts.torso) + '</div>';
+        html += '<div>' + this.renderAnatomySection('Left Arm', player.anatomy.parts.leftArm) + '</div>';
+        html += '<div>' + this.renderAnatomySection('Right Arm', player.anatomy.parts.rightArm) + '</div>';
+        html += '<div>' + this.renderAnatomySection('Left Leg', player.anatomy.parts.leftLeg) + '</div>';
+        html += '<div>' + this.renderAnatomySection('Right Leg', player.anatomy.parts.rightLeg) + '</div>';
+        html += '</div>';
+        html += '</div>';
+        
+        html += '<div style="margin-bottom: 20px;">';
+        html += '<h4 style="color: #00ffff; margin-bottom: 8px;">Derived Stats</h4>';
+        html += `<div class="stat-line"><span class="stat-label">Vision Range:</span> <span class="stat-value">${player.anatomy.getVisionRange()}</span></div>`;
+        html += `<div class="stat-line"><span class="stat-label">Hearing Range:</span> <span class="stat-value">${player.anatomy.getHearingRange()}</span></div>`;
+        html += `<div class="stat-line"><span class="stat-label">Can Use Hands:</span> <span class="stat-value">${player.anatomy.canUseHands() ? 'Yes' : 'No'}</span></div>`;
+        html += `<div class="stat-line"><span class="stat-label">Movement Penalty:</span> <span class="stat-value">${player.anatomy.getMovementPenalty()}</span></div>`;
+        html += '</div>';
+        
+        if (player.cybernetics.length > 0) {
+            html += '<div style="margin-bottom: 20px;">';
+            html += '<h4 style="color: #ff00ff; margin-bottom: 8px;">Cybernetics</h4>';
+            for (const cyber of player.cybernetics) {
+                html += `<div style="color: #ff00ff; margin-bottom: 5px;">${cyber.name}</div>`;
+            }
+            html += '</div>';
+        }
+        
+        content.innerHTML = html;
+    }
+    
+    renderAnatomySection(title, parts) {
+        let html = `<div style="margin-bottom: 10px; padding: 10px; background: #0a0a0a; border-left: 3px solid #00ffff;">`;
+        html += `<div style="color: #00ffff; font-weight: bold; margin-bottom: 8px; font-size: 16px;">${title}</div>`;
+        
+        for (const [key, value] of Object.entries(parts)) {
+            if (Array.isArray(value)) {
+                for (const part of value) {
+                    html += this.renderAnatomyPart(part);
+                }
+            } else {
+                html += this.renderAnatomyPart(value);
+            }
+        }
+        
+        html += '</div>';
+        return html;
+    }
+    
+    renderAnatomyPart(part) {
+        const healthPercent = (part.hp / part.maxHP) * 100;
+        let color = '#00ff00';
+        if (healthPercent < 50) color = '#ffaa00';
+        if (healthPercent < 25) color = '#ff4444';
+        if (!part.functional) color = '#666666';
+        
+        const cyberTag = part.cybernetic ? ' [CYBER]' : '';
+        return `<div style="color: ${color}; font-size: 14px; margin-bottom: 4px; line-height: 1.4;">${part.name}${cyberTag}: ${part.hp}/${part.maxHP}</div>`;
+    }
+    
+    toggleInventoryScreen() {
+        if (!this.detailedInventoryModal) return;
+        
+        if (this.detailedInventoryModal.classList.contains('hidden')) {
+            this.showDetailedInventory();
+            this.detailedInventoryModal.classList.remove('hidden');
+        } else {
+            this.detailedInventoryModal.classList.add('hidden');
+        }
+    }
+    
+    showDetailedInventory(activeTab = 'inventory', inspectingItem = null) {
+        if (!this.game.player) return;
+        
+        const player = this.game.player;
+        const content = document.getElementById('detailed-inventory-content');
+        const containerSys = player.containerSystem;
+        
+        let html = '';
+        
+        // Side-by-side layout: Inventory on left, Ground on right
+        html += '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">';
+        
+        // Left column: Inventory
+        html += '<div style="border-right: 2px solid #333; padding-right: 15px;">';
+        html += '<h3 style="color: #00ffff; margin-bottom: 15px; font-size: 20px;">Inventory</h3>';
+        html += this.renderInventoryTab(player, containerSys);
+        html += '</div>';
+        
+        // Right column: Ground
+        html += '<div style="padding-left: 15px;">';
+        html += '<h3 style="color: #00ffff; margin-bottom: 15px; font-size: 20px;">Ground</h3>';
+        html += this.renderGroundTab(player, containerSys);
+        html += '</div>';
+        
+        html += '</div>';
+        
+        content.innerHTML = html;
+        
+        this.attachInventoryEventListeners();
+    }
+    
+    renderInventoryTab(player, containerSys) {
+        let html = '';
+        
+        // Encumbrance display
+        const currentWeight = player.getCurrentCarryWeight();
+        const maxWeight = player.maxWeight;
+        const encumbrance = player.getEncumbranceLevel();
+        const encumbranceColors = {
+            light: '#00ff00',
+            medium: '#ffaa00',
+            heavy: '#ff8800',
+            overencumbered: '#ff4444'
+        };
+        
+        html += '<div style="margin-bottom: 20px; padding: 10px; background: #1a1a1a; border: 2px solid ' + encumbranceColors[encumbrance] + ';">';
+        html += '<h4 style="color: #00ffff; margin-bottom: 8px;">Carry Weight</h4>';
+        html += `<div style="font-size: 14px;"><span style="color: ${encumbranceColors[encumbrance]}; font-weight: bold;">${containerSys.formatWeight(currentWeight)}</span> / ${containerSys.formatWeight(maxWeight)}</div>`;
+        html += `<div style="font-size: 15px; color: ${encumbranceColors[encumbrance]}; margin-top: 5px;">Status: ${encumbrance.toUpperCase()}</div>`;
+        if (encumbrance !== 'light') {
+            const penalty = player.getEncumbrancePenalty();
+            html += `<div style="font-size: 15px; color: #ff8800; margin-top: 3px;">Movement penalty: +${penalty}% action cost</div>`;
+        }
+        html += '</div>';
+        
+        // Equipment section
+        html += '<div style="margin-bottom: 20px;">';
+        html += '<h4 style="color: #00ffff; margin-bottom: 8px;">Equipment</h4>';
+        
+        const slots = [
+            { key: 'head', label: 'Head' },
+            { key: 'torso', label: 'Torso' },
+            { key: 'legs', label: 'Legs' },
+            { key: 'leftHand', label: 'Left Hand' },
+            { key: 'rightHand', label: 'Right Hand' }
+        ];
+        
+        for (const slot of slots) {
+            const item = player.equipment[slot.key];
+            
+            // Skip right hand if it's the same item as left hand (2H grip)
+            if (slot.key === 'rightHand' && item && player.equipment.leftHand === item) {
+                continue;
+            }
+            
+            html += `<div style="margin-bottom: 8px; padding: 8px; background: #1a1a1a; border: 1px solid #333;">`;
+            html += `<div style="margin-bottom: 5px;"><span class="stat-label">${slot.label}:</span> `;
+            if (item) {
+                html += `<span class="stat-value" style="color: ${item.color};">${item.name}</span>`;
+                const weight = containerSys.formatWeight(containerSys.getItemWeight(item));
+                html += ` <span style="color: #aaa; font-size: 14px;">(${weight})</span>`;
+                
+                // Show 2H indicator
+                if (item.twoHandGrip || (slot.key === 'leftHand' && player.equipment.rightHand === item)) {
+                    html += ` <span style="color: #ffaa00; font-size: 14px;">[2H]</span>`;
+                }
+                
+                if (item.isContainer && item.pockets) {
+                    html += ` <span style="color: #ffaa00; font-size: 14px;">[${item.pockets.length} pockets]</span>`;
+                }
+                html += `</div>`;
+                html += `<div style="margin-top: 5px; display: flex; gap: 5px;">`;
+                html += `<button class="small-btn" data-action="inspect-equipped" data-slot="${slot.key}">Inspect</button>`;
+                html += `<button class="small-btn" data-action="move-equipped" data-slot="${slot.key}" style="background: #4488ff;">Move</button>`;
+                html += `</div>`;
+            } else {
+                html += `<span class="stat-value" style="color: #666;">Empty</span></div>`;
+            }
+            html += `</div>`;
+        }
+        html += '</div>';
+        
+        // Carried items section
+        html += '<div style="margin-bottom: 20px;">';
+        html += '<h4 style="color: #ffaa00; margin-bottom: 8px;">Carrying</h4>';
+        
+        // Initialize carrying if it doesn't exist (for old save games)
+        if (!player.carrying) {
+            player.carrying = { leftHand: null, rightHand: null };
+        }
+        
+        console.log('Player carrying:', player.carrying);
+        const leftCarried = player.carrying.leftHand;
+        const rightCarried = player.carrying.rightHand;
+        console.log('Left carried:', leftCarried, 'Right carried:', rightCarried);
+        
+        if (!leftCarried && !rightCarried) {
+            html += '<div style="color: #666;">Hands are free</div>';
+        } else {
+            if (leftCarried && leftCarried === rightCarried) {
+                // Two-handed carry
+                const itemWeight = containerSys.getItemWeight(leftCarried);
+                html += `<div style="padding: 8px; background: #1a1a1a; border: 1px solid #333; border-left: 3px solid #ffaa00; margin-bottom: 5px;">`;
+                html += `<div style="color: ${leftCarried.color}; font-weight: bold;">${leftCarried.name}</div>`;
+                html += `<div style="font-size: 14px; color: #ffaa00;">🤲 Both Hands | ${containerSys.formatWeight(itemWeight)}</div>`;
+                html += `<div style="margin-top: 5px; display: flex; gap: 5px;">`;
+                html += `<button class="small-btn" data-action="move-carried" data-hand="both">Move</button>`;
+                html += `</div>`;
+                html += `</div>`;
+            } else {
+                if (leftCarried) {
+                    const itemWeight = containerSys.getItemWeight(leftCarried);
+                    html += `<div style="padding: 8px; background: #1a1a1a; border: 1px solid #333; border-left: 3px solid #ffaa00; margin-bottom: 5px;">`;
+                    html += `<div style="color: ${leftCarried.color}; font-weight: bold;">${leftCarried.name}</div>`;
+                    html += `<div style="font-size: 14px; color: #ffaa00;">👈 Left Hand | ${containerSys.formatWeight(itemWeight)}</div>`;
+                    html += `<div style="margin-top: 5px; display: flex; gap: 5px;">`;
+                    html += `<button class="small-btn" data-action="move-carried" data-hand="left">Move</button>`;
+                    html += `</div>`;
+                    html += `</div>`;
+                }
+                if (rightCarried) {
+                    const itemWeight = containerSys.getItemWeight(rightCarried);
+                    html += `<div style="padding: 8px; background: #1a1a1a; border: 1px solid #333; border-left: 3px solid #ffaa00; margin-bottom: 5px;">`;
+                    html += `<div style="color: ${rightCarried.color}; font-weight: bold;">${rightCarried.name}</div>`;
+                    html += `<div style="font-size: 14px; color: #ffaa00;">👉 Right Hand | ${containerSys.formatWeight(itemWeight)}</div>`;
+                    html += `<div style="margin-top: 5px; display: flex; gap: 5px;">`;
+                    html += `<button class="small-btn" data-action="move-carried" data-hand="right">Move</button>`;
+                    html += `</div>`;
+                    html += `</div>`;
+                }
+            }
+        }
+        html += '</div>';
+        
+        // Inventory section - show all stored items with locations
+        html += '<div style="margin-bottom: 20px;">';
+        html += `<h4 style="color: #00ffff; margin-bottom: 8px;">Stored Items</h4>`;
+        
+        const storedItems = containerSys.getAllStoredItems(player);
+        
+        if (storedItems.length === 0) {
+            html += '<div style="color: #666;">No items stored. You need pockets or containers to carry items!</div>';
+        } else {
+            for (let i = 0; i < storedItems.length; i++) {
+                const stored = storedItems[i];
+                const item = stored.item;
+                
+                const itemWeight = containerSys.getItemWeight(item);
+                const itemVolume = containerSys.getItemVolume(item);
+                
+                html += `<div class="inventory-item" data-stored-index="${i}" style="margin-bottom: 10px; padding: 8px; background: #1a1a1a; border: 1px solid #333; border-left: 3px solid #00ffff;">`;
+                html += `<div style="color: ${item.color}; font-weight: bold; margin-bottom: 3px;">${item.name}</div>`;
+                html += `<div style="font-size: 10px; color: #00ffff; margin-bottom: 5px;">📍 ${stored.location}</div>`;
+                html += `<div style="font-size: 11px; color: #888;">Type: ${item.type} | ${containerSys.formatWeight(itemWeight)} | ${containerSys.formatVolume(itemVolume)}</div>`;
+                
+                if (item.material) {
+                    html += `<div style="font-size: 10px; color: #888;">Material: ${this.game.content.materials[item.material].name}</div>`;
+                }
+                
+                if (item.durability !== undefined) {
+                    html += `<div style="font-size: 10px; color: #888;">Durability: ${Math.floor(item.durability)}%</div>`;
+                }
+                
+                html += `<div style="margin-top: 8px; display: flex; gap: 5px;">`;
+                html += `<button class="small-btn" data-action="inspect-stored" data-stored-index="${i}">Inspect</button>`;
+                html += `<button class="small-btn" data-action="move-stored" data-stored-index="${i}" style="background: #4488ff;">Move</button>`;
+                html += `</div>`;
+                
+                html += `</div>`;
+            }
+        }
+        html += '</div>';
+        
+        return html;
+    }
+    
+    renderGroundTab(player, containerSys) {
+        let html = '';
+        
+        const groundItems = this.game.world.getItemsAt(player.x, player.y);
+        
+        html += '<div style="margin-bottom: 20px;">';
+        html += '<h4 style="color: #00ffff; margin-bottom: 8px;">Items on Ground</h4>';
+        
+        if (groundItems.length === 0) {
+            html += '<div style="color: #666;">Nothing here.</div>';
+        } else {
+            for (let i = 0; i < groundItems.length; i++) {
+                const item = groundItems[i];
+                const itemWeight = containerSys.getItemWeight(item);
+                const itemVolume = containerSys.getItemVolume(item);
+                
+                html += `<div class="inventory-item" data-ground-index="${i}" style="margin-bottom: 10px; padding: 8px; background: #1a1a1a; border: 1px solid #333;">`;
+                html += `<div style="color: ${item.color}; font-weight: bold; margin-bottom: 3px;">${item.name}</div>`;
+                html += `<div style="font-size: 15px; color: #aaa;">Type: ${item.type} | ${containerSys.formatWeight(itemWeight)} | ${containerSys.formatVolume(itemVolume)}</div>`;
+                
+                if (item.material) {
+                    html += `<div style="font-size: 15px; color: #aaa;">Material: ${this.game.content.materials[item.material].name}</div>`;
+                }
+                
+                if (item.durability !== undefined) {
+                    html += `<div style="font-size: 15px; color: #aaa;">Durability: ${Math.floor(item.durability)}%</div>`;
+                }
+                
+                html += `<div style="margin-top: 8px; display: flex; gap: 5px; flex-wrap: wrap;">`;
+                html += `<button class="small-btn" data-action="inspect-ground" data-ground-index="${i}">Inspect</button>`;
+                html += `<button class="small-btn" data-action="move-ground" data-ground-index="${i}" style="background: #4488ff;">Move</button>`;
+                html += `</div>`;
+                
+                html += `</div>`;
+            }
+        }
+        html += '</div>';
+        
+        return html;
+    }
+    
+    renderInspectTab(player, containerSys, inspectingItem) {
+        let html = '';
+        
+        if (!inspectingItem) {
+            html += '<div style="color: #888; padding: 20px; text-align: center;">Select an item to inspect from Inventory or Ground tabs.</div>';
+            return html;
+        }
+        
+        const item = inspectingItem;
+        const itemWeight = containerSys.getItemWeight(item);
+        const itemVolume = containerSys.getItemVolume(item);
+        
+        html += '<div style="padding: 10px; background: #1a1a1a; border: 2px solid #00ffff;">';
+        html += `<h3 style="color: ${item.color}; margin-bottom: 15px;">${item.name}</h3>`;
+        
+        html += '<div style="margin-bottom: 15px;">';
+        html += `<div style="margin-bottom: 5px;"><span style="color: #888;">Type:</span> <span style="color: #fff;">${item.type}</span></div>`;
+        html += `<div style="margin-bottom: 5px;"><span style="color: #888;">Weight:</span> <span style="color: #fff;">${containerSys.formatWeight(itemWeight)}</span></div>`;
+        html += `<div style="margin-bottom: 5px;"><span style="color: #888;">Volume:</span> <span style="color: #fff;">${containerSys.formatVolume(itemVolume)}</span></div>`;
+        
+        if (item.material) {
+            const material = this.game.content.materials[item.material];
+            html += `<div style="margin-bottom: 5px;"><span style="color: #888;">Material:</span> <span style="color: ${material.color};">${material.name}</span></div>`;
+        }
+        
+        if (item.durability !== undefined) {
+            const durColor = item.durability > 75 ? '#00ff00' : item.durability > 50 ? '#ffaa00' : item.durability > 25 ? '#ff8800' : '#ff4444';
+            html += `<div style="margin-bottom: 5px;"><span style="color: #888;">Durability:</span> <span style="color: ${durColor};">${Math.floor(item.durability)}%</span></div>`;
+        }
+        html += '</div>';
+        
+        if (item.isContainer) {
+            html += '<div style="margin-top: 20px; padding: 10px; background: #0a0a0a; border: 1px solid #ffaa00;">';
+            html += '<h4 style="color: #ffaa00; margin-bottom: 10px;">📦 Container Details</h4>';
+            
+            const contWeight = containerSys.getTotalWeight(item);
+            const contVolume = containerSys.getTotalVolume(item);
+            
+            html += `<div style="margin-bottom: 5px;"><span style="color: #888;">Capacity:</span> <span style="color: #fff;">${containerSys.formatWeight(contWeight)} / ${containerSys.formatWeight(item.maxWeight)}</span></div>`;
+            html += `<div style="margin-bottom: 5px;"><span style="color: #888;">Volume:</span> <span style="color: #fff;">${containerSys.formatVolume(contVolume)} / ${containerSys.formatVolume(item.maxVolume)}</span></div>`;
+            
+            if (item.pockets) {
+                html += '<div style="margin-top: 15px;">';
+                html += '<h5 style="color: #ffaa00; margin-bottom: 8px;">Pockets:</h5>';
+                
+                for (let p = 0; p < item.pockets.length; p++) {
+                    const pocket = item.pockets[p];
+                    const pocketWeight = containerSys.getPocketWeight(pocket);
+                    const pocketVolume = containerSys.getPocketVolume(pocket);
+                    const pocketItems = pocket.contents || [];
+                    
+                    html += `<div style="margin-bottom: 10px; padding: 8px; background: #1a1a1a; border-left: 3px solid #ffaa00;">`;
+                    html += `<div style="color: #ffaa00; font-weight: bold; margin-bottom: 5px;">${pocket.name}</div>`;
+                    html += `<div style="font-size: 15px; color: #aaa;">Capacity: ${containerSys.formatWeight(pocketWeight)} / ${containerSys.formatWeight(pocket.maxWeight)}</div>`;
+                    html += `<div style="font-size: 15px; color: #aaa;">Volume: ${containerSys.formatVolume(pocketVolume)} / ${containerSys.formatVolume(pocket.maxVolume)}</div>`;
+                    
+                    if (pocketItems.length > 0) {
+                        html += '<div style="margin-top: 8px; font-size: 15px; color: #00ffff;">Contents:</div>';
+                        for (let pi = 0; pi < pocketItems.length; pi++) {
+                            const pItem = pocketItems[pi];
+                            html += `<div style="margin-left: 10px; margin-top: 5px; padding: 5px; background: #0a0a0a; border-left: 2px solid ${pItem.color};">`;
+                            html += `<div style="font-size: 15px; color: ${pItem.color}; margin-bottom: 3px;">• ${pItem.name}</div>`;
+                            html += `<button class="small-btn" data-action="move-pocket-item" data-container-id="${item.id}" data-pocket-index="${p}" data-item-index="${pi}" style="background: #4488ff; margin-top: 3px;">Move</button>`;
+                            html += `</div>`;
+                        }
+                    } else {
+                        html += '<div style="margin-top: 5px; font-size: 14px; color: #666;">Empty</div>';
+                    }
+                    html += `</div>`;
+                }
+                html += '</div>';
+            }
+            
+            html += '</div>';
+        }
+        
+        html += '</div>';
+        
+        return html;
+    }
+    
+    attachInventoryEventListeners() {
+        const equipButtons = document.querySelectorAll('button[data-action="equip"]');
+        equipButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const index = parseInt(btn.dataset.index);
+                const slot = btn.dataset.slot;
+                this.handleEquipItem(index, slot);
+            });
+        });
+        
+        const equipStoredButtons = document.querySelectorAll('button[data-action="equip-stored"]');
+        equipStoredButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const index = parseInt(btn.dataset.storedIndex);
+                const slot = btn.dataset.slot;
+                this.handleEquipStoredItem(index, slot);
+            });
+        });
+        
+        const equipGroundButtons = document.querySelectorAll('button[data-action="equip-ground"]');
+        equipGroundButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const index = parseInt(btn.dataset.groundIndex);
+                const slot = btn.dataset.slot;
+                this.handleEquipGroundItem(index, slot);
+            });
+        });
+        
+        const unequipButtons = document.querySelectorAll('button[data-action="unequip"]');
+        unequipButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const slot = btn.dataset.slot;
+                this.handleUnequipItem(slot);
+            });
+        });
+        
+        const dropButtons = document.querySelectorAll('button[data-action="drop"]');
+        dropButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const index = parseInt(btn.dataset.index);
+                this.handleDropItem(index);
+            });
+        });
+        
+        const dropStoredButtons = document.querySelectorAll('button[data-action="drop-stored"]');
+        dropStoredButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const index = parseInt(btn.dataset.storedIndex);
+                this.handleDropStoredItem(index);
+            });
+        });
+        
+        const inspectInvButtons = document.querySelectorAll('button[data-action="inspect-inv"]');
+        inspectInvButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const index = parseInt(btn.dataset.index);
+                this.handleInspectInventoryItem(index);
+            });
+        });
+        
+        const inspectStoredButtons = document.querySelectorAll('button[data-action="inspect-stored"]');
+        inspectStoredButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const index = parseInt(btn.dataset.storedIndex);
+                this.handleInspectStoredItem(index);
+            });
+        });
+        
+        const inspectEquippedButtons = document.querySelectorAll('button[data-action="inspect-equipped"]');
+        inspectEquippedButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const slot = btn.dataset.slot;
+                this.handleInspectEquippedItem(slot);
+            });
+        });
+        
+        const inspectGroundButtons = document.querySelectorAll('button[data-action="inspect-ground"]');
+        inspectGroundButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const index = parseInt(btn.dataset.groundIndex);
+                this.handleInspectGroundItem(index);
+            });
+        });
+        
+        const pickupGroundButtons = document.querySelectorAll('button[data-action="pickup-ground"]');
+        pickupGroundButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const index = parseInt(btn.dataset.groundIndex);
+                this.handlePickupGroundItem(index);
+            });
+        });
+        
+        const carryGroundButtons = document.querySelectorAll('button[data-action="carry-ground"]');
+        carryGroundButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const index = parseInt(btn.dataset.groundIndex);
+                this.handleCarryGroundItem(index);
+            });
+        });
+        
+        const dropCarriedButtons = document.querySelectorAll('button[data-action="drop-carried"]');
+        dropCarriedButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const hand = btn.dataset.hand;
+                this.handleDropCarriedItem(hand);
+            });
+        });
+        
+        // Move action buttons
+        const moveEquippedButtons = document.querySelectorAll('button[data-action="move-equipped"]');
+        moveEquippedButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const slot = btn.dataset.slot;
+                this.showMoveModal('equipped', { slot });
+            });
+        });
+        
+        const moveStoredButtons = document.querySelectorAll('button[data-action="move-stored"]');
+        moveStoredButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const index = parseInt(btn.dataset.storedIndex);
+                this.showMoveModal('stored', { index });
+            });
+        });
+        
+        const moveCarriedButtons = document.querySelectorAll('button[data-action="move-carried"]');
+        moveCarriedButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const hand = btn.dataset.hand;
+                this.showMoveModal('carried', { hand });
+            });
+        });
+        
+        const moveGroundButtons = document.querySelectorAll('button[data-action="move-ground"]');
+        moveGroundButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const index = parseInt(btn.dataset.groundIndex);
+                this.showMoveModal('ground', { index });
+            });
+        });
+        
+        const movePocketItemButtons = document.querySelectorAll('button[data-action="move-pocket-item"]');
+        movePocketItemButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const containerId = btn.dataset.containerId;
+                const pocketIndex = parseInt(btn.dataset.pocketIndex);
+                const itemIndex = parseInt(btn.dataset.itemIndex);
+                this.showMoveModal('pocket', { containerId, pocketIndex, itemIndex });
+            });
+        });
+    }
+    
+    handleEquipItem(index, slot) {
+        const player = this.game.player;
+        const item = player.inventory[index];
+        
+        if (!item) {
+            this.game.ui.log('Invalid item.', 'warning');
+            return;
+        }
+        
+        // Check if the target slot is occupied - block if occupied
+        let occupiedItem = null;
+        if (slot === 'bothHands') {
+            if (player.equipment.leftHand || player.equipment.rightHand) {
+                occupiedItem = player.equipment.leftHand || player.equipment.rightHand;
+            }
+        } else if (slot === 'leftHand' || slot === 'rightHand') {
+            occupiedItem = player.equipment[slot];
+        }
+        
+        if (occupiedItem) {
+            this.game.ui.log(`${player.equipmentSystem.getSlotDisplayName(slot)} is occupied by ${occupiedItem.name}. Unequip it first.`, 'warning');
+            return;
+        }
+        
+        // Slot is free, proceed with equipping
+        const result = player.equipmentSystem.equipItem(index, slot);
+        this.game.ui.log(result.message, result.success ? 'info' : 'warning');
+        this.showDetailedInventory();
+        this.updatePanels();
+    }
+    
+    handleUnequipItem(slot) {
+        const result = this.game.player.equipmentSystem.unequipSlot(slot);
+        
+        if (result.success && result.unequipped) {
+            const item = result.unequipped;
+            const player = this.game.player;
+            
+            // Try to auto-store, otherwise drop to ground
+            const storeResult = player.containerSystem.autoStoreItem(player, item);
+            if (storeResult.success) {
+                player.inventory.push(item);
+                this.game.ui.log(`${result.message} Stored in ${storeResult.location}.`, 'info');
+            } else {
+                // No storage space, drop to ground
+                item.x = player.x;
+                item.y = player.y;
+                this.game.world.addItem(item);
+                this.game.ui.log(`${result.message} No storage space - dropped to ground.`, 'info');
+            }
+        } else {
+            this.game.ui.log(result.message, 'warning');
+        }
+        
+        this.showDetailedInventory();
+        this.updatePanels();
+    }
+    
+    handleEquipStoredItem(storedIndex, slot) {
+        const player = this.game.player;
+        const storedItems = player.containerSystem.getAllStoredItems(player);
+        const stored = storedItems[storedIndex];
+        
+        if (stored && stored.item) {
+            const item = stored.item;
+            const invIndex = player.inventory.indexOf(item);
+            
+            if (invIndex > -1) {
+                // Check if the target slot is occupied - block if occupied
+                let occupiedItem = null;
+                if (slot === 'bothHands') {
+                    if (player.equipment.leftHand || player.equipment.rightHand) {
+                        occupiedItem = player.equipment.leftHand || player.equipment.rightHand;
+                    }
+                } else if (slot === 'leftHand' || slot === 'rightHand') {
+                    occupiedItem = player.equipment[slot];
+                }
+                
+                if (occupiedItem) {
+                    this.game.ui.log(`${player.equipmentSystem.getSlotDisplayName(slot)} is occupied by ${occupiedItem.name}. Unequip it first.`, 'warning');
+                    return;
+                }
+                
+                // Slot is free, proceed with equipping
+                const result = player.equipmentSystem.equipItem(invIndex, slot);
+                this.game.ui.log(result.message, result.success ? 'info' : 'warning');
+                this.showDetailedInventory();
+                this.updatePanels();
+            }
+        }
+    }
+    
+    handleEquipGroundItem(groundIndex, slot) {
+        const player = this.game.player;
+        const groundItems = this.game.world.getItemsAt(player.x, player.y);
+        const item = groundItems[groundIndex];
+        
+        if (item) {
+            const validSlots = player.equipmentSystem.getValidSlotsForItem(item);
+            if (validSlots.includes(slot)) {
+                // Check if slot is occupied - block if occupied
+                const currentItem = player.equipment[slot];
+                if (currentItem) {
+                    this.game.ui.log(`${player.equipmentSystem.getSlotDisplayName(slot)} is occupied by ${currentItem.name}. Unequip it first.`, 'warning');
+                    return;
+                }
+                
+                // Remove from ground and equip
+                this.game.world.removeItem(item);
+                player.equipment[slot] = item;
+                this.game.ui.log(`Equipped ${item.name} to ${player.equipmentSystem.getSlotDisplayName(slot)}.`, 'info');
+                this.showDetailedInventory('ground');
+                this.updatePanels();
+            } else {
+                this.game.ui.log(`Cannot equip ${item.name} to ${slot}.`, 'warning');
+            }
+        }
+    }
+    
+    handleDropItem(index) {
+        const item = this.game.player.inventory[index];
+        if (item) {
+            this.game.player.dropItem(item);
+            this.showDetailedInventory('ground');
+            this.updatePanels();
+        }
+    }
+    
+    handleDropStoredItem(storedIndex) {
+        const storedItems = this.game.player.containerSystem.getAllStoredItems(this.game.player);
+        const stored = storedItems[storedIndex];
+        if (stored && stored.item) {
+            this.game.player.dropItem(stored.item);
+            this.showDetailedInventory('ground');
+            this.updatePanels();
+        }
+    }
+    
+    handleInspectInventoryItem(index) {
+        const item = this.game.player.inventory[index];
+        if (item) {
+            this.showDetailedInventory('inspect', item);
+        }
+    }
+    
+    handleInspectStoredItem(storedIndex) {
+        const storedItems = this.game.player.containerSystem.getAllStoredItems(this.game.player);
+        const stored = storedItems[storedIndex];
+        if (stored && stored.item) {
+            this.showInspectModal(stored.item);
+        }
+    }
+    
+    handleInspectEquippedItem(slot) {
+        const item = this.game.player.equipment[slot];
+        if (item) {
+            this.showInspectModal(item);
+        }
+    }
+    
+    handleInspectGroundItem(index) {
+        const groundItems = this.game.world.getItemsAt(this.game.player.x, this.game.player.y);
+        const item = groundItems[index];
+        if (item) {
+            this.showInspectModal(item);
+        }
+    }
+    
+    showMoveModal(sourceType, sourceData) {
+        const player = this.game.player;
+        const containerSys = player.containerSystem;
+        const content = document.getElementById('detailed-inventory-content');
+        
+        // Get the item based on source
+        let item = null;
+        if (sourceType === 'equipped') {
+            item = player.equipment[sourceData.slot];
+        } else if (sourceType === 'stored') {
+            const storedItems = containerSys.getAllStoredItems(player);
+            item = storedItems[sourceData.index]?.item;
+        } else if (sourceType === 'carried') {
+            item = sourceData.hand === 'both' ? player.carrying.leftHand : player.carrying[sourceData.hand + 'Hand'];
+        } else if (sourceType === 'ground') {
+            const groundItems = this.game.world.getItemsAt(player.x, player.y);
+            item = groundItems[sourceData.index];
+        } else if (sourceType === 'pocket') {
+            // Find the container and get the item from the pocket
+            const container = player.inventory.find(i => i.id === sourceData.containerId) || 
+                            player.equipment.head?.id === sourceData.containerId ? player.equipment.head :
+                            player.equipment.torso?.id === sourceData.containerId ? player.equipment.torso :
+                            player.equipment.legs?.id === sourceData.containerId ? player.equipment.legs : null;
+            if (container && container.pockets && container.pockets[sourceData.pocketIndex]) {
+                const pocket = container.pockets[sourceData.pocketIndex];
+                item = pocket.contents[sourceData.itemIndex];
+            }
+        }
+        
+        if (!item) return;
+        
+        let html = '<div style="padding: 20px;">';
+        html += `<button id="close-move-modal" class="small-btn" style="margin-bottom: 15px;">← Back</button>`;
+        html += `<h3 style="color: #4488ff; margin-bottom: 15px;">Move: ${item.name}</h3>`;
+        
+        html += `<div style="padding: 15px; background: #1a1a1a; border: 2px solid #4488ff; margin-bottom: 15px;">`;
+        html += `<div style="color: #888; margin-bottom: 10px;">Choose where to move this item:</div>`;
+        
+        // Equip option (if item can be equipped and not already equipped)
+        const validSlots = player.equipmentSystem.getValidSlotsForItem(item);
+        if (validSlots.length > 0 && sourceType !== 'equipped') {
+            // Filter out occupied slots
+            const availableSlots = validSlots.filter(slot => {
+                if (slot === 'bothHands') {
+                    return !player.equipment.leftHand && !player.equipment.rightHand;
+                }
+                return !player.equipment[slot];
+            });
+            
+            if (availableSlots.length > 0) {
+                html += `<div style="margin-bottom: 15px; padding: 10px; background: #0a0a0a; border: 1px solid #444;">`;
+                html += `<div style="color: #88ff88; font-weight: bold; margin-bottom: 8px;">⚔️ Equip</div>`;
+                html += `<div style="display: flex; gap: 5px; flex-wrap: wrap;">`;
+                for (const slot of availableSlots) {
+                    html += `<button class="small-btn" data-move-action="equip" data-move-slot="${slot}" style="background: #88ff88; color: #000;">${player.equipmentSystem.getSlotDisplayName(slot)}</button>`;
+                }
+                html += `</div>`;
+                html += `</div>`;
+            } else {
+                // Show message that all slots are occupied
+                html += `<div style="margin-bottom: 15px; padding: 10px; background: #0a0a0a; border: 1px solid #666;">`;
+                html += `<div style="color: #888; font-weight: bold; margin-bottom: 8px;">⚔️ Equip</div>`;
+                html += `<div style="color: #ff8800; font-size: 14px;">All equipment slots are occupied. Unequip an item first.</div>`;
+                html += `</div>`;
+            }
+        }
+        
+        // Store option (if not already stored)
+        if (sourceType !== 'stored') {
+            const storageOptions = containerSys.findAvailableStorage(player, item);
+            if (storageOptions.length > 0) {
+                html += `<div style="margin-bottom: 15px; padding: 10px; background: #0a0a0a; border: 1px solid #444;">`;
+                html += `<div style="color: #00ffff; font-weight: bold; margin-bottom: 8px;">📦 Store</div>`;
+                html += `<div style="color: #888; font-size: 11px; margin-bottom: 8px;">Choose storage location:</div>`;
+                html += `<div style="display: flex; flex-direction: column; gap: 5px;">`;
+                for (let i = 0; i < storageOptions.length; i++) {
+                    const storage = storageOptions[i];
+                    html += `<button class="small-btn" data-move-action="store" data-storage-index="${i}" style="background: #00ffff; color: #000; text-align: left;">${storage.location}</button>`;
+                }
+                html += `</div>`;
+                html += `</div>`;
+            } else {
+                html += `<div style="margin-bottom: 15px; padding: 10px; background: #0a0a0a; border: 1px solid #444;">`;
+                html += `<div style="color: #666; font-weight: bold; margin-bottom: 8px;">📦 Store</div>`;
+                html += `<div style="color: #666; font-size: 11px;">No storage space available</div>`;
+                html += `</div>`;
+            }
+        }
+        
+        // Carry option (if not already carried and hands available)
+        if (sourceType !== 'carried') {
+            const canCarry = player.canCarryInHands(item);
+            if (canCarry.canCarry) {
+                html += `<div style="margin-bottom: 15px; padding: 10px; background: #0a0a0a; border: 1px solid #444;">`;
+                html += `<div style="color: #ffaa00; font-weight: bold; margin-bottom: 8px;">🤲 Carry in Hands</div>`;
+                html += `<button class="small-btn" data-move-action="carry" style="background: #ffaa00; color: #000;">Carry (${canCarry.hands === 'both' ? 'Both Hands' : 'One Hand'})</button>`;
+                html += `</div>`;
+            } else {
+                html += `<div style="margin-bottom: 15px; padding: 10px; background: #0a0a0a; border: 1px solid #444;">`;
+                html += `<div style="color: #666; font-weight: bold; margin-bottom: 8px;">🤲 Carry in Hands</div>`;
+                html += `<div style="color: #666; font-size: 11px;">${canCarry.reason}</div>`;
+                html += `</div>`;
+            }
+        }
+        
+        // Drop option (always available)
+        html += `<div style="margin-bottom: 15px; padding: 10px; background: #0a0a0a; border: 1px solid #444;">`;
+        html += `<div style="color: #ff8888; font-weight: bold; margin-bottom: 8px;">⬇️ Drop to Ground</div>`;
+        html += `<button class="small-btn" data-move-action="drop" style="background: #ff8888; color: #000;">Drop Here</button>`;
+        html += `</div>`;
+        
+        html += `</div>`;
+        html += '</div>';
+        
+        content.innerHTML = html;
+        
+        // Store context for move actions
+        this.moveContext = { sourceType, sourceData, item, storageOptions: containerSys.findAvailableStorage(player, item) };
+        
+        // Attach event listeners
+        document.getElementById('close-move-modal')?.addEventListener('click', () => {
+            this.showDetailedInventory('inventory');
+        });
+        
+        const moveActionButtons = document.querySelectorAll('button[data-move-action]');
+        moveActionButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const action = btn.dataset.moveAction;
+                const slot = btn.dataset.moveSlot;
+                const storageIndex = btn.dataset.storageIndex;
+                this.handleMoveAction(action, slot, storageIndex);
+            });
+        });
+    }
+    
+    handleMoveAction(action, slot, storageIndex) {
+        if (!this.moveContext) return;
+        
+        const { sourceType, sourceData, item, storageOptions } = this.moveContext;
+        const player = this.game.player;
+        
+        // Remove item from source
+        if (sourceType === 'equipped') {
+            player.equipment[sourceData.slot] = null;
+            if (item.twoHandGrip) {
+                player.equipment.leftHand = null;
+                player.equipment.rightHand = null;
+                item.twoHandGrip = false;
+            }
+        } else if (sourceType === 'stored') {
+            const storedItems = player.containerSystem.getAllStoredItems(player);
+            const stored = storedItems[sourceData.index];
+            player.containerSystem.removeItem(stored.container, item, stored.pocketIndex);
+            const invIndex = player.inventory.indexOf(item);
+            if (invIndex !== -1) player.inventory.splice(invIndex, 1);
+        } else if (sourceType === 'carried') {
+            if (sourceData.hand === 'both') {
+                player.carrying.leftHand = null;
+                player.carrying.rightHand = null;
+            } else {
+                player.carrying[sourceData.hand + 'Hand'] = null;
+            }
+            delete item.carriedIn;
+        } else if (sourceType === 'ground') {
+            this.game.world.removeItem(item);
+        } else if (sourceType === 'pocket') {
+            // Remove from pocket contents
+            const container = player.inventory.find(i => i.id === sourceData.containerId) || 
+                            player.equipment.head?.id === sourceData.containerId ? player.equipment.head :
+                            player.equipment.torso?.id === sourceData.containerId ? player.equipment.torso :
+                            player.equipment.legs?.id === sourceData.containerId ? player.equipment.legs : null;
+            if (container && container.pockets && container.pockets[sourceData.pocketIndex]) {
+                const pocket = container.pockets[sourceData.pocketIndex];
+                pocket.contents.splice(sourceData.itemIndex, 1);
+            }
+            const invIndex = player.inventory.indexOf(item);
+            if (invIndex !== -1) player.inventory.splice(invIndex, 1);
+        }
+        
+        // Move to destination
+        if (action === 'equip') {
+            if (slot === 'bothHands') {
+                player.equipment.leftHand = item;
+                player.equipment.rightHand = item;
+                item.twoHandGrip = true;
+            } else {
+                player.equipment[slot] = item;
+            }
+            this.game.ui.log(`Equipped ${item.name}.`, 'info');
+        } else if (action === 'store') {
+            const storage = storageOptions[parseInt(storageIndex)];
+            if (storage.type === 'pocket') {
+                player.containerSystem.addItem(storage.item, item, storage.pocketIndex);
+            } else {
+                player.containerSystem.addItem(storage.item, item);
+            }
+            player.inventory.push(item);
+            this.game.ui.log(`Stored ${item.name} in ${storage.location}.`, 'info');
+        } else if (action === 'carry') {
+            player.carryInHands(item);
+            this.game.ui.log(`Carrying ${item.name} in hands.`, 'info');
+        } else if (action === 'drop') {
+            item.x = player.x;
+            item.y = player.y;
+            this.game.world.addItem(item);
+            this.game.ui.log(`Dropped ${item.name}.`, 'info');
+        }
+        
+        this.moveContext = null;
+        this.showDetailedInventory('inventory');
+        this.updatePanels();
+    }
+    
+    showOccupiedSlotPrompt(newItemIndex, targetSlot, occupiedItem) {
+        const player = this.game.player;
+        const newItem = player.inventory[newItemIndex];
+        const content = document.getElementById('detailed-inventory-content');
+        const containerSys = player.containerSystem;
+        
+        let html = '<div style="padding: 20px;">';
+        html += `<h3 style="color: #ffaa00; margin-bottom: 15px;">⚠️ Slot Occupied</h3>`;
+        
+        html += `<div style="padding: 15px; background: #1a1a1a; border: 2px solid #ffaa00; margin-bottom: 15px;">`;
+        html += `<div style="color: #fff; font-size: 16px; margin-bottom: 10px;">You are trying to equip:</div>`;
+        html += `<div style="color: ${newItem.color}; font-size: 18px; font-weight: bold; margin-bottom: 15px;">→ ${newItem.name}</div>`;
+        
+        const slotName = player.equipmentSystem.getSlotDisplayName(targetSlot);
+        html += `<div style="color: #fff; font-size: 16px; margin-bottom: 10px;">But ${slotName} is occupied by:</div>`;
+        html += `<div style="color: ${occupiedItem.color}; font-size: 18px; font-weight: bold; margin-bottom: 15px;">→ ${occupiedItem.name}</div>`;
+        
+        html += `<div style="color: #ffaa00; font-size: 16px; margin-top: 15px;">What do you want to do with ${occupiedItem.name}?</div>`;
+        html += `</div>`;
+        
+        // Drop option
+        html += `<div style="margin-bottom: 15px; padding: 15px; background: #1a1a1a; border: 2px solid #ff8888;">`;
+        html += `<div style="color: #ff8888; font-weight: bold; margin-bottom: 8px; font-size: 18px;">⬇️ Drop to Ground</div>`;
+        html += `<div style="color: #aaa; font-size: 15px; margin-bottom: 10px;">Drop ${occupiedItem.name} on the ground and equip ${newItem.name}.</div>`;
+        html += `<button id="occupied-drop" class="small-btn" style="background: #ff8888; color: #000; font-size: 16px; padding: 10px 20px;">Drop & Equip</button>`;
+        html += `</div>`;
+        
+        // Move option
+        html += `<div style="margin-bottom: 15px; padding: 15px; background: #1a1a1a; border: 2px solid #4488ff;">`;
+        html += `<div style="color: #4488ff; font-weight: bold; margin-bottom: 8px; font-size: 18px;">📦 Move to Storage</div>`;
+        html += `<div style="color: #aaa; font-size: 15px; margin-bottom: 10px;">Choose where to move ${occupiedItem.name}, then equip ${newItem.name}.</div>`;
+        
+        // Check available storage
+        const storageOptions = containerSys.findAvailableStorage(player, occupiedItem);
+        if (storageOptions.length > 0) {
+            html += `<div style="display: flex; flex-direction: column; gap: 5px;">`;
+            for (let i = 0; i < storageOptions.length; i++) {
+                const storage = storageOptions[i];
+                html += `<button class="occupied-move-btn small-btn" data-storage-index="${i}" style="background: #4488ff; color: #000; text-align: left; font-size: 15px; padding: 10px;">Move to: ${storage.location}</button>`;
+            }
+            html += `</div>`;
+        } else {
+            html += `<div style="color: #666; font-size: 15px;">No storage space available. You must drop the item.</div>`;
+        }
+        html += `</div>`;
+        
+        // Cancel option
+        html += `<button id="occupied-cancel" class="small-btn" style="font-size: 16px; padding: 10px 20px;">← Cancel</button>`;
+        
+        html += '</div>';
+        
+        content.innerHTML = html;
+        
+        // Store context for the action
+        this.occupiedSlotContext = {
+            newItemIndex,
+            targetSlot,
+            occupiedItem,
+            storageOptions
+        };
+        
+        // Attach event listeners
+        document.getElementById('occupied-drop')?.addEventListener('click', () => {
+            this.handleOccupiedSlotDrop();
+        });
+        
+        document.getElementById('occupied-cancel')?.addEventListener('click', () => {
+            this.showDetailedInventory();
+        });
+        
+        const moveButtons = document.querySelectorAll('.occupied-move-btn');
+        moveButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const storageIndex = parseInt(btn.dataset.storageIndex);
+                this.handleOccupiedSlotMove(storageIndex);
+            });
+        });
+    }
+    
+    handleOccupiedSlotDrop() {
+        if (!this.occupiedSlotContext) return;
+        
+        const { newItemIndex, targetSlot, occupiedItem } = this.occupiedSlotContext;
+        const player = this.game.player;
+        
+        // Unequip the occupied item and drop it
+        if (targetSlot === 'bothHands') {
+            player.equipment.leftHand = null;
+            player.equipment.rightHand = null;
+            if (occupiedItem.twoHandGrip) {
+                occupiedItem.twoHandGrip = false;
+            }
+        } else {
+            player.equipment[targetSlot] = null;
+        }
+        
+        // Drop to ground
+        occupiedItem.x = player.x;
+        occupiedItem.y = player.y;
+        this.game.world.addItem(occupiedItem);
+        
+        // Now equip the new item (skipAutoUnequip=true since we already cleared the slot)
+        const result = player.equipmentSystem.equipItem(newItemIndex, targetSlot, true);
+        this.game.ui.log(`Dropped ${occupiedItem.name} to ground. ${result.message}`, result.success ? 'info' : 'warning');
+        
+        this.occupiedSlotContext = null;
+        this.showDetailedInventory();
+        this.updatePanels();
+    }
+    
+    handleOccupiedSlotMove(storageIndex) {
+        if (!this.occupiedSlotContext) return;
+        
+        const { newItemIndex, targetSlot, occupiedItem, storageOptions } = this.occupiedSlotContext;
+        const player = this.game.player;
+        const storage = storageOptions[storageIndex];
+        
+        // Unequip the occupied item
+        if (targetSlot === 'bothHands') {
+            player.equipment.leftHand = null;
+            player.equipment.rightHand = null;
+            if (occupiedItem.twoHandGrip) {
+                occupiedItem.twoHandGrip = false;
+            }
+        } else {
+            player.equipment[targetSlot] = null;
+        }
+        
+        // Move to storage
+        if (storage.type === 'pocket') {
+            player.containerSystem.addItem(storage.item, occupiedItem, storage.pocketIndex);
+        } else {
+            player.containerSystem.addItem(storage.item, occupiedItem);
+        }
+        player.inventory.push(occupiedItem);
+        
+        // Now equip the new item (skipAutoUnequip=true since we already cleared the slot)
+        const result = player.equipmentSystem.equipItem(newItemIndex, targetSlot, true);
+        this.game.ui.log(`Moved ${occupiedItem.name} to ${storage.location}. ${result.message}`, result.success ? 'info' : 'warning');
+        
+        this.occupiedSlotContext = null;
+        this.showDetailedInventory();
+        this.updatePanels();
+    }
+    
+    showInspectModal(item) {
+        if (!item) return;
+        
+        const containerSys = this.game.player.containerSystem;
+        const content = document.getElementById('detailed-inventory-content');
+        
+        let html = '<div style="padding: 20px;">';
+        html += `<button id="close-inspect" class="small-btn" style="margin-bottom: 15px;">← Back</button>`;
+        html += '<h3 style="color: #00ffff; margin-bottom: 15px;">Item Inspection</h3>';
+        
+        html += `<div style="padding: 15px; background: #1a1a1a; border: 2px solid ${item.color}; margin-bottom: 15px;">`;
+        html += `<h4 style="color: ${item.color}; margin-bottom: 10px;">${item.name}</h4>`;
+        html += `<div style="color: #888; margin-bottom: 5px;">Type: ${item.type}</div>`;
+        
+        if (item.material) {
+            const material = this.game.content.materials[item.material];
+            html += `<div style="color: #888; margin-bottom: 5px;">Material: ${material.name}</div>`;
+        }
+        
+        const itemWeight = containerSys.getItemWeight(item);
+        const itemVolume = containerSys.getItemVolume(item);
+        html += `<div style="color: #888; margin-bottom: 5px;">Weight: ${containerSys.formatWeight(itemWeight)}</div>`;
+        html += `<div style="color: #888; margin-bottom: 5px;">Volume: ${containerSys.formatVolume(itemVolume)}</div>`;
+        
+        if (item.durability !== undefined) {
+            const durabilityColor = item.durability > 75 ? '#00ff00' : item.durability > 50 ? '#ffaa00' : item.durability > 25 ? '#ff8800' : '#ff4444';
+            html += `<div style="color: ${durabilityColor}; margin-bottom: 5px;">Durability: ${Math.floor(item.durability)}%</div>`;
+        }
+        
+        if (item.damage) {
+            html += `<div style="color: #ff8888; margin-top: 10px;">Damage: ${item.damage}</div>`;
+        }
+        
+        if (item.defense !== undefined) {
+            html += `<div style="color: #88ff88; margin-top: 10px;">Defense: ${item.defense}</div>`;
+        }
+        
+        html += `</div>`;
+        
+        // Container details
+        if (item.isContainer) {
+            html += `<div style="padding: 15px; background: #1a1a1a; border: 2px solid #ffaa00; margin-bottom: 15px;">`;
+            html += `<h4 style="color: #ffaa00; margin-bottom: 10px;">Container Details</h4>`;
+            
+            if (item.pockets) {
+                html += `<div style="margin-bottom: 10px;">`;
+                html += `<div style="color: #ffaa00; font-weight: bold; margin-bottom: 8px;">Pockets: ${item.pockets.length}</div>`;
+                
+                for (let i = 0; i < item.pockets.length; i++) {
+                    const pocket = item.pockets[i];
+                    const pocketWeight = containerSys.getPocketWeight(pocket);
+                    const pocketVolume = containerSys.getPocketVolume(pocket);
+                    const itemCount = pocket.contents ? pocket.contents.length : 0;
+                    
+                    html += `<div style="padding: 10px; background: #0a0a0a; border: 1px solid #444; margin-bottom: 8px;">`;
+                    html += `<div style="color: #ffaa00; font-weight: bold; margin-bottom: 5px;">${pocket.name}</div>`;
+                    html += `<div style="font-size: 15px; color: #aaa;">Capacity: ${containerSys.formatWeight(pocketWeight)} / ${containerSys.formatWeight(pocket.maxWeight)}</div>`;
+                    html += `<div style="font-size: 15px; color: #aaa;">Volume: ${containerSys.formatVolume(pocketVolume)} / ${containerSys.formatVolume(pocket.maxVolume)}</div>`;
+                    html += `<div style="font-size: 15px; color: #aaa; margin-top: 5px;">Items: ${itemCount}</div>`;
+                    
+                    if (pocket.contents && pocket.contents.length > 0) {
+                        html += `<div style="margin-top: 8px;">`;
+                        for (let pi = 0; pi < pocket.contents.length; pi++) {
+                            const pocketItem = pocket.contents[pi];
+                            html += `<div style="margin-bottom: 8px; padding: 8px; background: #000; border-left: 2px solid ${pocketItem.color};">`;
+                            html += `<div style="color: ${pocketItem.color}; font-size: 16px; margin-bottom: 5px;">• ${pocketItem.name}</div>`;
+                            html += `<button class="small-btn" data-action="move-pocket-item" data-container-id="${item.id}" data-pocket-index="${i}" data-item-index="${pi}" style="background: #4488ff;">Move</button>`;
+                            html += `</div>`;
+                        }
+                        html += `</div>`;
+                    } else {
+                        html += `<div style="margin-top: 5px; color: #666; font-size: 14px;">Empty</div>`;
+                    }
+                    
+                    html += `</div>`;
+                }
+                html += `</div>`;
+            } else if (item.contents) {
+                const contWeight = containerSys.getTotalWeight(item);
+                const contVolume = containerSys.getTotalVolume(item);
+                html += `<div style="color: #888; margin-bottom: 5px;">Weight: ${containerSys.formatWeight(contWeight)} / ${containerSys.formatWeight(item.maxWeight)}</div>`;
+                html += `<div style="color: #888; margin-bottom: 5px;">Volume: ${containerSys.formatVolume(contVolume)} / ${containerSys.formatVolume(item.maxVolume)}</div>`;
+                html += `<div style="color: #888; margin-bottom: 10px;">Items: ${item.contents.length}</div>`;
+                
+                if (item.contents.length > 0) {
+                    html += `<div style="margin-top: 8px;">`;
+                    for (const containedItem of item.contents) {
+                        html += `<div style="color: ${containedItem.color}; font-size: 11px; margin-bottom: 3px;">• ${containedItem.name}</div>`;
+                    }
+                    html += `</div>`;
+                }
+            }
+            
+            html += `</div>`;
+        }
+        
+        html += '</div>';
+        
+        content.innerHTML = html;
+        
+        document.getElementById('close-inspect')?.addEventListener('click', () => {
+            this.showDetailedInventory('inventory');
+        });
+        
+        // Attach event listeners for pocket item move buttons
+        const movePocketItemButtons = document.querySelectorAll('button[data-action="move-pocket-item"]');
+        movePocketItemButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const containerId = btn.dataset.containerId;
+                const pocketIndex = parseInt(btn.dataset.pocketIndex);
+                const itemIndex = parseInt(btn.dataset.itemIndex);
+                this.showMoveModal('pocket', { containerId, pocketIndex, itemIndex });
+            });
+        });
+    }
+    
+    handlePickupGroundItem(index) {
+        const groundItems = this.game.world.getItemsAt(this.game.player.x, this.game.player.y);
+        const item = groundItems[index];
+        if (item) {
+            const success = this.game.player.tryPickup(item);
+            if (success) {
+                this.showDetailedInventory('inventory');
+                this.updatePanels();
+            }
+        }
+    }
+    
+    handleCarryGroundItem(index) {
+        const groundItems = this.game.world.getItemsAt(this.game.player.x, this.game.player.y);
+        const item = groundItems[index];
+        if (item) {
+            // Initialize carrying if it doesn't exist (for old save games)
+            if (!this.game.player.carrying) {
+                this.game.player.carrying = { leftHand: null, rightHand: null };
+            }
+            
+            const result = this.game.player.carryInHands(item);
+            console.log('Carry result:', result);
+            console.log('Player carrying after carry:', this.game.player.carrying);
+            
+            if (result.success) {
+                this.game.world.removeItem(item);
+                this.game.ui.log(result.message, 'info');
+                this.showDetailedInventory('inventory');
+                this.updatePanels();
+            } else {
+                this.game.ui.log(result.message, 'warning');
+            }
+        }
+    }
+    
+    handleDropCarriedItem(hand) {
+        const result = this.game.player.dropCarriedItem(hand);
+        if (result.success) {
+            this.game.ui.log(`Dropped ${result.item.name}.`, 'info');
+            this.showDetailedInventory('ground');
+            this.updatePanels();
+        }
+    }
+    
+    toggleHelpScreen() {
+        if (!this.helpModal) return;
+        
+        if (this.helpModal.classList.contains('hidden')) {
+            this.showHelp();
+            this.helpModal.classList.remove('hidden');
+        } else {
+            this.helpModal.classList.add('hidden');
+        }
+    }
+    
+    showHelp() {
+        const content = document.getElementById('help-content');
+        
+        let html = '';
+        html += '<div style="margin-bottom: 20px;">';
+        html += '<h4 style="color: #00ffff; margin-bottom: 8px;">Movement</h4>';
+        html += '<div class="stat-line"><span class="stat-label">WASD / Arrow Keys:</span> <span class="stat-value">Move</span></div>';
+        html += '<div class="stat-line"><span class="stat-label">Space:</span> <span class="stat-value">Wait/Skip Turn</span></div>';
+        html += '</div>';
+        
+        html += '<div style="margin-bottom: 20px;">';
+        html += '<h4 style="color: #00ffff; margin-bottom: 8px;">Actions</h4>';
+        html += '<div class="stat-line"><span class="stat-label">G:</span> <span class="stat-value">Pick up item</span></div>';
+        html += '<div class="stat-line"><span class="stat-label">X:</span> <span class="stat-value">Inspect mode (arrow keys to move cursor)</span></div>';
+        html += '<div class="stat-line"><span class="stat-label">Escape:</span> <span class="stat-value">Exit inspect mode</span></div>';
+        html += '<div class="stat-line"><span class="stat-label">Move into enemy:</span> <span class="stat-value">Attack</span></div>';
+        html += '</div>';
+        
+        html += '<div style="margin-bottom: 20px;">';
+        html += '<h4 style="color: #00ffff; margin-bottom: 8px;">Interface</h4>';
+        html += '<div class="stat-line"><span class="stat-label">C:</span> <span class="stat-value">Character sheet</span></div>';
+        html += '<div class="stat-line"><span class="stat-label">I:</span> <span class="stat-value">Inventory</span></div>';
+        html += '<div class="stat-line"><span class="stat-label">M:</span> <span class="stat-value">Cycle movement mode</span></div>';
+        html += '<div class="stat-line"><span class="stat-label">?:</span> <span class="stat-value">Help</span></div>';
+        html += '</div>';
+        
+        content.innerHTML = html;
+    }
+    
+    showGameOver(victory) {
+        const modal = document.getElementById('character-creation');
+        const form = document.getElementById('creation-form');
+        
+        const player = this.game.player;
+        const turns = this.game.turnCount;
+        
+        let html = '';
+        
+        if (victory) {
+            html += '<h2 style="color: #00ff00;">🎉 EXTRACTION SUCCESSFUL</h2>';
+            html += '<div style="color: #00ffff; margin: 20px 0; font-size: 18px;">You survived the Fractured City.</div>';
+        } else {
+            html += '<h2 style="color: #ff4444;">💀 RUN FAILED</h2>';
+            html += '<div style="color: #ff4444; margin: 20px 0; font-size: 18px;">You died in the Fractured City.</div>';
+        }
+        
+        html += '<div style="margin: 20px 0; padding: 15px; background: #1a1a1a; border: 1px solid #333;">';
+        html += '<h3 style="color: #00ffff; margin-bottom: 10px;">Run Statistics</h3>';
+        html += `<div class="stat-line"><span class="stat-label">Character:</span> <span class="stat-value">${player.name}</span></div>`;
+        html += `<div class="stat-line"><span class="stat-label">Turns Survived:</span> <span class="stat-value">${turns}</span></div>`;
+        html += `<div class="stat-line"><span class="stat-label">Final HP:</span> <span class="stat-value">${player.hp}/${player.maxHP}</span></div>`;
+        html += `<div class="stat-line"><span class="stat-label">Items Carried:</span> <span class="stat-value">${player.inventory.length}</span></div>`;
+        
+        const enemiesKilled = this.game.world.entities.filter(e => e !== player && e.hp <= 0).length;
+        html += `<div class="stat-line"><span class="stat-label">Enemies Defeated:</span> <span class="stat-value">${enemiesKilled}</span></div>`;
+        html += '</div>';
+        
+        html += '<button id="restart-btn" style="font-size: 16px; padding: 12px 24px;">Start New Run</button>';
+        
+        form.innerHTML = html;
+        modal.classList.remove('hidden');
+        
+        document.getElementById('restart-btn').addEventListener('click', () => {
+            location.reload();
+        });
+    }
+}
