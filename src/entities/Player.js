@@ -7,6 +7,8 @@ export class Player extends Entity {
     constructor(game, characterData) {
         super(game, 0, 0);
         
+        this.z = 0; // Z-level (0 = ground, positive = up, negative = down)
+        
         this.name = characterData.name || 'Survivor';
         this.gender = characterData.gender || 'other';
         this.glyph = '@';

@@ -105,7 +105,7 @@ export class Game {
             return;
         }
         const visionRange = this.player.anatomy.getVisionRange();
-        this.fov.calculate(this.player.x, this.player.y, visionRange);
+        this.fov.calculate(this.player.x, this.player.y, visionRange, this.player.z);
     }
     
     toggleInspectMode() {
@@ -152,7 +152,7 @@ export class Game {
         const cameraX = this.player.x - Math.floor(viewWidth / 2);
         const cameraY = this.player.y - Math.floor(viewHeight / 2);
         
-        this.world.render(this.renderer, cameraX, cameraY, viewWidth, viewHeight, this.fov);
+        this.world.render(this.renderer, cameraX, cameraY, viewWidth, viewHeight, this.fov, this.player.z);
         
         if (this.inspectMode) {
             const cursorScreenX = this.inspectCursor.x - cameraX;

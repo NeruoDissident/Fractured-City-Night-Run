@@ -157,11 +157,12 @@ export class UIManager {
             return;
         }
         
-        const isVisible = this.game.fov.isVisible(x, y);
-        const isExplored = this.game.fov.isExplored(x, y);
+        const playerZ = this.game.player.z;
+        const isVisible = this.game.fov.isVisible(x, y, playerZ);
+        const isExplored = this.game.fov.isExplored(x, y, playerZ);
         
         html += `<div style="margin-bottom: 10px; padding: 5px; background: #1a1a1a; border-left: 3px solid #ffff00;">`;
-        html += `<div style="font-size: 15px; color: #aaa;">Location: <span style="color: #ffff00;">(${x}, ${y})</span></div>`;
+        html += `<div style="font-size: 15px; color: #aaa;">Location: <span style="color: #ffff00;">(${x}, ${y}, Z${playerZ})</span></div>`;
         
         if (!isExplored) {
             html += '<div style="color: #666; margin-top: 5px;">⚫ Area not yet explored</div>';
@@ -170,7 +171,7 @@ export class UIManager {
             return;
         }
         
-        const tile = this.game.world.getTile(x, y);
+        const tile = this.game.world.getTile(x, y, playerZ);
         html += `<div style="font-size: 15px; color: #aaa;">Terrain: <span style="color: #00ffff;">${tile.name}</span></div>`;
         
         if (!isVisible) {
@@ -598,7 +599,17 @@ export class UIManager {
         if (!this.detailedInventoryModal) return;
         
         if (this.detailedInventoryModal.classList.contains('hidden')) {
-            this.showDetailedInventory();
+            // Check if player is standing on a staircase or manhole
+            const tile = this.game.world.getTile(this.game.player.x, this.game.player.y, this.game.player.z);
+            if (tile.isStaircase) {
+                this.showStaircaseInspection(tile);
+            } else if (tile.isManhole) {
+                this.showManholeInspection(tile);
+            } else if (tile.isLadder) {
+                this.showLadderInspection(tile);
+            } else {
+                this.showDetailedInventory();
+            }
             this.detailedInventoryModal.classList.remove('hidden');
         } else {
             this.detailedInventoryModal.classList.add('hidden');
@@ -2440,5 +2451,201 @@ export class UIManager {
                 container.contents.splice(sourceData.itemIndex, 1);
             }
         }
+    }
+    
+    showStaircaseInspection(stairTile) {
+        const content = document.getElementById('detailed-inventory-content');
+        
+        let html = '';
+        
+        // Side-by-side layout: Staircase details on left, Ground on right
+        html += '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">';
+        
+        // Left column: Staircase details
+        html += '<div style="border-right: 2px solid #333; padding-right: 15px;">';
+        html += '<h3 style="color: #ffff00; margin-bottom: 15px; font-size: 20px;">Staircase</h3>';
+        
+        // Staircase info box
+        html += '<div style="margin-bottom: 20px; padding: 15px; background: #1a1a1a; border: 2px solid #ffff00;">';
+        html += `<div style="text-align: center; font-size: 48px; color: #ffff00; margin-bottom: 10px;">${stairTile.glyph}</div>`;
+        html += `<div style="color: #ffff00; font-size: 18px; font-weight: bold; text-align: center; margin-bottom: 15px;">${stairTile.name}</div>`;
+        
+        // Properties
+        html += '<div style="margin-top: 15px;">';
+        html += '<h4 style="color: #00ffff; margin-bottom: 8px; font-size: 16px;">Properties</h4>';
+        html += '<div style="font-size: 15px; color: #aaa; line-height: 1.6;">';
+        html += `<div>Material: <span style="color: #fff;">Concrete & Steel</span></div>`;
+        html += `<div>Durability: <span style="color: #fff;">100%</span></div>`;
+        html += `<div>Blocked: <span style="color: #fff;">${stairTile.blocked ? 'Yes' : 'No'}</span></div>`;
+        html += '</div>';
+        html += '</div>';
+        
+        html += '</div>';
+        
+        // Actions
+        html += '<div style="margin-bottom: 20px;">';
+        html += '<h4 style="color: #00ffff; margin-bottom: 10px; font-size: 16px;">Actions</h4>';
+        
+        if (stairTile.canAscend) {
+            html += '<button class="action-btn" data-stair-action="ascend" style="width: 100%; margin-bottom: 10px; padding: 12px; background: #2a4a2a; border: 2px solid #00ff00; color: #00ff00; font-size: 16px; cursor: pointer;">↑ Ascend Stairs</button>';
+        }
+        
+        if (stairTile.canDescend) {
+            html += '<button class="action-btn" data-stair-action="descend" style="width: 100%; margin-bottom: 10px; padding: 12px; background: #4a2a2a; border: 2px solid #ff8800; color: #ff8800; font-size: 16px; cursor: pointer;">↓ Descend Stairs</button>';
+        }
+        
+        html += '</div>';
+        
+        html += '</div>';
+        
+        // Right column: Ground items
+        html += '<div style="padding-left: 15px;">';
+        html += '<h3 style="color: #00ffff; margin-bottom: 15px; font-size: 20px;">Ground</h3>';
+        html += this.renderGroundTab(this.game.player, this.game.player.containerSystem);
+        html += '</div>';
+        
+        html += '</div>';
+        
+        content.innerHTML = html;
+        
+        // Attach stair action listeners
+        const stairButtons = document.querySelectorAll('button[data-stair-action]');
+        stairButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const action = btn.getAttribute('data-stair-action');
+                this.handleStairAction(action);
+            });
+        });
+        
+        // Also attach ground item listeners
+        this.attachInventoryEventListeners();
+    }
+    
+    handleStairAction(action) {
+        const player = this.game.player;
+        
+        if (action === 'ascend') {
+            player.z++;
+            this.game.ui.log(`You climb the stairs up to level ${player.z}.`, 'info');
+        } else if (action === 'descend') {
+            player.z--;
+            this.game.ui.log(`You climb the stairs down to level ${player.z}.`, 'info');
+        }
+        
+        // Close modal and update view
+        this.detailedInventoryModal.classList.add('hidden');
+        this.game.processTurn({ type: 'wait' }); // Use a turn for climbing stairs
+    }
+    
+    showManholeInspection(manholeTile) {
+        const content = document.getElementById('detailed-inventory-content');
+        
+        let html = '';
+        html += '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">';
+        
+        // Left column: Manhole details
+        html += '<div style="border-right: 2px solid #333; padding-right: 15px;">';
+        html += '<h3 style="color: #ffff00; margin-bottom: 15px; font-size: 20px;">Manhole Cover</h3>';
+        
+        html += '<div style="margin-bottom: 20px; padding: 15px; background: #1a1a1a; border: 2px solid #ffff00;">';
+        html += `<div style="text-align: center; font-size: 48px; color: #ffff00; margin-bottom: 10px;">${manholeTile.glyph}</div>`;
+        html += `<div style="color: #ffff00; font-size: 18px; font-weight: bold; text-align: center; margin-bottom: 15px;">${manholeTile.name}</div>`;
+        
+        html += '<div style="margin-top: 15px;">';
+        html += '<h4 style="color: #00ffff; margin-bottom: 8px; font-size: 16px;">Description</h4>';
+        html += '<div style="font-size: 15px; color: #aaa; line-height: 1.6;">';
+        html += '<div>A heavy metal cover providing access to the sewer system below.</div>';
+        html += '</div></div></div>';
+        
+        html += '<div style="margin-bottom: 20px;">';
+        html += '<h4 style="color: #00ffff; margin-bottom: 10px; font-size: 16px;">Actions</h4>';
+        html += '<button class="action-btn" data-manhole-action="descend" style="width: 100%; margin-bottom: 10px; padding: 12px; background: #4a2a2a; border: 2px solid #ff8800; color: #ff8800; font-size: 16px; cursor: pointer;">↓ Climb Down Into Sewers</button>';
+        html += '</div></div>';
+        
+        // Right column: Ground items
+        html += '<div style="padding-left: 15px;">';
+        html += '<h3 style="color: #00ffff; margin-bottom: 15px; font-size: 20px;">Ground</h3>';
+        html += this.renderGroundTab(this.game.player, this.game.player.containerSystem);
+        html += '</div></div>';
+        
+        content.innerHTML = html;
+        
+        const manholeButtons = document.querySelectorAll('button[data-manhole-action]');
+        manholeButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const action = btn.getAttribute('data-manhole-action');
+                this.handleManholeAction(action);
+            });
+        });
+        
+        this.attachInventoryEventListeners();
+    }
+    
+    showLadderInspection(ladderTile) {
+        const content = document.getElementById('detailed-inventory-content');
+        
+        let html = '';
+        html += '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">';
+        
+        // Left column: Ladder details
+        html += '<div style="border-right: 2px solid #333; padding-right: 15px;">';
+        html += '<h3 style="color: #888888; margin-bottom: 15px; font-size: 20px;">Ladder</h3>';
+        
+        html += '<div style="margin-bottom: 20px; padding: 15px; background: #1a1a1a; border: 2px solid #888888;">';
+        html += `<div style="text-align: center; font-size: 48px; color: #888888; margin-bottom: 10px;">${ladderTile.glyph}</div>`;
+        html += `<div style="color: #888888; font-size: 18px; font-weight: bold; text-align: center; margin-bottom: 15px;">${ladderTile.name}</div>`;
+        
+        html += '<div style="margin-top: 15px;">';
+        html += '<h4 style="color: #00ffff; margin-bottom: 8px; font-size: 16px;">Description</h4>';
+        html += '<div style="font-size: 15px; color: #aaa; line-height: 1.6;">';
+        html += '<div>A rusty metal ladder leading up to the surface.</div>';
+        html += '</div></div></div>';
+        
+        html += '<div style="margin-bottom: 20px;">';
+        html += '<h4 style="color: #00ffff; margin-bottom: 10px; font-size: 16px;">Actions</h4>';
+        html += '<button class="action-btn" data-ladder-action="ascend" style="width: 100%; margin-bottom: 10px; padding: 12px; background: #2a4a2a; border: 2px solid #00ff00; color: #00ff00; font-size: 16px; cursor: pointer;">↑ Climb Up To Surface</button>';
+        html += '</div></div>';
+        
+        // Right column: Ground items
+        html += '<div style="padding-left: 15px;">';
+        html += '<h3 style="color: #00ffff; margin-bottom: 15px; font-size: 20px;">Ground</h3>';
+        html += this.renderGroundTab(this.game.player, this.game.player.containerSystem);
+        html += '</div></div>';
+        
+        content.innerHTML = html;
+        
+        const ladderButtons = document.querySelectorAll('button[data-ladder-action]');
+        ladderButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const action = btn.getAttribute('data-ladder-action');
+                this.handleLadderAction(action);
+            });
+        });
+        
+        this.attachInventoryEventListeners();
+    }
+    
+    handleManholeAction(action) {
+        const player = this.game.player;
+        
+        if (action === 'descend') {
+            player.z = -1;
+            this.game.ui.log('You climb down the ladder into the dark sewers.', 'info');
+        }
+        
+        this.detailedInventoryModal.classList.add('hidden');
+        this.game.processTurn({ type: 'wait' });
+    }
+    
+    handleLadderAction(action) {
+        const player = this.game.player;
+        
+        if (action === 'ascend') {
+            player.z = 0;
+            this.game.ui.log('You climb up the ladder to the surface.', 'info');
+        }
+        
+        this.detailedInventoryModal.classList.add('hidden');
+        this.game.processTurn({ type: 'wait' });
     }
 }

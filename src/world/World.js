@@ -28,6 +28,13 @@ export class World {
         }
     }
     
+    clearAllChunks() {
+        console.log('Clearing all cached chunks for regeneration...');
+        this.chunks.clear();
+        this.generateInitialChunks();
+        console.log('Chunks regenerated with current generation code');
+    }
+    
     getOrCreateChunk(cx, cy) {
         const key = `${cx},${cy}`;
         if (!this.chunks.has(key)) {
@@ -38,7 +45,7 @@ export class World {
         return this.chunks.get(key);
     }
     
-    getTile(x, y) {
+    getTile(x, y, z = 0) {
         const cx = Math.floor(x / this.chunkSize);
         const cy = Math.floor(y / this.chunkSize);
         const chunk = this.getOrCreateChunk(cx, cy);
@@ -46,10 +53,17 @@ export class World {
         const localX = x - cx * this.chunkSize;
         const localY = y - cy * this.chunkSize;
         
-        return chunk.getTile(localX, localY);
+        const tile = chunk.getTile(localX, localY, z);
+        
+        // Debug: Sample tile retrieval for z=-1
+        if (z === -1 && Math.random() < 0.001) {
+            console.log(`World.getTile(${x},${y},${z}) -> chunk(${cx},${cy}) local(${localX},${localY}) = ${tile.name}`);
+        }
+        
+        return tile;
     }
     
-    setTile(x, y, tile) {
+    setTile(x, y, tile, z = 0) {
         const cx = Math.floor(x / this.chunkSize);
         const cy = Math.floor(y / this.chunkSize);
         const chunk = this.getOrCreateChunk(cx, cy);
@@ -57,7 +71,7 @@ export class World {
         const localX = x - cx * this.chunkSize;
         const localY = y - cy * this.chunkSize;
         
-        chunk.setTile(localX, localY, tile);
+        chunk.setTile(localX, localY, tile, z);
     }
     
     isBlocked(x, y) {
@@ -276,19 +290,29 @@ export class World {
         }
     }
     
-    render(renderer, cameraX, cameraY, viewWidth, viewHeight, fov) {
+    render(renderer, cameraX, cameraY, viewWidth, viewHeight, fov, z = 0) {
+        // Debug: Log what z-level we're rendering
+        if (Math.random() < 0.01) {
+            console.log(`World.render called with z=${z}`);
+        }
+        
         for (let y = 0; y < viewHeight; y++) {
             for (let x = 0; x < viewWidth; x++) {
                 const worldX = cameraX + x;
                 const worldY = cameraY + y;
                 
-                const tile = this.getTile(worldX, worldY);
+                const tile = this.getTile(worldX, worldY, z);
+                
+                // Debug: Sample what we're about to draw at z=-1
+                if (z === -1 && Math.random() < 0.001) {
+                    console.log(`World.render drawing at screen(${x},${y}) world(${worldX},${worldY}) z=${z}: ${tile.name} (${tile.glyph})`);
+                }
                 
                 if (!fov) {
                     renderer.drawTile(x, y, tile.glyph, tile.fgColor, tile.bgColor);
                 } else {
-                    const isVisible = fov.isVisible(worldX, worldY);
-                    const isExplored = fov.isExplored(worldX, worldY);
+                    const isVisible = fov.isVisible(worldX, worldY, z);
+                    const isExplored = fov.isExplored(worldX, worldY, z);
                     
                     if (isVisible) {
                         renderer.drawTile(x, y, tile.glyph, tile.fgColor, tile.bgColor);
@@ -301,34 +325,41 @@ export class World {
             }
         }
         
+        // Only render items on the current z-level
         for (const item of this.items) {
+            if (item.z !== z) continue; // Skip items on different z-levels
+            
             const screenX = item.x - cameraX;
             const screenY = item.y - cameraY;
             
             if (screenX >= 0 && screenX < viewWidth && screenY >= 0 && screenY < viewHeight) {
-                if (!fov || fov.isVisible(item.x, item.y)) {
+                if (!fov || fov.isVisible(item.x, item.y, z)) {
                     renderer.drawTile(screenX, screenY, item.glyph, item.color);
                 }
             }
         }
         
+        // Only render entities on the current z-level
         for (const entity of this.entities) {
+            if (entity.z !== z) continue; // Skip entities on different z-levels
+            
             const screenX = entity.x - cameraX;
             const screenY = entity.y - cameraY;
             
             if (screenX >= 0 && screenX < viewWidth && screenY >= 0 && screenY < viewHeight) {
-                if (!fov || fov.isVisible(entity.x, entity.y)) {
+                if (!fov || fov.isVisible(entity.x, entity.y, z)) {
                     renderer.drawTile(screenX, screenY, entity.glyph, entity.color);
                 }
             }
         }
         
-        if (this.extractionPoint) {
+        // Only render extraction point on ground level
+        if (this.extractionPoint && z === 0) {
             const screenX = this.extractionPoint.x - cameraX;
             const screenY = this.extractionPoint.y - cameraY;
             
             if (screenX >= 0 && screenX < viewWidth && screenY >= 0 && screenY < viewHeight) {
-                if (!fov || fov.isVisible(this.extractionPoint.x, this.extractionPoint.y)) {
+                if (!fov || fov.isVisible(this.extractionPoint.x, this.extractionPoint.y, z)) {
                     renderer.drawTile(screenX, screenY, this.extractionPoint.glyph, this.extractionPoint.color);
                 }
             }

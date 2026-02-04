@@ -17,6 +17,7 @@ export class FoVSystem {
         this.world = world;
         this.visibleTiles = new Set();
         this.exploredTiles = new Set();
+        this.currentZ = 0;
     }
     
     /**
@@ -25,8 +26,10 @@ export class FoVSystem {
      * @param {number} x - Center X position
      * @param {number} y - Center Y position
      * @param {number} radius - Vision radius
+     * @param {number} z - Z-level to calculate FoV for
      */
-    calculate(x, y, radius) {
+    calculate(x, y, radius, z = 0) {
+        this.currentZ = z;
         this.visibleTiles.clear();
         
         for (let dy = -radius; dy <= radius; dy++) {
@@ -38,8 +41,8 @@ export class FoVSystem {
                     const ty = y + dy;
                     
                     if (this.hasLineOfSight(x, y, tx, ty)) {
-                        this.visibleTiles.add(`${tx},${ty}`);
-                        this.exploredTiles.add(`${tx},${ty}`);
+                        this.visibleTiles.add(`${tx},${ty},${z}`);
+                        this.exploredTiles.add(`${tx},${ty},${z}`);
                     }
                 }
             }
@@ -87,21 +90,21 @@ export class FoVSystem {
      * Check if a tile blocks vision
      */
     isBlocked(x, y) {
-        const tile = this.world.getTile(x, y);
+        const tile = this.world.getTile(x, y, this.currentZ);
         return tile.blocked;
     }
     
     /**
      * Check if a tile is currently visible
      */
-    isVisible(x, y) {
-        return this.visibleTiles.has(`${x},${y}`);
+    isVisible(x, y, z = this.currentZ) {
+        return this.visibleTiles.has(`${x},${y},${z}`);
     }
     
     /**
      * Check if a tile has been explored (seen before)
      */
-    isExplored(x, y) {
-        return this.exploredTiles.has(`${x},${y}`);
+    isExplored(x, y, z = this.currentZ) {
+        return this.exploredTiles.has(`${x},${y},${z}`);
     }
 }

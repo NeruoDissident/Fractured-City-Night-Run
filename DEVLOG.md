@@ -3,7 +3,7 @@
 **Project:** Fractured City - Browser-based Cyberpunk Roguelike  
 **Engine:** Vanilla JavaScript + HTML5 Canvas 2D  
 **Status:** Active Development  
-**Last Updated:** February 2, 2026
+**Last Updated:** February 3, 2026
 
 ---
 
@@ -45,12 +45,16 @@ A traditional turn-based roguelike set in a cyberpunk dystopia. Features permade
 - [x] **Extraction Objective** - Access card requirement, win/loss screens, run completion
 - [x] **Movement Modes & Sound System** - Walk/Run/Crouch/Prone with sound generation, NPC sound detection
 - [x] **Robust Inventory Management** - Container system, weight/volume tracking, encumbrance, nested containers, pockets
-- [x] **Equipment Slot Protection** - Occupied slots blocked, prevents item loss, forces manual unequip
+- [x] **Item Interaction System** - Opening containers, tool selection, yield mechanics, durability damage
+- [x] **Food & Consumables** - Hunger/thirst mechanics, smart consumption, nutrition system
+- [x] **Food Spoilage System** - Progressive contamination in opened containers, spoilage rates by food type
+- [x] **Liquid Spillage System** - Drinks leak from unsealed containers, resealing mechanics
+- [x] **Status Effects System** - Food poisoning, heal-over-time, duration-based effects
 
 ### Current Build Stats
 - **Files:** 22+ modular ES6 modules
-- **Systems:** 10 core systems (Renderer, World, Entities, Equipment, FoV, UI, Content, Input, Container, CharCreation)
-- **Item Types:** 10+ families (weapons, armor, materials, tools)
+- **Systems:** 11 core systems (Renderer, World, Entities, Equipment, FoV, UI, Content, Input, Container, CharCreation, ItemSystem)
+- **Item Types:** 15+ families (weapons, armor, materials, tools, food, drinks, containers)
 - **NPCs:** 2 types (Scavengers, Raiders)
 - **Biomes:** 3 (Ruins, Industrial, Wasteland)
 
@@ -58,22 +62,22 @@ A traditional turn-based roguelike set in a cyberpunk dystopia. Features permade
 
 ## 🚧 Current Sprint
 
-### Active: Item Interaction System
+### Active: Robust World Builder ⭐ MAJOR SYSTEM
 **Status:** Not Started  
 **Priority:** HIGH  
-**Estimated Time:** 3-4 hours
+**Estimated Time:** 4-5 hours
 
 #### Goals
-- Multiple interaction types per item
-- Context menus for items
-- Use/consume items
-- Combine items
-- Drop items
-- Move items between containers
+- Building generation (rooms, corridors, prefabs)
+- Road and pathway systems
+- Natural features (trees, rocks, mountains)
+- Terrain elevation and cliffs
+- Structured generation replacing random noise
+- POI (Points of Interest) system
 
-#### Previous Sprint: Robust Inventory Management ✅
+#### Previous Sprint: Item Interaction & Food Systems ✅
 **Status:** ✅ Complete  
-**Completed:** February 2, 2026
+**Completed:** February 3, 2026
 
 **Delivered:**
 - [x] ContainerSystem.js - Core container logic with weight/volume
@@ -324,70 +328,55 @@ A roguelike where every run feels different, player choices matter, and the worl
 
 ### Session: February 3, 2026
 **Completed:**
-- **Smart Consumption System** - Auto-calculates optimal food/drink consumption
-  - Added `calculateOptimalConsumption()` to ItemSystem
-  - Calculates hunger/thirst needed and consumes only what's required
-  - If item won't fill player, consumes all remaining
-  - No UI complexity - works invisibly on consumption
-  - Formula: `amountNeeded = Math.ceil(statNeeded / nutritionPerUnit)`
+- **Item Interaction System** - Complete item operations framework
+  - Created ItemSystem.js with splitItem, openContainer, consumeFood methods
+  - Tool finding in equipment and inventory
+  - Opening containers with yield/spillage mechanics
+  - Durability damage to tools when opening containers
+  - Smart consumption system (auto-calculates optimal amount)
 
-- **Food Spoilage System** - Progressive contamination in opened containers
-  - Added `processFoodSpoilage()` to World.processTurn()
-  - Only affects food in opened containers
-  - Spoilage rates: protein (0.03/turn), liquid (0.05/turn), default (0.04/turn)
-  - Contamination threshold: 0.3 → becomes contaminated
-  - Creates strategic pressure to consume opened food quickly
+- **Food & Consumables System** - Full hunger/thirst mechanics
+  - Nutrition values on food/drink items
+  - Quantity-based consumption (grams/milliliters)
+  - Contamination system with food poisoning
+  - Trait integration (ironStomach reduces poison by 50%)
+  - Smart consumption prevents overeating
 
-- **Liquid Spillage System** - Drinks leak from unsealed containers
-  - Added `processLiquidSpillage()` to World.processTurn()
-  - Only affects drinks in opened AND unsealed containers
-  - Spillage rate: 7ml per turn
-  - Bottles can be resealed to stop spillage (plastic)
+- **Food Spoilage System** - Progressive degradation
+  - Only affects opened containers
+  - Different spoilage rates: protein (0.03), liquid (0.05), default (0.04)
+  - Contamination threshold at 0.3
+  - Creates strategic pressure to consume quickly
+
+- **Liquid Spillage System** - Drink leakage mechanics
+  - 7ml per turn from unsealed containers
+  - Bottles can be resealed (plastic)
   - Cans cannot be resealed (metal)
-  - Empty items automatically removed
+  - Empty items auto-removed
 
-- **Freshness UI Indicators** - Visual feedback for food degradation
-  - Added freshness display in three UI locations (stored items, detailed inventory, inspect modal)
-  - Color-coded: Fresh (green), Aging (yellow), Spoiling (orange)
-  - Shows contamination status with warning icon
+- **Status Effects System** - Duration-based effects
+  - Food poisoning from contaminated food
+  - Heal-over-time from medkits
+  - Trait modifiers (slowHealer, ironStomach)
+  - Processed each turn in Player.processStatusEffects()
 
-- **Sealed Container Check** - Prevents consuming from sealed containers
-  - Added check in `UIManager.handleConsumeAction()`
-  - Blocks consumption with warning: "You must open the container first"
-
-- **Hand Slot Exclusivity Fix** - Equipment and carrying now mutually exclusive
-  - Updated `showMoveModal()` to check both equipment AND carrying slots
-  - If hand is carrying OR equipped, it won't show as available option
-  - Shows "All equipment slots are occupied" when hands are full
-  - Simple UI-level fix, no complex Player.js changes
-
-- **Comprehensive Documentation** - Updated SYSTEMS_REFERENCE.md
-  - Added smart consumption system documentation
-  - Added World System with spoilage/spillage details
-  - Added complete item addition workflows for all item types
-  - Added quick reference guide and testing checklists
-  - Documented system interactions and turn processing order
+- **Comprehensive Documentation** - Created SYSTEMS_REFERENCE.md
+  - Complete system documentation
+  - Item addition workflows for all types
+  - Testing checklists
+  - Quick reference guides
 
 **Next Session Goals:**
-- Add world content - new food/drink items (10-20 varieties)
-- Add world content - new tools and containers
-- Implement sickness status effect from contaminated food
-- Add bleeding/injury status effects
+- Add 10-20 new food/drink varieties
+- Add new tools and containers
 - Balance and test new content
 
 ### Session: February 2, 2026
 **Completed:**
-- **Fixed Equipment Slot Bug** - Items no longer disappear when equipping to occupied slots
-  - Simplified `EquipmentSystem.unequipSlot()` to only remove from slot
-  - Blocked all occupied slots in move modal (filters out occupied options)
-  - Added occupied slot checks to all three equip pathways
-  - Unequip still auto-stores or drops to ground
-  - Clear warning messages: "Slot is occupied by [item]. Unequip it first."
-  - Simple solution: force manual unequip before equipping new item
-
-**Next Session Goals:**
-- Begin Item Interaction System
-- Add context menus for items
+- Fixed equipment slot bug (items no longer disappear)
+- Simplified unequipSlot to only remove from slot
+- Blocked occupied slots in move modal
+- Added occupied slot checks to all equip pathways
 
 ### Session: February 1, 2026
 **Completed:**
@@ -405,6 +394,10 @@ A roguelike where every run feels different, player choices matter, and the worl
   - Raiders now investigate sounds
   - UI shows current movement mode with color coding
   - [M] key cycles through modes
+
+**Next Session Goals:**
+- Implement Deep Character Creation expansion
+- Begin Robust Inventory Management system
 
 ---
 
