@@ -77,7 +77,17 @@ export class Anatomy {
         if (leftEye.functional) range += 5;
         if (rightEye.functional) range += 5;
         
-        return range;
+        // Apply nightVision trait bonus
+        if (this.entity.traitEffects && this.entity.traitEffects.visionBonus) {
+            range += this.entity.traitEffects.visionBonus;
+        }
+        
+        // Apply nearSighted trait penalty
+        if (this.entity.traitEffects && this.entity.traitEffects.visionPenalty) {
+            range -= this.entity.traitEffects.visionPenalty;
+        }
+        
+        return Math.max(1, range);
     }
     
     getHearingRange() {

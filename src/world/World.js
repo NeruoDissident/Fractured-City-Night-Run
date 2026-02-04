@@ -180,6 +180,10 @@ export class World {
     processTurn() {
         const player = this.game.player;
         
+        // Process food spoilage and liquid spillage
+        this.processFoodSpoilage(player);
+        this.processLiquidSpillage(player);
+        
         for (const entity of this.entities) {
             if (entity === player) continue;
             if (!entity.takeTurn) continue;
@@ -187,6 +191,87 @@ export class World {
             const dist = Math.abs(entity.x - player.x) + Math.abs(entity.y - player.y);
             if (dist < 20) {
                 entity.takeTurn();
+            }
+        }
+    }
+    
+    processFoodSpoilage(player) {
+        const SPOILAGE_RATES = {
+            'protein': 0.03,   // Slower spoilage for meat, beans
+            'liquid': 0.05,    // Faster spoilage for soup
+            'default': 0.04    // Default for other foods
+        };
+        
+        // Collect all opened containers from player's possession
+        const containers = [
+            ...player.inventory.filter(i => i.isContainer && i.state?.opened),
+            ...Object.values(player.equipment).filter(i => i?.isContainer && i?.state?.opened),
+            ...(player.carrying.leftHand?.isContainer && player.carrying.leftHand?.state?.opened ? [player.carrying.leftHand] : []),
+            ...(player.carrying.rightHand?.isContainer && player.carrying.rightHand?.state?.opened ? [player.carrying.rightHand] : [])
+        ];
+        
+        for (const container of containers) {
+            if (!container.contents) continue;
+            
+            for (const item of container.contents) {
+                if (item.type !== 'food') continue; // Only food spoils this way
+                
+                // Initialize contamination level if needed
+                if (!item.state) item.state = {};
+                if (item.state.contaminationLevel === undefined) {
+                    item.state.contaminationLevel = 0;
+                }
+                
+                // Determine spoilage rate based on tags
+                let spoilageRate = SPOILAGE_RATES.default;
+                if (item.tags && item.tags.includes('protein')) spoilageRate = SPOILAGE_RATES.protein;
+                if (item.tags && item.tags.includes('liquid')) spoilageRate = SPOILAGE_RATES.liquid;
+                
+                // Increase contamination
+                item.state.contaminationLevel += spoilageRate;
+                
+                // Mark as contaminated when threshold reached
+                if (item.state.contaminationLevel >= 0.3 && !item.state.contaminated) {
+                    item.state.contaminated = true;
+                }
+            }
+        }
+    }
+    
+    processLiquidSpillage(player) {
+        const SPILLAGE_RATE = 7; // ml per turn for unsealed liquids
+        
+        // Collect all opened, unsealed containers from player's possession
+        const containers = [
+            ...player.inventory.filter(i => i.isContainer && i.state?.opened && !i.state?.sealed),
+            ...Object.values(player.equipment).filter(i => i?.isContainer && i?.state?.opened && !i?.state?.sealed),
+            ...(player.carrying.leftHand?.isContainer && player.carrying.leftHand?.state?.opened && !player.carrying.leftHand?.state?.sealed ? [player.carrying.leftHand] : []),
+            ...(player.carrying.rightHand?.isContainer && player.carrying.rightHand?.state?.opened && !player.carrying.rightHand?.state?.sealed ? [player.carrying.rightHand] : [])
+        ];
+        
+        for (const container of containers) {
+            if (!container.contents) continue;
+            
+            for (let i = container.contents.length - 1; i >= 0; i--) {
+                const item = container.contents[i];
+                
+                // Only drinks spill (liquids)
+                if (item.type !== 'drink') continue;
+                if (!item.quantity || item.quantityUnit !== 'ml') continue;
+                
+                // Reduce quantity by spillage rate
+                const spillAmount = Math.min(SPILLAGE_RATE, item.quantity);
+                item.quantity -= spillAmount;
+                
+                // Update weight and volume proportionally
+                const ratio = item.quantity / (item.quantity + spillAmount);
+                item.weight = Math.floor(item.weight * ratio);
+                item.volume = Math.floor(item.volume * ratio);
+                
+                // Remove if empty
+                if (item.quantity <= 0) {
+                    container.contents.splice(i, 1);
+                }
             }
         }
     }

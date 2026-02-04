@@ -7,6 +7,7 @@ import { Player } from '../entities/Player.js';
 import { FoVSystem } from '../systems/FoVSystem.js';
 import { SoundSystem } from '../systems/SoundSystem.js';
 import { CharacterCreationSystem } from '../systems/CharacterCreationSystem.js';
+import { ItemSystem } from '../systems/ItemSystem.js';
 
 export class Game {
     constructor() {
@@ -51,6 +52,7 @@ export class Game {
         
         this.fov = new FoVSystem(this.world);
         this.soundSystem = new SoundSystem(this);
+        this.itemSystem = new ItemSystem(this);
         
         this.player = new Player(this, characterData);
         const spawnPos = this.world.getSpawnPosition();
@@ -87,6 +89,7 @@ export class Game {
         
         if (playerActed) {
             this.turnCount++;
+            this.player.processStatusEffects();
             this.updateFoV();
             this.world.processTurn();
             this.soundSystem.processTurn();

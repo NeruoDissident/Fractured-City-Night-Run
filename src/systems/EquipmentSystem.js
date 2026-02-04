@@ -283,6 +283,11 @@ export class EquipmentSystem {
             }
         }
         
+        // Apply quickReflexes or clumsy trait modifier
+        if (this.player.traitEffects && this.player.traitEffects.actionCostMod) {
+            modifier *= this.player.traitEffects.actionCostMod;
+        }
+        
         return modifier;
     }
     

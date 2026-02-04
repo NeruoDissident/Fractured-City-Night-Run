@@ -62,13 +62,28 @@ export class Player extends Entity {
         };
         
         this.cybernetics = [];
+        this.statusEffects = [];
+        
+        this.hunger = 100;
+        this.maxHunger = 100;
+        this.hungerRate = 0.1;
+        this.thirst = 100;
+        this.maxThirst = 100;
+        this.thirstRate = 0.2;
         
         this.equipmentSystem = new EquipmentSystem(this);
         this.containerSystem = new ContainerSystem();
     }
     
     getMaxHP() {
-        return 50 + (this.stats.endurance * 5);
+        let maxHP = 50 + (this.stats.endurance * 5);
+        
+        // Apply weakConstitution trait modifier
+        if (this.traitEffects && this.traitEffects.maxHPMod) {
+            maxHP += this.traitEffects.maxHPMod;
+        }
+        
+        return Math.max(1, maxHP);
     }
     
     getMaxCarryWeight() {
@@ -250,24 +265,9 @@ export class Player extends Entity {
         return true;
     }
     
-    cycleMovementMode() {
-        const modes = ['walk', 'run', 'crouch', 'prone'];
-        const currentIndex = modes.indexOf(this.movementMode);
-        const nextIndex = (currentIndex + 1) % modes.length;
-        this.movementMode = modes[nextIndex];
-        
-        const mode = this.movementModes[this.movementMode];
-        console.log(`Movement mode changed to: ${mode.name}`);
-        this.game.ui.log(`Movement mode: ${mode.name}`, 'info');
-        
-        return true;
-    }
-    
     checkExtraction() {
         const extraction = this.game.world.extractionPoint;
-        if (!extraction) return;
-        
-        if (this.x === extraction.x && this.y === extraction.y) {
+        if (extraction && extraction.x === this.x && extraction.y === this.y) {
             if (extraction.canUse(this)) {
                 this.game.completeRun();
             } else {
@@ -354,5 +354,63 @@ export class Player extends Entity {
     
     isDead() {
         return this.hp <= 0;
+    }
+    
+    addStatusEffect(effect) {
+        this.statusEffects.push({
+            type: effect.type,
+            value: effect.value,
+            duration: effect.duration,
+            name: effect.name
+        });
+    }
+    
+    processStatusEffects() {
+        // Process hunger and thirst
+        this.hunger = Math.max(0, this.hunger - this.hungerRate);
+        this.thirst = Math.max(0, this.thirst - this.thirstRate);
+        
+        // Starvation effects
+        if (this.hunger <= 0) {
+            this.hp = Math.max(0, this.hp - 2);
+            if (this.hp > 0) {
+                this.game.ui.log('You are starving! -2 HP', 'warning');
+            }
+        } else if (this.hunger < 20) {
+            if (Math.random() < 0.1) {
+                this.game.ui.log('Your stomach growls with hunger...', 'warning');
+            }
+        }
+        
+        // Dehydration effects
+        if (this.thirst <= 0) {
+            this.hp = Math.max(0, this.hp - 3);
+            if (this.hp > 0) {
+                this.game.ui.log('You are severely dehydrated! -3 HP', 'warning');
+            }
+        } else if (this.thirst < 20) {
+            if (Math.random() < 0.1) {
+                this.game.ui.log('Your throat is parched...', 'warning');
+            }
+        }
+        
+        // Process other status effects
+        for (let i = this.statusEffects.length - 1; i >= 0; i--) {
+            const effect = this.statusEffects[i];
+            
+            if (effect.type === 'heal') {
+                this.hp = Math.min(this.hp + effect.value, this.maxHP);
+                this.game.ui.log(`+${effect.value} HP from ${effect.name}`, 'info');
+            } else if (effect.type === 'sickness') {
+                this.hp = Math.max(0, this.hp + effect.value);
+                this.game.ui.log(`${effect.value} HP from ${effect.name}`, 'warning');
+            }
+            
+            effect.duration--;
+            if (effect.duration <= 0) {
+                this.statusEffects.splice(i, 1);
+                this.game.ui.log(`${effect.name} effect ended.`, 'info');
+            }
+        }
     }
 }

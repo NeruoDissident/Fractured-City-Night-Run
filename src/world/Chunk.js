@@ -46,11 +46,17 @@ export class Chunk {
         const content = this.world.game.content;
         const rand = Math.random();
         
-        const itemFamilies = ['shiv', 'knife', 'pipe', 'trenchcoat', 'medkit', 'battery'];
+        const itemFamilies = ['shiv', 'knife', 'pipe', 'trenchcoat', 'medkit', 'battery', 'can_sealed', 'bottle_sealed', 'can_opener'];
         const materials = ['scrap_metal', 'carbon_steel', 'copper_wire', 'plastic_scrap', 'synth_fiber'];
         const modifiers = ['rusty', 'reinforced', 'makeshift', 'sterile'];
         
         const familyId = itemFamilies[Math.floor(Math.random() * itemFamilies.length)];
+        
+        // Food containers and tools don't need materials/modifiers
+        if (familyId === 'can_sealed' || familyId === 'bottle_sealed' || familyId === 'can_opener') {
+            return content.createItem(familyId);
+        }
+        
         const materialId = materials[Math.floor(Math.random() * materials.length)];
         const modifierId = rand < 0.3 ? modifiers[Math.floor(Math.random() * modifiers.length)] : null;
         

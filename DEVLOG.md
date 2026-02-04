@@ -322,6 +322,59 @@ A roguelike where every run feels different, player choices matter, and the worl
 
 ## 📝 Session Notes
 
+### Session: February 3, 2026
+**Completed:**
+- **Smart Consumption System** - Auto-calculates optimal food/drink consumption
+  - Added `calculateOptimalConsumption()` to ItemSystem
+  - Calculates hunger/thirst needed and consumes only what's required
+  - If item won't fill player, consumes all remaining
+  - No UI complexity - works invisibly on consumption
+  - Formula: `amountNeeded = Math.ceil(statNeeded / nutritionPerUnit)`
+
+- **Food Spoilage System** - Progressive contamination in opened containers
+  - Added `processFoodSpoilage()` to World.processTurn()
+  - Only affects food in opened containers
+  - Spoilage rates: protein (0.03/turn), liquid (0.05/turn), default (0.04/turn)
+  - Contamination threshold: 0.3 → becomes contaminated
+  - Creates strategic pressure to consume opened food quickly
+
+- **Liquid Spillage System** - Drinks leak from unsealed containers
+  - Added `processLiquidSpillage()` to World.processTurn()
+  - Only affects drinks in opened AND unsealed containers
+  - Spillage rate: 7ml per turn
+  - Bottles can be resealed to stop spillage (plastic)
+  - Cans cannot be resealed (metal)
+  - Empty items automatically removed
+
+- **Freshness UI Indicators** - Visual feedback for food degradation
+  - Added freshness display in three UI locations (stored items, detailed inventory, inspect modal)
+  - Color-coded: Fresh (green), Aging (yellow), Spoiling (orange)
+  - Shows contamination status with warning icon
+
+- **Sealed Container Check** - Prevents consuming from sealed containers
+  - Added check in `UIManager.handleConsumeAction()`
+  - Blocks consumption with warning: "You must open the container first"
+
+- **Hand Slot Exclusivity Fix** - Equipment and carrying now mutually exclusive
+  - Updated `showMoveModal()` to check both equipment AND carrying slots
+  - If hand is carrying OR equipped, it won't show as available option
+  - Shows "All equipment slots are occupied" when hands are full
+  - Simple UI-level fix, no complex Player.js changes
+
+- **Comprehensive Documentation** - Updated SYSTEMS_REFERENCE.md
+  - Added smart consumption system documentation
+  - Added World System with spoilage/spillage details
+  - Added complete item addition workflows for all item types
+  - Added quick reference guide and testing checklists
+  - Documented system interactions and turn processing order
+
+**Next Session Goals:**
+- Add world content - new food/drink items (10-20 varieties)
+- Add world content - new tools and containers
+- Implement sickness status effect from contaminated food
+- Add bleeding/injury status effects
+- Balance and test new content
+
 ### Session: February 2, 2026
 **Completed:**
 - **Fixed Equipment Slot Bug** - Items no longer disappear when equipping to occupied slots

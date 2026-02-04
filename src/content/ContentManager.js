@@ -109,9 +109,11 @@ export class ContentManager {
                 name: 'Medkit',
                 type: 'consumable',
                 healAmount: 20,
+                healDuration: 4,
                 glyph: '+',
                 slots: [],
-                tags: ['medical', 'consumable']
+                tags: ['medical', 'consumable'],
+                actions: ['use']
             },
             battery: {
                 name: 'Battery',
@@ -140,6 +142,117 @@ export class ContentManager {
                 maxWeight: 200,
                 maxVolume: 300,
                 tags: ['container', 'small']
+            },
+            can_opener: {
+                name: 'Can Opener',
+                type: 'tool',
+                glyph: '~',
+                color: '#888888',
+                slots: [],
+                tags: ['tool', 'opener'],
+                toolEffectiveness: {
+                    open_can: 1.0
+                }
+            },
+            can_sealed: {
+                name: 'Sealed Can',
+                type: 'container',
+                glyph: 'c',
+                color: '#888888',
+                slots: [],
+                isContainer: true,
+                state: { opened: false, sealed: true },
+                requiresOpener: true,
+                openMethods: {
+                    can_opener: { yield: 1.0, durabilityDamage: 0 },
+                    knife: { yield: 0.8, durabilityDamage: 5 },
+                    pipe: { yield: 0.5, durabilityDamage: 3 },
+                    ground: { yield: 0.15, durabilityDamage: 0 }
+                },
+                contents: [],
+                tags: ['container', 'sealed', 'metal']
+            },
+            beans: {
+                name: 'Beans',
+                type: 'food',
+                glyph: '*',
+                color: '#aa6644',
+                slots: [],
+                quantity: 400,
+                quantityUnit: 'g',
+                nutrition: { hunger: 30, thirst: -5 },
+                tags: ['food', 'protein', 'stackable']
+            },
+            soup: {
+                name: 'Soup',
+                type: 'food',
+                glyph: '*',
+                color: '#cc8844',
+                slots: [],
+                quantity: 350,
+                quantityUnit: 'g',
+                nutrition: { hunger: 25, thirst: 10 },
+                tags: ['food', 'liquid', 'stackable']
+            },
+            mystery_meat: {
+                name: 'Mystery Meat',
+                type: 'food',
+                glyph: '*',
+                color: '#884444',
+                slots: [],
+                quantity: 300,
+                quantityUnit: 'g',
+                nutrition: { hunger: 35, thirst: -10 },
+                tags: ['food', 'protein', 'stackable']
+            },
+            bottle_sealed: {
+                name: 'Sealed Bottle',
+                type: 'container',
+                glyph: 'b',
+                color: '#666666',
+                slots: [],
+                isContainer: true,
+                state: { opened: false, sealed: true },
+                requiresOpener: false,
+                openMethods: {
+                    hand: { yield: 1.0, durabilityDamage: 0 },
+                    knife: { yield: 0.95, durabilityDamage: 2 }
+                },
+                contents: [],
+                tags: ['container', 'sealed', 'plastic']
+            },
+            water: {
+                name: 'Water',
+                type: 'drink',
+                glyph: '~',
+                color: '#66aaff',
+                slots: [],
+                quantity: 500,
+                quantityUnit: 'ml',
+                nutrition: { thirst: 40, hunger: 0 },
+                tags: ['drink', 'water', 'stackable']
+            },
+            soda: {
+                name: 'Soda',
+                type: 'drink',
+                glyph: '~',
+                color: '#ff8844',
+                slots: [],
+                quantity: 350,
+                quantityUnit: 'ml',
+                nutrition: { thirst: 25, hunger: 5 },
+                tags: ['drink', 'sugar', 'stackable']
+            },
+            juice: {
+                name: 'Juice',
+                type: 'drink',
+                glyph: '~',
+                color: '#ffaa44',
+                slots: [],
+                quantity: 400,
+                quantityUnit: 'ml',
+                nutrition: { thirst: 35, hunger: 10 },
+                tags: ['drink', 'fruit', 'stackable']
             },
             coat: {
                 name: 'Coat',
@@ -363,6 +476,28 @@ export class ContentManager {
             }
         }
         
+        // Initialize sealed containers with random contents
+        if (familyId === 'can_sealed') {
+            const canContents = ['beans', 'soup', 'mystery_meat'];
+            const randomContent = canContents[Math.floor(Math.random() * canContents.length)];
+            const content = this.createItem(randomContent);
+            item.contents = [content];
+            // Update container name to reflect contents
+            item.name = `Sealed Can (${content.name})`;
+        } else if (familyId === 'bottle_sealed') {
+            const bottleContents = ['water', 'soda', 'juice'];
+            const randomContent = bottleContents[Math.floor(Math.random() * bottleContents.length)];
+            const content = this.createItem(randomContent);
+            item.contents = [content];
+            // Update container name to reflect contents
+            item.name = `Sealed Bottle (${content.name})`;
+        }
+        
+        // Deep copy state object to avoid shared references
+        if (item.state) {
+            item.state = { ...item.state };
+        }
+        
         return item;
     }
     
@@ -377,7 +512,16 @@ export class ContentManager {
             battery: 100,
             backpack: 600,
             wallet: 50,
-            canteen: 300
+            canteen: 300,
+            can_opener: 80,
+            can_sealed: 450,
+            beans: 400,
+            soup: 350,
+            mystery_meat: 300,
+            bottle_sealed: 520,
+            water: 500,
+            soda: 350,
+            juice: 400
         };
         return weights[familyId] || 100;
     }
@@ -393,7 +537,16 @@ export class ContentManager {
             battery: 50,
             backpack: 1000,
             wallet: 100,
-            canteen: 400
+            canteen: 400,
+            can_opener: 100,
+            can_sealed: 420,
+            beans: 400,
+            soup: 350,
+            mystery_meat: 300,
+            bottle_sealed: 550,
+            water: 500,
+            soda: 350,
+            juice: 400
         };
         return volumes[familyId] || 100;
     }
