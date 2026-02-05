@@ -74,19 +74,19 @@ export class World {
         chunk.setTile(localX, localY, tile, z);
     }
     
-    isBlocked(x, y) {
-        const tile = this.getTile(x, y);
+    isBlocked(x, y, z = 0) {
+        const tile = this.getTile(x, y, z);
         if (tile.blocked) return true;
         
-        return this.entities.some(e => e.x === x && e.y === y && e.blocksMovement);
+        return this.entities.some(e => e.x === x && e.y === y && e.z === z && e.blocksMovement);
     }
     
-    getEntityAt(x, y) {
-        return this.entities.find(e => e.x === x && e.y === y);
+    getEntityAt(x, y, z = 0) {
+        return this.entities.find(e => e.x === x && e.y === y && e.z === z);
     }
     
-    getItemsAt(x, y) {
-        return this.items.filter(item => item.x === x && item.y === y);
+    getItemsAt(x, y, z = 0) {
+        return this.items.filter(item => item.x === x && item.y === y && (item.z === z || item.z === undefined));
     }
     
     addEntity(entity) {
@@ -126,7 +126,7 @@ export class World {
                 const x = Math.floor(Math.random() * 80) - 20;
                 const y = Math.floor(Math.random() * 80) - 20;
                 
-                if (!this.isBlocked(x, y)) {
+                if (!this.isBlocked(x, y, 0)) {
                     const npc = new NPC(this.game, npcDef.type, x, y);
                     this.addEntity(npc);
                 }
@@ -146,7 +146,7 @@ export class World {
             const testX = x + Math.floor(Math.random() * 10) - 5;
             const testY = y + Math.floor(Math.random() * 10) - 5;
             
-            if (!this.isBlocked(testX, testY)) {
+            if (!this.isBlocked(testX, testY, 0)) {
                 const types = ['transit_gate', 'safehouse', 'elevator', 'escape_tunnel'];
                 const type = types[Math.floor(Math.random() * types.length)];
                 this.extractionPoint = new ExtractionPoint(testX, testY, type);
@@ -172,7 +172,7 @@ export class World {
             const testX = x + Math.floor(Math.random() * 10) - 5;
             const testY = y + Math.floor(Math.random() * 10) - 5;
             
-            if (!this.isBlocked(testX, testY)) {
+            if (!this.isBlocked(testX, testY, 0)) {
                 const card = {
                     id: 'access_card',
                     name: 'Access Card',
@@ -180,7 +180,8 @@ export class World {
                     glyph: '▪',
                     color: '#00ff00',
                     x: testX,
-                    y: testY
+                    y: testY,
+                    z: 0
                 };
                 this.addItem(card);
                 console.log(`Access card spawned at (${testX}, ${testY}), distance: ${Math.floor(distance)} tiles`);

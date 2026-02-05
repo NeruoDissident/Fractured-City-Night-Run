@@ -5,14 +5,372 @@ export class ContentManager {
         this.modifiers = {};
         this.cybernetics = {};
         this.traits = {};
+        this.components = {};
     }
     
     loadContent() {
+        this.loadComponents();
         this.loadMaterials();
         this.loadItemFamilies();
         this.loadModifiers();
         this.loadCybernetics();
         this.loadTraits();
+    }
+    
+    loadComponents() {
+        // Master component library - all possible components that can be extracted/used
+        this.components = {
+            // Metal components
+            scrap_metal_shard: {
+                name: 'Metal Shard',
+                type: 'component',
+                isComponent: true,
+                weight: 50,
+                volume: 30,
+                tags: ['metal', 'sharp'],
+                stackable: true,
+                properties: {
+                    cutting: 1,
+                    piercing: 1
+                }
+            },
+            metal_tube: {
+                name: 'Metal Tube',
+                type: 'component',
+                isComponent: true,
+                weight: 200,
+                volume: 150,
+                tags: ['metal', 'structural'],
+                stackable: true,
+                properties: {
+                    structural: 2,
+                    blunt: 1,
+                    grip: 1
+                }
+            },
+            blade: {
+                name: 'Knife Blade',
+                type: 'component',
+                isComponent: true,
+                weight: 80,
+                volume: 50,
+                tags: ['metal', 'sharp'],
+                stackable: true,
+                properties: {
+                    cutting: 3,
+                    piercing: 2
+                }
+            },
+            rivet: {
+                name: 'Rivet',
+                type: 'component',
+                isComponent: true,
+                weight: 5,
+                volume: 2,
+                tags: ['metal', 'fastener'],
+                stackable: true,
+                properties: {
+                    fastening: 1
+                }
+            },
+            screw: {
+                name: 'Screw',
+                type: 'component',
+                isComponent: true,
+                weight: 3,
+                volume: 1,
+                tags: ['metal', 'fastener'],
+                stackable: true,
+                properties: {
+                    fastening: 2
+                }
+            },
+            wire: {
+                name: 'Wire',
+                type: 'component',
+                isComponent: true,
+                weight: 10,
+                volume: 5,
+                tags: ['metal', 'flexible'],
+                stackable: true,
+                properties: {
+                    binding: 2,
+                    electrical: 1
+                }
+            },
+            blade_wheel: {
+                name: 'Cutting Wheel',
+                type: 'component',
+                isComponent: true,
+                weight: 30,
+                volume: 20,
+                tags: ['metal', 'sharp', 'tool'],
+                stackable: true
+            },
+            tin_can: {
+                name: 'Tin Can',
+                type: 'component',
+                isComponent: true,
+                weight: 50,
+                volume: 80,
+                tags: ['metal', 'container'],
+                stackable: true
+            },
+            can_lid: {
+                name: 'Can Lid',
+                type: 'component',
+                isComponent: true,
+                weight: 10,
+                volume: 10,
+                tags: ['metal', 'sharp'],
+                stackable: true
+            },
+            metal_casing: {
+                name: 'Metal Casing',
+                type: 'component',
+                isComponent: true,
+                weight: 15,
+                volume: 8,
+                tags: ['metal', 'container'],
+                stackable: true,
+                properties: {
+                    container: 1,
+                    structural: 1
+                }
+            },
+            metal_bottle: {
+                name: 'Metal Bottle',
+                type: 'component',
+                isComponent: true,
+                weight: 150,
+                volume: 250,
+                tags: ['metal', 'container', 'liquid'],
+                stackable: true
+            },
+            
+            // Fabric components
+            fabric_panel: {
+                name: 'Fabric Panel',
+                type: 'component',
+                isComponent: true,
+                weight: 100,
+                volume: 200,
+                tags: ['fabric', 'flexible'],
+                stackable: true,
+                properties: {
+                    padding: 2,
+                    insulation: 1,
+                    binding: 1
+                }
+            },
+            cloth_wrap: {
+                name: 'Cloth Wrap',
+                type: 'component',
+                isComponent: true,
+                weight: 20,
+                volume: 30,
+                tags: ['fabric', 'flexible'],
+                stackable: true,
+                properties: {
+                    grip: 1,
+                    padding: 1,
+                    binding: 1
+                }
+            },
+            thread: {
+                name: 'Thread',
+                type: 'component',
+                isComponent: true,
+                weight: 5,
+                volume: 10,
+                tags: ['fabric', 'binding'],
+                stackable: true,
+                properties: {
+                    binding: 1,
+                    fastening: 1
+                }
+            },
+            strap: {
+                name: 'Strap',
+                type: 'component',
+                isComponent: true,
+                weight: 50,
+                volume: 80,
+                tags: ['fabric', 'flexible', 'structural'],
+                stackable: true,
+                properties: {
+                    binding: 3,
+                    structural: 1
+                }
+            },
+            leather_piece: {
+                name: 'Leather Piece',
+                type: 'component',
+                isComponent: true,
+                weight: 20,
+                volume: 40,
+                tags: ['leather', 'flexible'],
+                stackable: true
+            },
+            
+            // Plastic components
+            plastic_bottle: {
+                name: 'Plastic Bottle',
+                type: 'component',
+                isComponent: true,
+                weight: 30,
+                volume: 100,
+                tags: ['plastic', 'container', 'liquid'],
+                stackable: true
+            },
+            plastic_case: {
+                name: 'Plastic Case',
+                type: 'component',
+                isComponent: true,
+                weight: 80,
+                volume: 150,
+                tags: ['plastic', 'container'],
+                stackable: true,
+                properties: {
+                    container: 1
+                }
+            },
+            bottle_cap: {
+                name: 'Bottle Cap',
+                type: 'component',
+                isComponent: true,
+                weight: 5,
+                volume: 5,
+                tags: ['plastic', 'seal'],
+                stackable: true
+            },
+            screw_cap: {
+                name: 'Screw Cap',
+                type: 'component',
+                isComponent: true,
+                weight: 20,
+                volume: 15,
+                tags: ['plastic', 'seal'],
+                stackable: true
+            },
+            button: {
+                name: 'Button',
+                type: 'component',
+                isComponent: true,
+                weight: 2,
+                volume: 1,
+                tags: ['plastic', 'fastener'],
+                stackable: true,
+                properties: {
+                    fastening: 1
+                }
+            },
+            zipper: {
+                name: 'Zipper',
+                type: 'component',
+                isComponent: true,
+                weight: 15,
+                volume: 20,
+                tags: ['plastic', 'metal', 'fastener'],
+                stackable: true,
+                properties: {
+                    fastening: 2
+                }
+            },
+            buckle: {
+                name: 'Buckle',
+                type: 'component',
+                isComponent: true,
+                weight: 20,
+                volume: 15,
+                tags: ['plastic', 'metal', 'fastener'],
+                stackable: true,
+                properties: {
+                    fastening: 2,
+                    structural: 1
+                }
+            },
+            
+            // Generic components
+            handle: {
+                name: 'Handle',
+                type: 'component',
+                isComponent: true,
+                weight: 40,
+                volume: 60,
+                tags: ['wood', 'plastic', 'grip'],
+                stackable: true,
+                properties: {
+                    grip: 3,
+                    structural: 1
+                }
+            },
+            
+            // Medical components
+            bandage: {
+                name: 'Bandage',
+                type: 'component',
+                isComponent: true,
+                weight: 20,
+                volume: 30,
+                tags: ['medical', 'fabric'],
+                stackable: true,
+                properties: {
+                    medical: 1
+                }
+            },
+            antiseptic: {
+                name: 'Antiseptic',
+                type: 'component',
+                isComponent: true,
+                weight: 50,
+                volume: 50,
+                tags: ['medical', 'liquid', 'chemical'],
+                stackable: true,
+                properties: {
+                    medical: 2,
+                    chemical: 1
+                }
+            },
+            painkiller: {
+                name: 'Painkiller',
+                type: 'component',
+                isComponent: true,
+                weight: 10,
+                volume: 5,
+                tags: ['medical', 'drug'],
+                stackable: true,
+                properties: {
+                    medical: 2
+                }
+            },
+            
+            // Power components
+            electrolyte_paste: {
+                name: 'Electrolyte Paste',
+                type: 'component',
+                isComponent: true,
+                weight: 8,
+                volume: 5,
+                tags: ['chemical', 'power'],
+                stackable: true,
+                properties: {
+                    chemical: 2
+                }
+            },
+            carbon_rod: {
+                name: 'Carbon Rod',
+                type: 'component',
+                isComponent: true,
+                weight: 5,
+                volume: 3,
+                tags: ['carbon', 'power'],
+                stackable: true,
+                properties: {
+                    conductor: 2
+                }
+            }
+        };
     }
     
     loadMaterials() {
@@ -57,6 +415,26 @@ export class ContentManager {
     
     loadItemFamilies() {
         this.itemFamilies = {
+            strap: {
+                name: 'Strap',
+                type: 'component',
+                glyph: '~',
+                slots: ['hand'],
+                tags: ['component', 'fabric', 'flexible'],
+                weight: 50,
+                volume: 80,
+                components: [
+                    { id: 'fabric_panel', name: 'Fabric Panel', quantity: 1, quality: 100, maxQuality: 100, weight: 100, volume: 200 }
+                ],
+                componentRequirements: [
+                    { property: 'padding', minValue: 1, quantity: 1, name: 'Fabric/Wire' }
+                ],
+                disassemblyMethods: {
+                    hand: { componentYield: 1.0, qualityMod: 0.8, timeRequired: 1 },
+                    knife: { componentYield: 1.0, qualityMod: 0.9, timeRequired: 1 }
+                },
+                weaponStats: null
+            },
             shiv: {
                 name: 'Shiv',
                 type: 'weapon',
@@ -65,7 +443,28 @@ export class ContentManager {
                 glyph: '/',
                 slots: ['hand'],
                 canTwoHand: false,
-                tags: ['melee', 'sharp', 'improvised']
+                tags: ['melee', 'sharp', 'improvised'],
+                weight: 80,
+                volume: 60,
+                components: [
+                    { id: 'scrap_metal_shard', name: 'Metal Shard', quantity: 1, quality: 100, maxQuality: 100, weight: 50, volume: 30 },
+                    { id: 'cloth_wrap', name: 'Cloth Wrap', quantity: 1, quality: 100, maxQuality: 100, weight: 20, volume: 30 }
+                ],
+                componentRequirements: [
+                    { property: 'cutting', minValue: 1, quantity: 1, name: 'Sharp Edge' },
+                    { property: 'grip', minValue: 1, quantity: 1, name: 'Handle/Grip' }
+                ],
+                disassemblyMethods: {
+                    hand: { componentYield: 1.0, qualityMod: 0.7, timeRequired: 1 },
+                    knife: { componentYield: 1.0, qualityMod: 0.9, timeRequired: 1 }
+                },
+                weaponStats: {
+                    damage: '1d4',
+                    actionCost: 100,
+                    attackType: 'sharp',
+                    bleedChance: 0.10,
+                    canTwoHand: false
+                }
             },
             knife: {
                 name: 'Knife',
@@ -77,7 +476,32 @@ export class ContentManager {
                 canTwoHand: true,
                 twoHandDamageBonus: '1d4',
                 twoHandActionCost: 110,
-                tags: ['melee', 'sharp', 'tool']
+                tags: ['melee', 'sharp', 'tool'],
+                weight: 150,
+                volume: 100,
+                components: [
+                    { id: 'blade', name: 'Knife Blade', quantity: 1, quality: 100, maxQuality: 100, weight: 80, volume: 50 },
+                    { id: 'handle', name: 'Handle', quantity: 1, quality: 100, maxQuality: 100, weight: 40, volume: 60 },
+                    { id: 'rivet', name: 'Rivet', quantity: 2, quality: 100, maxQuality: 100, weight: 5, volume: 2 }
+                ],
+                componentRequirements: [
+                    { property: 'cutting', minValue: 2, quantity: 1, name: 'Quality Blade' },
+                    { property: 'grip', minValue: 2, quantity: 1, name: 'Sturdy Handle' },
+                    { property: 'fastening', minValue: 1, quantity: 2, name: 'Fasteners' }
+                ],
+                disassemblyMethods: {
+                    hand: { componentYield: 0.66, qualityMod: 0.6, timeRequired: 2, excludeComponents: ['rivet'] },
+                    knife: { componentYield: 1.0, qualityMod: 0.85, timeRequired: 1 }
+                },
+                weaponStats: {
+                    damage: '1d6',
+                    actionCost: 100,
+                    attackType: 'sharp',
+                    bleedChance: 0.15,
+                    canTwoHand: true,
+                    twoHandDamage: '1d6+1d4',
+                    twoHandActionCost: 110
+                }
             },
             pipe: {
                 name: 'Pipe',
@@ -89,7 +513,21 @@ export class ContentManager {
                 canTwoHand: true,
                 twoHandDamageBonus: '1d6',
                 twoHandActionCost: 140,
-                tags: ['melee', 'blunt', 'improvised']
+                tags: ['melee', 'blunt', 'improvised'],
+                weight: 400,
+                volume: 200,
+                components: [
+                    { id: 'metal_tube', name: 'Metal Tube', quantity: 1, quality: 100, maxQuality: 100, weight: 400, volume: 200 }
+                ],
+                weaponStats: {
+                    damage: '1d8',
+                    actionCost: 120,
+                    attackType: 'blunt',
+                    stunChance: 0.10,
+                    canTwoHand: true,
+                    twoHandDamage: '1d8+1d6',
+                    twoHandActionCost: 140
+                }
             },
             trenchcoat: {
                 name: 'Trenchcoat',
@@ -103,7 +541,25 @@ export class ContentManager {
                     { name: 'Right Pocket', maxWeight: 600, maxVolume: 1000, contents: [] },
                     { name: 'Inner Pocket', maxWeight: 400, maxVolume: 600, contents: [] }
                 ],
-                tags: ['armor', 'clothing', 'pockets']
+                tags: ['armor', 'clothing', 'pockets'],
+                weight: 1200,
+                volume: 3000,
+                components: [
+                    { id: 'fabric_panel', name: 'Fabric Panel', quantity: 4, quality: 100, maxQuality: 100, weight: 100, volume: 200 },
+                    { id: 'button', name: 'Button', quantity: 6, quality: 100, maxQuality: 100, weight: 2, volume: 1 },
+                    { id: 'thread', name: 'Thread', quantity: 1, quality: 100, maxQuality: 100, weight: 5, volume: 10 },
+                    { id: 'zipper', name: 'Zipper', quantity: 1, quality: 100, maxQuality: 100, weight: 15, volume: 20 }
+                ],
+                componentRequirements: [
+                    { property: 'padding', minValue: 1, quantity: 4, name: 'Fabric Panel' },
+                    { property: 'fastening', minValue: 1, quantity: 7, name: 'Fasteners (buttons/zipper)' },
+                    { property: 'binding', minValue: 1, quantity: 1, name: 'Thread' }
+                ],
+                disassemblyMethods: {
+                    hand: { componentYield: 0.75, qualityMod: 0.5, timeRequired: 3, excludeComponents: ['thread'] },
+                    knife: { componentYield: 1.0, qualityMod: 0.8, timeRequired: 2 }
+                },
+                weaponStats: null
             },
             medkit: {
                 name: 'Medkit',
@@ -111,47 +567,60 @@ export class ContentManager {
                 healAmount: 20,
                 healDuration: 4,
                 glyph: '+',
-                slots: [],
+                slots: ['hand'],
                 tags: ['medical', 'consumable'],
-                actions: ['use']
+                actions: ['use'],
+                weight: 300,
+                volume: 400,
+                components: [
+                    { id: 'bandage', name: 'Bandage', quantity: 3, quality: 100, maxQuality: 100, weight: 20, volume: 30 },
+                    { id: 'antiseptic', name: 'Antiseptic', quantity: 1, quality: 100, maxQuality: 100, weight: 50, volume: 50 },
+                    { id: 'painkiller', name: 'Painkiller', quantity: 2, quality: 100, maxQuality: 100, weight: 10, volume: 5 },
+                    { id: 'plastic_case', name: 'Plastic Case', quantity: 1, quality: 100, maxQuality: 100, weight: 80, volume: 150 }
+                ],
+                componentRequirements: [
+                    { property: 'medical', minValue: 1, quantity: 6, name: 'Medical Supplies' }
+                ],
+                disassemblyMethods: {
+                    hand: { componentYield: 1.0, qualityMod: 0.8, timeRequired: 1 },
+                    knife: { componentYield: 1.0, qualityMod: 0.9, timeRequired: 1 }
+                },
+                weaponStats: {
+                    damage: '1d2',
+                    actionCost: 110,
+                    attackType: 'blunt',
+                    canTwoHand: false
+                }
             },
             battery: {
                 name: 'Battery',
                 type: 'component',
                 powerCapacity: 100,
                 glyph: '=',
-                slots: [],
-                tags: ['power', 'component']
-            },
-            backpack: {
-                name: 'Backpack',
-                type: 'container',
-                glyph: '(',
-                slots: [],
-                isContainer: true,
-                maxWeight: 15000,
-                maxVolume: 25000,
-                tags: ['container', 'storage']
-            },
-            wallet: {
-                name: 'Wallet',
-                type: 'container',
-                glyph: '=',
-                slots: [],
-                isContainer: true,
-                maxWeight: 200,
-                maxVolume: 300,
-                tags: ['container', 'small']
-            },
-            can_opener: {
-                name: 'Can Opener',
-                type: 'tool',
-                glyph: '~',
-                color: '#888888',
-                slots: [],
-                tags: ['tool', 'opener'],
-                toolEffectiveness: {
-                    open_can: 1.0
+                slots: ['hand'],
+                tags: ['power', 'component'],
+                weight: 25,
+                volume: 10,
+                components: [
+                    { id: 'metal_casing', name: 'Metal Casing', quantity: 1, quality: 100, maxQuality: 100, weight: 15, volume: 8 },
+                    { id: 'electrolyte_paste', name: 'Electrolyte Paste', quantity: 1, quality: 100, maxQuality: 100, weight: 8, volume: 5 },
+                    { id: 'carbon_rod', name: 'Carbon Rod', quantity: 1, quality: 100, maxQuality: 100, weight: 5, volume: 3 }
+                ],
+                componentRequirements: [
+                    { property: 'container', minValue: 1, quantity: 1, name: 'Metal Casing' },
+                    { property: 'chemical', minValue: 1, quantity: 1, name: 'Electrolyte Paste' },
+                    { property: 'conductor', minValue: 1, quantity: 1, name: 'Carbon Rod' }
+                ],
+                disassemblyMethods: {
+                    hand: { componentYield: 0.66, qualityMod: 0.5, timeRequired: 2 },
+                    knife: { componentYield: 1.0, qualityMod: 0.8, timeRequired: 1 }
+                },
+                weaponStats: {
+                    damage: '1d2',
+                    actionCost: 100,
+                    attackType: 'blunt',
+                    throwable: true,
+                    canTwoHand: false
                 }
             },
             can_sealed: {
@@ -159,7 +628,7 @@ export class ContentManager {
                 type: 'container',
                 glyph: 'c',
                 color: '#888888',
-                slots: [],
+                slots: ['hand'],
                 isContainer: true,
                 state: { opened: false, sealed: true },
                 requiresOpener: true,
@@ -170,7 +639,19 @@ export class ContentManager {
                     ground: { yield: 0.15, durabilityDamage: 0 }
                 },
                 contents: [],
-                tags: ['container', 'sealed', 'metal']
+                tags: ['container', 'sealed', 'metal'],
+                weight: 100,
+                volume: 150,
+                components: [
+                    { id: 'tin_can', name: 'Tin Can', quantity: 1, quality: 100, maxQuality: 100, weight: 50, volume: 80 },
+                    { id: 'can_lid', name: 'Can Lid', quantity: 1, quality: 100, maxQuality: 100, weight: 10, volume: 10 }
+                ],
+                weaponStats: {
+                    damage: '1d3',
+                    actionCost: 100,
+                    attackType: 'blunt',
+                    canTwoHand: false
+                }
             },
             beans: {
                 name: 'Beans',
@@ -181,7 +662,11 @@ export class ContentManager {
                 quantity: 400,
                 quantityUnit: 'g',
                 nutrition: { hunger: 30, thirst: -5 },
-                tags: ['food', 'protein', 'stackable']
+                tags: ['food', 'protein', 'stackable'],
+                weight: 400,
+                volume: 350,
+                components: null,
+                weaponStats: null
             },
             soup: {
                 name: 'Soup',
@@ -192,7 +677,11 @@ export class ContentManager {
                 quantity: 350,
                 quantityUnit: 'g',
                 nutrition: { hunger: 25, thirst: 10 },
-                tags: ['food', 'liquid', 'stackable']
+                tags: ['food', 'liquid', 'stackable'],
+                weight: 350,
+                volume: 300,
+                components: null,
+                weaponStats: null
             },
             mystery_meat: {
                 name: 'Mystery Meat',
@@ -203,14 +692,18 @@ export class ContentManager {
                 quantity: 300,
                 quantityUnit: 'g',
                 nutrition: { hunger: 35, thirst: -10 },
-                tags: ['food', 'protein', 'stackable']
+                tags: ['food', 'protein', 'stackable'],
+                weight: 300,
+                volume: 250,
+                components: null,
+                weaponStats: null
             },
             bottle_sealed: {
                 name: 'Sealed Bottle',
                 type: 'container',
                 glyph: 'b',
                 color: '#666666',
-                slots: [],
+                slots: ['hand'],
                 isContainer: true,
                 state: { opened: false, sealed: true },
                 requiresOpener: false,
@@ -219,7 +712,20 @@ export class ContentManager {
                     knife: { yield: 0.95, durabilityDamage: 2 }
                 },
                 contents: [],
-                tags: ['container', 'sealed', 'plastic']
+                tags: ['container', 'sealed', 'plastic'],
+                weight: 50,
+                volume: 120,
+                components: [
+                    { id: 'plastic_bottle', name: 'Plastic Bottle', quantity: 1, quality: 100, maxQuality: 100, weight: 30, volume: 100 },
+                    { id: 'bottle_cap', name: 'Bottle Cap', quantity: 1, quality: 100, maxQuality: 100, weight: 5, volume: 5 }
+                ],
+                weaponStats: {
+                    damage: '1d2',
+                    actionCost: 90,
+                    attackType: 'blunt',
+                    throwable: true,
+                    canTwoHand: false
+                }
             },
             water: {
                 name: 'Water',
@@ -230,7 +736,11 @@ export class ContentManager {
                 quantity: 500,
                 quantityUnit: 'ml',
                 nutrition: { thirst: 40, hunger: 0 },
-                tags: ['drink', 'water', 'stackable']
+                tags: ['drink', 'water', 'stackable'],
+                weight: 500,
+                volume: 500,
+                components: null,
+                weaponStats: null
             },
             soda: {
                 name: 'Soda',
@@ -241,7 +751,11 @@ export class ContentManager {
                 quantity: 350,
                 quantityUnit: 'ml',
                 nutrition: { thirst: 25, hunger: 5 },
-                tags: ['drink', 'sugar', 'stackable']
+                tags: ['drink', 'sugar', 'stackable'],
+                weight: 350,
+                volume: 350,
+                components: null,
+                weaponStats: null
             },
             juice: {
                 name: 'Juice',
@@ -252,7 +766,11 @@ export class ContentManager {
                 quantity: 400,
                 quantityUnit: 'ml',
                 nutrition: { thirst: 35, hunger: 10 },
-                tags: ['drink', 'fruit', 'stackable']
+                tags: ['drink', 'fruit', 'stackable'],
+                weight: 400,
+                volume: 400,
+                components: null,
+                weaponStats: null
             },
             coat: {
                 name: 'Coat',
@@ -266,7 +784,25 @@ export class ContentManager {
                     { name: 'Right Pocket', maxWeight: 500, maxVolume: 800, contents: [] },
                     { name: 'Inner Pocket', maxWeight: 300, maxVolume: 400, contents: [] }
                 ],
-                tags: ['armor', 'clothing', 'pockets']
+                tags: ['armor', 'clothing', 'pockets'],
+                weight: 900,
+                volume: 2500,
+                components: [
+                    { id: 'fabric_panel', name: 'Fabric Panel', quantity: 3, quality: 100, maxQuality: 100, weight: 100, volume: 200 },
+                    { id: 'button', name: 'Button', quantity: 5, quality: 100, maxQuality: 100, weight: 2, volume: 1 },
+                    { id: 'thread', name: 'Thread', quantity: 1, quality: 100, maxQuality: 100, weight: 5, volume: 10 },
+                    { id: 'zipper', name: 'Zipper', quantity: 1, quality: 100, maxQuality: 100, weight: 15, volume: 20 }
+                ],
+                componentRequirements: [
+                    { property: 'padding', minValue: 1, quantity: 3, name: 'Fabric Panel' },
+                    { property: 'fastening', minValue: 1, quantity: 6, name: 'Fasteners (buttons/zipper)' },
+                    { property: 'binding', minValue: 1, quantity: 1, name: 'Thread' }
+                ],
+                disassemblyMethods: {
+                    hand: { componentYield: 0.75, qualityMod: 0.5, timeRequired: 3, excludeComponents: ['thread'] },
+                    knife: { componentYield: 1.0, qualityMod: 0.8, timeRequired: 2 }
+                },
+                weaponStats: null
             },
             pants: {
                 name: 'Pants',
@@ -280,18 +816,91 @@ export class ContentManager {
                     { name: 'Right Pocket', maxWeight: 400, maxVolume: 600, contents: [] },
                     { name: 'Back Pocket', maxWeight: 200, maxVolume: 300, contents: [] }
                 ],
-                tags: ['clothing', 'pockets']
+                tags: ['clothing', 'pockets'],
+                weight: 600,
+                volume: 1500,
+                components: [
+                    { id: 'fabric_panel', name: 'Fabric Panel', quantity: 2, quality: 100, maxQuality: 100, weight: 100, volume: 200 },
+                    { id: 'button', name: 'Button', quantity: 2, quality: 100, maxQuality: 100, weight: 2, volume: 1 },
+                    { id: 'thread', name: 'Thread', quantity: 1, quality: 100, maxQuality: 100, weight: 5, volume: 10 },
+                    { id: 'zipper', name: 'Zipper', quantity: 1, quality: 100, maxQuality: 100, weight: 15, volume: 20 }
+                ],
+                componentRequirements: [
+                    { property: 'padding', minValue: 1, quantity: 2, name: 'Fabric Panel' },
+                    { property: 'fastening', minValue: 1, quantity: 3, name: 'Fasteners (buttons/zipper)' },
+                    { property: 'binding', minValue: 1, quantity: 1, name: 'Thread' }
+                ],
+                disassemblyMethods: {
+                    hand: { componentYield: 0.75, qualityMod: 0.5, timeRequired: 2, excludeComponents: ['thread'] },
+                    knife: { componentYield: 1.0, qualityMod: 0.8, timeRequired: 1 }
+                },
+                weaponStats: null
             },
             canteen: {
                 name: 'Canteen',
                 type: 'container',
                 glyph: 'u',
-                slots: [],
+                slots: ['hand'],
                 isContainer: true,
                 maxWeight: 1000,
                 maxVolume: 1000,
                 liquidOnly: true,
-                tags: ['container', 'liquid']
+                tags: ['container', 'liquid'],
+                weight: 200,
+                volume: 300,
+                components: [
+                    { id: 'metal_bottle', name: 'Metal Bottle', quantity: 1, quality: 100, maxQuality: 100, weight: 150, volume: 250 },
+                    { id: 'screw_cap', name: 'Screw Cap', quantity: 1, quality: 100, maxQuality: 100, weight: 20, volume: 15 },
+                    { id: 'strap', name: 'Strap', quantity: 1, quality: 100, maxQuality: 100, weight: 50, volume: 80 }
+                ],
+                componentRequirements: [
+                    { property: 'container', minValue: 1, quantity: 1, name: 'Metal Bottle' },
+                    { property: 'fastening', minValue: 1, quantity: 1, name: 'Screw Cap' },
+                    { property: 'binding', minValue: 2, quantity: 1, name: 'Strap' }
+                ],
+                disassemblyMethods: {
+                    hand: { componentYield: 1.0, qualityMod: 0.7, timeRequired: 1 },
+                    knife: { componentYield: 1.0, qualityMod: 0.9, timeRequired: 1 }
+                },
+                weaponStats: {
+                    damage: '1d3',
+                    actionCost: 105,
+                    attackType: 'blunt',
+                    canTwoHand: false
+                }
+            },
+            backpack: {
+                name: 'Backpack',
+                type: 'container',
+                glyph: '[',
+                slots: ['back'],
+                isContainer: true,
+                pockets: [
+                    { name: 'Main Compartment', maxWeight: 8000, maxVolume: 12000, contents: [] },
+                    { name: 'Front Pocket', maxWeight: 2000, maxVolume: 3000, contents: [] },
+                    { name: 'Side Pocket', maxWeight: 1000, maxVolume: 1500, contents: [] }
+                ],
+                tags: ['container', 'storage'],
+                weight: 800,
+                volume: 4000,
+                components: [
+                    { id: 'fabric_panel', name: 'Fabric Panel', quantity: 3, quality: 100, maxQuality: 100, weight: 100, volume: 200 },
+                    { id: 'strap', name: 'Strap', quantity: 2, quality: 100, maxQuality: 100, weight: 50, volume: 80 },
+                    { id: 'buckle', name: 'Buckle', quantity: 2, quality: 100, maxQuality: 100, weight: 20, volume: 15 },
+                    { id: 'zipper', name: 'Zipper', quantity: 2, quality: 100, maxQuality: 100, weight: 15, volume: 20 },
+                    { id: 'thread', name: 'Thread', quantity: 1, quality: 100, maxQuality: 100, weight: 5, volume: 10 }
+                ],
+                componentRequirements: [
+                    { component: 'fabric_panel', quantity: 3, name: 'Fabric Panel' },
+                    { component: 'strap', quantity: 2, name: 'Strap' },
+                    { property: 'fastening', minValue: 2, quantity: 2, name: 'Fasteners (buckles/zippers)' },
+                    { component: 'thread', quantity: 1, name: 'Thread' }
+                ],
+                disassemblyMethods: {
+                    hand: { componentYield: 0.75, qualityMod: 0.6, timeRequired: 3, excludeComponents: ['thread'] },
+                    knife: { componentYield: 1.0, qualityMod: 0.85, timeRequired: 2 }
+                },
+                weaponStats: null
             }
         };
     }
@@ -446,6 +1055,13 @@ export class ContentManager {
         const item = { ...family };
         item.id = `${familyId}_${Date.now()}_${Math.random()}`;
         
+        // If this is a component-type item, add componentId and properties from component library
+        if (family.type === 'component' && this.components[familyId]) {
+            item.componentId = familyId;
+            item.properties = this.components[familyId].properties || {};
+            item.isComponent = true;
+        }
+        
         if (!item.weight) item.weight = this.getDefaultWeight(familyId);
         if (!item.volume) item.volume = this.getDefaultVolume(familyId);
         
@@ -462,8 +1078,9 @@ export class ContentManager {
                 item.weight = Math.floor(item.weight * material.weightMod);
             }
         } else {
-            item.color = '#aaaaaa';
-            item.durability = 100;
+            // Don't assign default material - items now use component system
+            if (!item.color) item.color = '#aaaaaa';
+            if (item.durability === undefined) item.durability = 100;
         }
         
         if (modifierId && this.modifiers[modifierId]) {

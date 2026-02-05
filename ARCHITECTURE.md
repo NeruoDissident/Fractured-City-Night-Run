@@ -66,24 +66,33 @@
 ---
 
 ### 4. World System (`src/world/World.js` + `src/world/Chunk.js`)
-**Responsibility:** Infinite world generation, chunk streaming, entity management
+**Responsibility:** Infinite world generation, chunk streaming, entity management, Z-level support
 
 **Architecture:**
 - World divided into 32x32 tile chunks
 - Chunks generated procedurally on-demand
+- Multi-level support (z=-1 sewers/basements, z=0 ground, z=1 second floors)
 - Only active chunks (within radius) are simulated
-- Entities and items tracked globally
+- Entities and items tracked globally with Z-level awareness
 
 **Biomes:**
-- Ruins (40% spawn rate)
-- Industrial (40% spawn rate)
-- Wasteland (20% spawn rate)
+- Ruins (40% spawn rate) - Cracked pavement, broken paths
+- Industrial (40% spawn rate) - Paved roads, asphalt streets
+- Wasteland (20% spawn rate) - Dirt roads, trails
+
+**World Features:**
+- Road networks (biome-specific styling)
+- Buildings along roads (rectangular, L-shaped, T-shaped)
+- Multi-floor buildings with staircases (80% have upstairs, 60% have basements)
+- Sewer systems at z=-1 with manholes and ladders
+- Doors connecting buildings to roads
+- Obstacles and debris (placed after structures)
 
 **Expansion Points:**
 - Add chunk serialization (save/load distant chunks)
-- Add more biomes (corporate towers, underground tunnels)
-- Add special structures (buildings, vaults, labs)
-- Add biome transitions and borders
+- Add natural features (trees, rocks, mountains)
+- Add POI (Points of Interest) system
+- Add building prefabs and templates
 - Add weather/environmental effects per biome
 
 ---
@@ -225,42 +234,48 @@ content.createItem(familyId, materialId, modifierId)
 
 ---
 
-## Planned Systems (Not Yet Implemented)
+## Additional Systems
 
-### Field of View (FoV)
-**Purpose:** Limit player vision based on obstacles and lighting
+### 9. Field of View System (`src/systems/FoVSystem.js`)
+**Responsibility:** Line-of-sight calculations, visible/explored tile tracking
 
-**Algorithm:** Shadowcasting or raycasting
-**Factors:**
-- Vision range from anatomy
-- Light sources (torches, cybernetic eyes)
-- Obstacles (walls, smoke)
-- Darkness level per tile
+**Status:** ✅ Implemented
 
-**Integration Points:**
-- `World.render()` - Only draw visible tiles
-- `Player.anatomy.getVisionRange()` - Base vision stat
+**Features:**
+- Raycasting algorithm for line-of-sight
+- Z-level aware visibility
+- Explored tiles persist across turns
+- Vision blocking based on tile properties
+
+**Key Methods:**
+- `calculate(x, y, radius, z)` - Calculates visible tiles
+- `isVisible(x, y, z)` - Checks if tile is currently visible
+- `isExplored(x, y, z)` - Checks if tile has been seen before
+- `hasLineOfSight(x0, y0, x1, y1)` - Raycasting between points
 
 ---
 
-### Movement Modes
-**Purpose:** Tactical movement with sound/speed tradeoffs
+### 10. Sound System (`src/systems/SoundSystem.js`)
+**Responsibility:** Sound propagation, NPC detection
 
-**Modes:**
-- **Walk** (default) - Normal speed, low sound
-- **Run** - 2x speed, high sound, stamina drain
-- **Crouch** - 0.5x speed, very low sound, stealth bonus
-- **Prone** - 0.25x speed, silent, high defense, can't use weapons
+**Status:** ✅ Implemented
 
-**Sound System:**
-- Each action generates sound radius
-- NPCs hear sounds and investigate
-- Louder actions attract more attention
+**Features:**
+- Movement modes (Walk, Run, Crouch, Prone)
+- Sound volume based on movement mode
+- NPCs detect and investigate sounds
+- Sound events tracked per turn
 
-**Integration Points:**
-- `InputHandler` - Add mode toggle keys (Shift, Ctrl)
-- `Player.tryMove()` - Apply speed/sound modifiers
-- `NPC.takeTurn()` - Add sound-based AI
+**Movement Modes:**
+- **Walk** - Normal speed (100 action cost), low sound (3 volume)
+- **Run** - Fast (75 action cost), high sound (8 volume)
+- **Crouch** - Slow (125 action cost), very low sound (1 volume)
+- **Prone** - Very slow (150 action cost), silent (0 volume)
+
+**Key Methods:**
+- `makeSound(x, y, volume, type, source)` - Creates sound event
+- `processTurn()` - Processes and clears sounds
+- NPCs with raider AI investigate sounds
 
 ---
 
@@ -286,34 +301,62 @@ content.createItem(familyId, materialId, modifierId)
 
 ---
 
-### Crafting System
-**Purpose:** Create items from components using substitution rules
+### 11. Item System (`src/systems/ItemSystem.js`)
+**Responsibility:** Item interactions, consumption, container operations
+
+**Status:** ✅ Implemented
+
+**Features:**
+- Opening containers with tool requirements
+- Food/drink consumption with nutrition tracking
+- Item splitting and stacking
+- Tool durability damage
+- Yield and spillage mechanics
+
+**Key Methods:**
+- `openContainer(player, container)` - Opens sealed containers
+- `consumeFood(player, item, amount)` - Handles eating/drinking
+- `splitItem(item, amount)` - Splits stackable items
+- `findToolInInventory(player, tags)` - Locates required tools
+
+### 12. Container System (`src/systems/ContainerSystem.js`)
+**Responsibility:** Weight/volume calculations, storage management
+
+**Status:** ✅ Implemented
+
+**Features:**
+- Weight and volume tracking (grams, cm³)
+- Nested container support (unlimited depth)
+- Pocket system for clothing
+- Encumbrance levels (light/medium/heavy/overencumbered)
+- Auto-storage with priority rules
+
+**Key Methods:**
+- `getTotalWeight(container)` - Recursive weight calculation
+- `findAvailableStorage(player, item)` - Finds valid storage locations
+- `autoStoreItem(player, item)` - Automatically stores items
+- `canFitInPocket(pocket, item)` - Validates pocket capacity
+
+### 13. Character Creation System (`src/systems/CharacterCreationSystem.js`)
+**Responsibility:** Character backgrounds, traits, stat allocation
+
+**Status:** ✅ Implemented
+
+**Features:**
+- 6 backgrounds (Street Kid, Corporate Drone, Ex-Military, etc.)
+- 10+ traits (positive and negative)
+- Stat point allocation with validation
+- Gender selection
+- Trait effects on gameplay
+
+**Planned: Crafting System**
+**Status:** Not Yet Implemented
 
 **Philosophy:**
 - Deterministic outputs (no random failure)
 - Substitution risk (inferior materials = drawbacks)
 - Role-based recipes (any conductive, any binder)
-
-**Example Recipe:**
-```javascript
-{
-  output: 'makeshift_medkit',
-  requires: [
-    { role: 'bandage', amount: 2 },
-    { role: 'antiseptic', amount: 1 },
-    { role: 'painkiller', amount: 1 }
-  ],
-  substitutions: {
-    'bandage': { 'cloth_scrap': { penalty: 'infection_risk', value: 0.1 } },
-    'antiseptic': { 'alcohol': { penalty: 'pain', value: 5 } }
-  }
-}
-```
-
-**Integration Points:**
-- `ContentManager` - Add recipe definitions
-- `UIManager` - Add crafting UI
-- `Player.inventory` - Check available components
+- Disassembly of any item into components
 
 ---
 
@@ -340,9 +383,16 @@ UIManager.updatePanels()
 ## File Structure
 
 ```
-nd-fractured-city/
+Fractured-City-Night-Run/
 ├── index.html              # Entry point
 ├── styles.css              # UI styling
+├── vercel.json             # Deployment config
+├── README.md
+├── ARCHITECTURE.md         # This file
+├── DEVLOG.md              # Development progress
+├── DESIGN_PHILOSOPHY.md   # Design principles
+├── SPEED_SYSTEM.md        # Movement mechanics
+├── SYSTEMS_REFERENCE.md   # System documentation
 ├── src/
 │   ├── main.js            # Bootstrap
 │   ├── core/
@@ -350,21 +400,25 @@ nd-fractured-city/
 │   │   ├── Renderer.js    # Canvas drawing
 │   │   └── InputHandler.js # Keyboard
 │   ├── world/
-│   │   ├── World.js       # Chunk manager
-│   │   └── Chunk.js       # Terrain generation
+│   │   ├── World.js       # Chunk manager, Z-level support
+│   │   ├── Chunk.js       # Terrain generation, buildings, sewers
+│   │   └── ExtractionPoint.js # Win condition
 │   ├── entities/
 │   │   ├── Entity.js      # Base class
 │   │   ├── Player.js      # Player character
 │   │   ├── NPC.js         # AI entities
 │   │   └── Anatomy.js     # Body part system
 │   ├── systems/
-│   │   └── EquipmentSystem.js # Equip/unequip logic
+│   │   ├── EquipmentSystem.js # Equip/unequip logic
+│   │   ├── FoVSystem.js   # Field of view
+│   │   ├── SoundSystem.js # Sound propagation
+│   │   ├── ItemSystem.js  # Item interactions
+│   │   ├── ContainerSystem.js # Weight/volume
+│   │   └── CharacterCreationSystem.js # Character gen
 │   ├── content/
 │   │   └── ContentManager.js  # Data-driven content
 │   └── ui/
 │       └── UIManager.js   # All UI rendering
-├── README.md
-└── ARCHITECTURE.md        # This file
 ```
 
 ---

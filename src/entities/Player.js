@@ -59,6 +59,7 @@ export class Player extends Entity {
             head: null,
             torso: null,
             legs: null,
+            back: null,
             leftHand: null,
             rightHand: null
         };
@@ -212,6 +213,7 @@ export class Player extends Entity {
             delete item.carriedIn;
             item.x = this.x;
             item.y = this.y;
+            item.z = this.z;
             this.game.world.addItem(item);
             return { success: true, item: item };
         }
@@ -245,8 +247,8 @@ export class Player extends Entity {
         const newX = this.x + dx;
         const newY = this.y + dy;
         
-        if (this.game.world.isBlocked(newX, newY)) {
-            const entity = this.game.world.getEntityAt(newX, newY);
+        if (this.game.world.isBlocked(newX, newY, this.z)) {
+            const entity = this.game.world.getEntityAt(newX, newY, this.z);
             if (entity && entity !== this) {
                 this.attack(entity);
                 return true;
@@ -278,8 +280,44 @@ export class Player extends Entity {
         }
     }
     
+    tryAscend() {
+        const tile = this.game.world.getTile(this.x, this.y, this.z);
+        
+        if (!tile.isStaircase && !tile.isManhole && !tile.isLadder) {
+            this.game.ui.log('There are no stairs here.', 'warning');
+            return false;
+        }
+        
+        if (!tile.canAscend) {
+            this.game.ui.log('You cannot go up from here.', 'warning');
+            return false;
+        }
+        
+        this.z++;
+        this.game.ui.log(`You climb up to level ${this.z}.`, 'info');
+        return true;
+    }
+    
+    tryDescend() {
+        const tile = this.game.world.getTile(this.x, this.y, this.z);
+        
+        if (!tile.isStaircase && !tile.isManhole && !tile.isLadder) {
+            this.game.ui.log('There are no stairs here.', 'warning');
+            return false;
+        }
+        
+        if (!tile.canDescend) {
+            this.game.ui.log('You cannot go down from here.', 'warning');
+            return false;
+        }
+        
+        this.z--;
+        this.game.ui.log(`You climb down to level ${this.z}.`, 'info');
+        return true;
+    }
+    
     tryPickup() {
-        const items = this.game.world.getItemsAt(this.x, this.y);
+        const items = this.game.world.getItemsAt(this.x, this.y, this.z);
         if (items.length === 0) {
             this.game.ui.log('Nothing to pick up here.', 'info');
             return false;
@@ -317,6 +355,7 @@ export class Player extends Entity {
         if (result.success) {
             item.x = this.x;
             item.y = this.y;
+            item.z = this.z;
             this.game.world.addItem(item);
             this.game.ui.log(`Dropped ${item.name}.`, 'info');
             return true;

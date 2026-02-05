@@ -8,6 +8,7 @@ import { FoVSystem } from '../systems/FoVSystem.js';
 import { SoundSystem } from '../systems/SoundSystem.js';
 import { CharacterCreationSystem } from '../systems/CharacterCreationSystem.js';
 import { ItemSystem } from '../systems/ItemSystem.js';
+import { CraftingSystem } from '../systems/CraftingSystem.js';
 
 export class Game {
     constructor() {
@@ -44,6 +45,11 @@ export class Game {
         this.input.init();
         
         this.ui.showCharacterCreation();
+        
+        // Expose game instance to console for debugging
+        window.game = this;
+        console.log('Game initialized. Access via window.game or just "game" in console.');
+        console.log('Try: game.content.components or game.content.itemFamilies');
     }
     
     startGame(characterData) {
@@ -53,6 +59,7 @@ export class Game {
         this.fov = new FoVSystem(this.world);
         this.soundSystem = new SoundSystem(this);
         this.itemSystem = new ItemSystem(this);
+        this.craftingSystem = new CraftingSystem(this);
         
         this.player = new Player(this, characterData);
         const spawnPos = this.world.getSpawnPosition();
@@ -85,6 +92,10 @@ export class Game {
             playerActed = this.player.tryPickup();
         } else if (action.type === 'cycle_movement') {
             playerActed = this.player.cycleMovementMode();
+        } else if (action.type === 'ascend') {
+            playerActed = this.player.tryAscend();
+        } else if (action.type === 'descend') {
+            playerActed = this.player.tryDescend();
         }
         
         if (playerActed) {

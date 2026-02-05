@@ -156,6 +156,8 @@ export class EquipmentSystem {
                 validSlots.push('torso');
             } else if (slotType === 'legs') {
                 validSlots.push('legs');
+            } else if (slotType === 'back') {
+                validSlots.push('back');
             }
         }
         
@@ -180,7 +182,8 @@ export class EquipmentSystem {
             'bothHands': 'Both Hands',
             'head': 'Head',
             'torso': 'Torso',
-            'legs': 'Legs'
+            'legs': 'Legs',
+            'back': 'Back'
         };
         return names[slot] || slot;
     }

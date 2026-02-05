@@ -47,7 +47,7 @@ export class NPC extends Entity {
             const newX = this.x + dx;
             const newY = this.y + dy;
             
-            if (!this.game.world.isBlocked(newX, newY)) {
+            if (!this.game.world.isBlocked(newX, newY, this.z)) {
                 this.x = newX;
                 this.y = newY;
             }
@@ -59,6 +59,13 @@ export class NPC extends Entity {
             this.raiderAI();
         } else {
             const player = this.game.player;
+            
+            // Only chase if on same Z-level
+            if (player.z !== this.z) {
+                this.wanderAI();
+                return;
+            }
+            
             const dx = player.x - this.x;
             const dy = player.y - this.y;
             const dist = Math.abs(dx) + Math.abs(dy);
@@ -85,7 +92,7 @@ export class NPC extends Entity {
             const newX = this.x + moveX;
             const newY = this.y + moveY;
             
-            if (!this.game.world.isBlocked(newX, newY)) {
+            if (!this.game.world.isBlocked(newX, newY, this.z)) {
                 this.x = newX;
                 this.y = newY;
             } else if (moveX !== 0) {
@@ -93,7 +100,7 @@ export class NPC extends Entity {
                 moveY = dy > 0 ? 1 : -1;
                 const altX = this.x + moveX;
                 const altY = this.y + moveY;
-                if (!this.game.world.isBlocked(altX, altY)) {
+                if (!this.game.world.isBlocked(altX, altY, this.z)) {
                     this.x = altX;
                     this.y = altY;
                 }
@@ -103,7 +110,15 @@ export class NPC extends Entity {
     
     raiderAI() {
         const player = this.game.player;
-        const canSeePlayer = this.game.fov && this.game.fov.isVisible(this.x, this.y);
+        
+        // Only track player if on same Z-level
+        if (player.z !== this.z) {
+            this.lastKnownPlayerPos = null;
+            this.wanderAI();
+            return;
+        }
+        
+        const canSeePlayer = this.game.fov && this.game.fov.isVisible(this.x, this.y, player.z);
         
         if (canSeePlayer) {
             this.lastKnownPlayerPos = { x: player.x, y: player.y };
@@ -151,12 +166,12 @@ export class NPC extends Entity {
         const newY = this.y + dy;
         
         const player = this.game.player;
-        if (newX === player.x && newY === player.y) {
+        if (newX === player.x && newY === player.y && player.z === this.z) {
             this.attack(player);
             return;
         }
         
-        if (!this.game.world.isBlocked(newX, newY)) {
+        if (!this.game.world.isBlocked(newX, newY, this.z)) {
             this.x = newX;
             this.y = newY;
         }

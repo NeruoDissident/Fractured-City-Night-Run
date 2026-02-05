@@ -1,3 +1,6 @@
+import { showDisassembleModal } from './DisassembleModal.js';
+import { showCraftingUI } from './CraftingUI.js';
+
 export class UIManager {
     constructor(game) {
         this.game = game;
@@ -7,6 +10,21 @@ export class UIManager {
         this.contextPanel = null;
         this.logEntries = [];
         this.maxLogEntries = 50;
+        this.disassembleContext = null;
+        this.craftingContext = null;
+    }
+    
+    showDisassembleModal(item, sourceType, sourceData) {
+        showDisassembleModal(this, item, sourceType, sourceData);
+    }
+    
+    toggleCraftingScreen() {
+        if (this.detailedInventoryModal.classList.contains('hidden')) {
+            this.detailedInventoryModal.classList.remove('hidden');
+            showCraftingUI(this);
+        } else {
+            this.detailedInventoryModal.classList.add('hidden');
+        }
     }
     
     init() {
@@ -135,7 +153,7 @@ export class UIManager {
             html += `<div class="stat-line"><span class="stat-label">Access Card:</span> <span class="stat-value" style="color: #00ff00;">${dist} tiles</span></div>`;
         }
         
-        const items = this.game.world.getItemsAt(player.x, player.y);
+        const items = this.game.world.getItemsAt(player.x, player.y, player.z);
         if (items.length > 0) {
             html += '<br><div style="color: #ffaa00;">Items here:</div>';
             for (const item of items) {
@@ -199,7 +217,7 @@ export class UIManager {
             html += '</div>';
         }
         
-        const entity = this.game.world.getEntityAt(x, y);
+        const entity = this.game.world.getEntityAt(x, y, this.game.player.z);
         if (entity) {
             html += '<div style="margin-top: 10px; padding: 5px; background: #1a0a0a; border-left: 3px solid #ff4444;">';
             html += '<div style="color: #ff4444; font-weight: bold; margin-bottom: 3px;">👤 ENTITY</div>';
@@ -214,7 +232,7 @@ export class UIManager {
             html += '</div>';
         }
         
-        const items = this.game.world.getItemsAt(x, y);
+        const items = this.game.world.getItemsAt(x, y, this.game.player.z);
         if (items.length > 0) {
             html += '<div style="margin-top: 10px; padding: 5px; background: #1a1a0a; border-left: 3px solid #ffaa00;">';
             html += '<div style="color: #ffaa00; font-weight: bold; margin-bottom: 3px;">📦 ITEMS ON GROUND</div>';
@@ -679,6 +697,7 @@ export class UIManager {
             { key: 'head', label: 'Head' },
             { key: 'torso', label: 'Torso' },
             { key: 'legs', label: 'Legs' },
+            { key: 'back', label: 'Back' },
             { key: 'leftHand', label: 'Left Hand' },
             { key: 'rightHand', label: 'Right Hand' }
         ];
@@ -857,7 +876,7 @@ export class UIManager {
     renderGroundTab(player, containerSys) {
         let html = '';
         
-        const groundItems = this.game.world.getItemsAt(player.x, player.y);
+        const groundItems = this.game.world.getItemsAt(player.x, player.y, player.z);
         
         html += '<div style="margin-bottom: 20px;">';
         html += '<h4 style="color: #00ffff; margin-bottom: 8px;">Items on Ground</h4>';
@@ -1104,7 +1123,7 @@ export class UIManager {
                     sourceData = { index };
                 } else if (actionType === 'actions-ground') {
                     const index = parseInt(btn.dataset.groundIndex);
-                    const groundItems = this.game.world.getItemsAt(player.x, player.y);
+                    const groundItems = this.game.world.getItemsAt(player.x, player.y, player.z);
                     item = groundItems[index];
                     sourceData = { index };
                 } else if (actionType === 'actions-pocket-item') {
@@ -1114,7 +1133,8 @@ export class UIManager {
                     const container = player.inventory.find(i => i.id === containerId) || 
                                     player.equipment.head?.id === containerId ? player.equipment.head :
                                     player.equipment.torso?.id === containerId ? player.equipment.torso :
-                                    player.equipment.legs?.id === containerId ? player.equipment.legs : null;
+                                    player.equipment.legs?.id === containerId ? player.equipment.legs :
+                                    player.equipment.back?.id === containerId ? player.equipment.back : null;
                     if (container && container.pockets && container.pockets[pocketIndex]) {
                         const pocket = container.pockets[pocketIndex];
                         item = pocket.contents[itemIndex];
@@ -1129,10 +1149,11 @@ export class UIManager {
                     if (!container && player.equipment.head?.id === containerId) container = player.equipment.head;
                     if (!container && player.equipment.torso?.id === containerId) container = player.equipment.torso;
                     if (!container && player.equipment.legs?.id === containerId) container = player.equipment.legs;
+                    if (!container && player.equipment.back?.id === containerId) container = player.equipment.back;
                     if (!container && player.carrying.leftHand?.id === containerId) container = player.carrying.leftHand;
                     if (!container && player.carrying.rightHand?.id === containerId) container = player.carrying.rightHand;
                     if (!container) {
-                        const groundItems = this.game.world.getItemsAt(player.x, player.y);
+                        const groundItems = this.game.world.getItemsAt(player.x, player.y, player.z);
                         container = groundItems.find(i => i.id === containerId);
                     }
                     
@@ -1270,7 +1291,7 @@ export class UIManager {
     
     handleEquipGroundItem(groundIndex, slot) {
         const player = this.game.player;
-        const groundItems = this.game.world.getItemsAt(player.x, player.y);
+        const groundItems = this.game.world.getItemsAt(player.x, player.y, player.z);
         const item = groundItems[groundIndex];
         
         if (item) {
@@ -1337,7 +1358,7 @@ export class UIManager {
     }
     
     handleInspectGroundItem(index) {
-        const groundItems = this.game.world.getItemsAt(this.game.player.x, this.game.player.y);
+        const groundItems = this.game.world.getItemsAt(this.game.player.x, this.game.player.y, this.game.player.z);
         const item = groundItems[index];
         if (item) {
             this.showInspectModal(item);
@@ -1359,14 +1380,15 @@ export class UIManager {
         } else if (sourceType === 'carried') {
             item = sourceData.hand === 'both' ? player.carrying.leftHand : player.carrying[sourceData.hand + 'Hand'];
         } else if (sourceType === 'ground') {
-            const groundItems = this.game.world.getItemsAt(player.x, player.y);
+            const groundItems = this.game.world.getItemsAt(player.x, player.y, player.z);
             item = groundItems[sourceData.index];
         } else if (sourceType === 'pocket') {
             // Find the container and get the item from the pocket
             const container = player.inventory.find(i => i.id === sourceData.containerId) || 
                             player.equipment.head?.id === sourceData.containerId ? player.equipment.head :
                             player.equipment.torso?.id === sourceData.containerId ? player.equipment.torso :
-                            player.equipment.legs?.id === sourceData.containerId ? player.equipment.legs : null;
+                            player.equipment.legs?.id === sourceData.containerId ? player.equipment.legs :
+                            player.equipment.back?.id === sourceData.containerId ? player.equipment.back : null;
             if (container && container.pockets && container.pockets[sourceData.pocketIndex]) {
                 const pocket = container.pockets[sourceData.pocketIndex];
                 item = pocket.contents[sourceData.itemIndex];
@@ -1377,10 +1399,11 @@ export class UIManager {
             if (!container && player.equipment.head?.id === sourceData.containerId) container = player.equipment.head;
             if (!container && player.equipment.torso?.id === sourceData.containerId) container = player.equipment.torso;
             if (!container && player.equipment.legs?.id === sourceData.containerId) container = player.equipment.legs;
+            if (!container && player.equipment.back?.id === sourceData.containerId) container = player.equipment.back;
             if (!container && player.carrying.leftHand?.id === sourceData.containerId) container = player.carrying.leftHand;
             if (!container && player.carrying.rightHand?.id === sourceData.containerId) container = player.carrying.rightHand;
             if (!container) {
-                const groundItems = this.game.world.getItemsAt(player.x, player.y);
+                const groundItems = this.game.world.getItemsAt(player.x, player.y, player.z);
                 container = groundItems.find(i => i.id === sourceData.containerId);
             }
             
@@ -1554,7 +1577,7 @@ export class UIManager {
             if (!container && player.carrying.leftHand?.id === sourceData.containerId) container = player.carrying.leftHand;
             if (!container && player.carrying.rightHand?.id === sourceData.containerId) container = player.carrying.rightHand;
             if (!container) {
-                const groundItems = this.game.world.getItemsAt(player.x, player.y);
+                const groundItems = this.game.world.getItemsAt(player.x, player.y, player.z);
                 container = groundItems.find(i => i.id === sourceData.containerId);
             }
             
@@ -1779,6 +1802,44 @@ export class UIManager {
             html += `<div style="color: #88ff88; margin-top: 10px;">Defense: ${item.defense}</div>`;
         }
         
+        // Show components if item has them
+        if (item.components && item.components.length > 0) {
+            html += `<div style="margin-top: 15px; padding-top: 10px; border-top: 1px solid #444;">`;
+            html += `<div style="color: #ffaa00; font-weight: bold; margin-bottom: 8px;">Components:</div>`;
+            for (const comp of item.components) {
+                const qualityColor = comp.quality >= 80 ? '#00ff00' : comp.quality >= 50 ? '#ffaa00' : '#ff8800';
+                html += `<div style="margin-left: 10px; margin-bottom: 5px; color: #aaa; font-size: 14px;">`;
+                html += `• ${comp.name} x${comp.quantity} `;
+                html += `<span style="color: ${qualityColor};">(${comp.quality}%)</span>`;
+                html += `</div>`;
+            }
+            html += `</div>`;
+        }
+        
+        // Show weapon stats if item can be used as weapon
+        if (item.weaponStats) {
+            html += `<div style="margin-top: 15px; padding-top: 10px; border-top: 1px solid #444;">`;
+            html += `<div style="color: #ff8888; font-weight: bold; margin-bottom: 8px;">As Weapon:</div>`;
+            html += `<div style="margin-left: 10px; color: #aaa; font-size: 14px;">`;
+            html += `<div style="margin-bottom: 3px;">Damage: <span style="color: #ff8888;">${item.weaponStats.damage}</span></div>`;
+            html += `<div style="margin-bottom: 3px;">Speed: <span style="color: #88ff88;">${item.weaponStats.actionCost}</span></div>`;
+            html += `<div style="margin-bottom: 3px;">Type: <span style="color: #ffaa00;">${item.weaponStats.attackType}</span></div>`;
+            if (item.weaponStats.bleedChance) {
+                html += `<div style="margin-bottom: 3px;">Bleed Chance: <span style="color: #ff4444;">${Math.floor(item.weaponStats.bleedChance * 100)}%</span></div>`;
+            }
+            if (item.weaponStats.stunChance) {
+                html += `<div style="margin-bottom: 3px;">Stun Chance: <span style="color: #ffff00;">${Math.floor(item.weaponStats.stunChance * 100)}%</span></div>`;
+            }
+            if (item.weaponStats.canTwoHand) {
+                html += `<div style="margin-bottom: 3px; color: #00ffff;">Can wield two-handed</div>`;
+            }
+            if (item.weaponStats.throwable) {
+                html += `<div style="margin-bottom: 3px; color: #00ffff;">Throwable</div>`;
+            }
+            html += `</div>`;
+            html += `</div>`;
+        }
+        
         html += `</div>`;
         
         // Container details
@@ -1886,7 +1947,7 @@ export class UIManager {
     }
     
     handlePickupGroundItem(index) {
-        const groundItems = this.game.world.getItemsAt(this.game.player.x, this.game.player.y);
+        const groundItems = this.game.world.getItemsAt(this.game.player.x, this.game.player.y, this.game.player.z);
         const item = groundItems[index];
         if (item) {
             const success = this.game.player.tryPickup(item);
@@ -1898,7 +1959,7 @@ export class UIManager {
     }
     
     handleCarryGroundItem(index) {
-        const groundItems = this.game.world.getItemsAt(this.game.player.x, this.game.player.y);
+        const groundItems = this.game.world.getItemsAt(this.game.player.x, this.game.player.y, this.game.player.z);
         const item = groundItems[index];
         if (item) {
             // Initialize carrying if it doesn't exist (for old save games)
@@ -1953,16 +2014,17 @@ export class UIManager {
         
         html += '<div style="margin-bottom: 20px;">';
         html += '<h4 style="color: #00ffff; margin-bottom: 8px;">Actions</h4>';
-        html += '<div class="stat-line"><span class="stat-label">G:</span> <span class="stat-value">Pick up item</span></div>';
         html += '<div class="stat-line"><span class="stat-label">X:</span> <span class="stat-value">Inspect mode (arrow keys to move cursor)</span></div>';
         html += '<div class="stat-line"><span class="stat-label">Escape:</span> <span class="stat-value">Exit inspect mode</span></div>';
         html += '<div class="stat-line"><span class="stat-label">Move into enemy:</span> <span class="stat-value">Attack</span></div>';
+        html += '<div class="stat-line"><span class="stat-label">< / >:</span> <span class="stat-value">Use stairs/manholes</span></div>';
         html += '</div>';
         
         html += '<div style="margin-bottom: 20px;">';
         html += '<h4 style="color: #00ffff; margin-bottom: 8px;">Interface</h4>';
         html += '<div class="stat-line"><span class="stat-label">C:</span> <span class="stat-value">Character sheet</span></div>';
         html += '<div class="stat-line"><span class="stat-label">I:</span> <span class="stat-value">Inventory</span></div>';
+        html += '<div class="stat-line"><span class="stat-label">V:</span> <span class="stat-value">Workshop (Craft/Disassemble)</span></div>';
         html += '<div class="stat-line"><span class="stat-label">M:</span> <span class="stat-value">Cycle movement mode</span></div>';
         html += '<div class="stat-line"><span class="stat-label">?:</span> <span class="stat-value">Help</span></div>';
         html += '</div>';
@@ -2075,6 +2137,16 @@ export class UIManager {
             }
         }
         
+        // Disassemble action for items with components
+        if (item.components && item.components.length > 0) {
+            if (!hasContextActions) {
+                html += `<div style="border-top: 1px solid #333; padding-top: 10px; margin-top: 10px;">`;
+                html += `<div style="color: #888; font-size: 12px; margin-bottom: 8px; text-transform: uppercase;">Item Specific:</div>`;
+                hasContextActions = true;
+            }
+            html += `<button class="small-btn" data-item-action="disassemble" style="width: 100%; margin-bottom: 5px; background: #ff8800; color: #000;">🔧 Disassemble</button>`;
+        }
+        
         if (hasContextActions) {
             html += `</div>`;
         }
@@ -2127,6 +2199,8 @@ export class UIManager {
             this.handleConsumeAction(item, sourceType, sourceData);
         } else if (action === 'reseal') {
             this.handleResealAction(item, sourceType, sourceData);
+        } else if (action === 'disassemble') {
+            this.showDisassembleModal(item, sourceType, sourceData);
         }
     }
     
@@ -2178,7 +2252,7 @@ export class UIManager {
             if (!container && player.carrying.leftHand?.id === sourceData.containerId) container = player.carrying.leftHand;
             if (!container && player.carrying.rightHand?.id === sourceData.containerId) container = player.carrying.rightHand;
             if (!container) {
-                const groundItems = this.game.world.getItemsAt(player.x, player.y);
+                const groundItems = this.game.world.getItemsAt(player.x, player.y, player.z);
                 container = groundItems.find(i => i.id === sourceData.containerId);
             }
             
@@ -2190,6 +2264,7 @@ export class UIManager {
         // Drop to ground
         item.x = player.x;
         item.y = player.y;
+        item.z = player.z;
         this.game.world.addItem(item);
         
         this.game.ui.log(`Dropped ${item.name}.`, 'info');
@@ -2332,7 +2407,7 @@ export class UIManager {
             if (!container && player.carrying.leftHand?.id === sourceData.containerId) container = player.carrying.leftHand;
             if (!container && player.carrying.rightHand?.id === sourceData.containerId) container = player.carrying.rightHand;
             if (!container) {
-                const groundItems = this.game.world.getItemsAt(player.x, player.y);
+                const groundItems = this.game.world.getItemsAt(player.x, player.y, player.z);
                 container = groundItems.find(i => i.id === sourceData.containerId);
             }
             
@@ -2443,7 +2518,7 @@ export class UIManager {
             if (!container && player.carrying.leftHand?.id === sourceData.containerId) container = player.carrying.leftHand;
             if (!container && player.carrying.rightHand?.id === sourceData.containerId) container = player.carrying.rightHand;
             if (!container) {
-                const groundItems = this.game.world.getItemsAt(player.x, player.y);
+                const groundItems = this.game.world.getItemsAt(player.x, player.y, player.z);
                 container = groundItems.find(i => i.id === sourceData.containerId);
             }
             

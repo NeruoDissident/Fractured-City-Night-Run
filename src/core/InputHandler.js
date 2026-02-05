@@ -16,7 +16,9 @@ export class InputHandler {
             'D': { type: 'move', dx: 1, dy: 0 },
             ' ': { type: 'wait' },
             'g': { type: 'pickup' },
-            'G': { type: 'pickup' }
+            'G': { type: 'pickup' },
+            '<': { type: 'ascend' },
+            '>': { type: 'descend' }
         };
     }
     
@@ -34,6 +36,12 @@ export class InputHandler {
         if (e.key === 'i' || e.key === 'I') {
             e.preventDefault();
             this.game.ui.toggleInventoryScreen();
+            return;
+        }
+        
+        if (e.key === 'v' || e.key === 'V') {
+            e.preventDefault();
+            this.game.ui.toggleCraftingScreen();
             return;
         }
         
@@ -63,6 +71,19 @@ export class InputHandler {
             e.preventDefault();
             if (this.game.inspectMode) {
                 this.game.toggleInspectMode();
+            }
+            return;
+        }
+        
+        // Handle staircase navigation (< and >) - check before gameState
+        if ((e.key === '<' || e.key === '>') && this.game.gameState === 'playing' && !this.game.inspectMode) {
+            e.preventDefault();
+            const tile = this.game.world.getTile(this.game.player.x, this.game.player.y, this.game.player.z);
+            if (tile.isStaircase || tile.isManhole || tile.isLadder) {
+                const action = this.keyMap[e.key];
+                this.game.processTurn(action);
+            } else {
+                this.game.ui.log('There are no stairs here.', 'warning');
             }
             return;
         }

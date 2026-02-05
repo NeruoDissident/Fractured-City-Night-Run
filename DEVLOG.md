@@ -3,7 +3,7 @@
 **Project:** Fractured City - Browser-based Cyberpunk Roguelike  
 **Engine:** Vanilla JavaScript + HTML5 Canvas 2D  
 **Status:** Active Development  
-**Last Updated:** February 3, 2026
+**Last Updated:** February 4, 2026
 
 ---
 
@@ -50,6 +50,8 @@ A traditional turn-based roguelike set in a cyberpunk dystopia. Features permade
 - [x] **Food Spoilage System** - Progressive contamination in opened containers, spoilage rates by food type
 - [x] **Liquid Spillage System** - Drinks leak from unsealed containers, resealing mechanics
 - [x] **Status Effects System** - Food poisoning, heal-over-time, duration-based effects
+- [x] **Z-Level System** - Multi-floor buildings, basements, staircases, vertical movement
+- [x] **Robust World Builder** - Road networks, building generation, sewer systems, structured world generation
 
 ### Current Build Stats
 - **Files:** 22+ modular ES6 modules
@@ -57,39 +59,38 @@ A traditional turn-based roguelike set in a cyberpunk dystopia. Features permade
 - **Item Types:** 15+ families (weapons, armor, materials, tools, food, drinks, containers)
 - **NPCs:** 2 types (Scavengers, Raiders)
 - **Biomes:** 3 (Ruins, Industrial, Wasteland)
+- **Z-Levels:** 3 levels (z=-1 sewers/basements, z=0 ground, z=1 second floors)
+- **Buildings:** Multi-floor structures with staircases, doors, and pathways
 
 ---
 
 ## 🚧 Current Sprint
 
-### Active: Robust World Builder ⭐ MAJOR SYSTEM
-**Status:** Not Started  
+### Active: Quality of Life & Polish
+**Status:** In Progress  
 **Priority:** HIGH  
-**Estimated Time:** 4-5 hours
+**Estimated Time:** 2-3 hours
 
 #### Goals
-- Building generation (rooms, corridors, prefabs)
-- Road and pathway systems
-- Natural features (trees, rocks, mountains)
-- Terrain elevation and cliffs
-- Structured generation replacing random noise
-- POI (Points of Interest) system
+- Add direct keybinds for staircase usage (< and >)
+- Improve NPC Z-level pathfinding
+- Add building interior features (furniture, loot containers)
+- Balance and polish existing systems
 
-#### Previous Sprint: Item Interaction & Food Systems ✅
+#### Previous Sprint: Z-Levels & World Builder ✅
 **Status:** ✅ Complete  
-**Completed:** February 3, 2026
+**Completed:** February 4, 2026
 
 **Delivered:**
-- [x] ContainerSystem.js - Core container logic with weight/volume
-- [x] Weight & volume properties on all items
-- [x] Container items (backpack, wallet, coat with pockets, pants, canteen)
-- [x] Encumbrance system (light/medium/heavy/overencumbered)
-- [x] Strength-based carry weight calculation
-- [x] Pickup validation with weight/volume checking
-- [x] Inventory UI showing weight, volume, encumbrance status
-- [x] Container browsing UI (view contents, pockets)
-- [x] Character panel shows current weight with color coding
-- [x] Nested container support (unlimited depth)
+- [x] Multi-level world generation (3 Z-levels)
+- [x] Buildings with staircases (80% upstairs, 60% basements)
+- [x] Bidirectional staircase system
+- [x] Staircase interaction UI
+- [x] Sewer system at z=-1 with manholes and ladders
+- [x] Road network generation (biome-specific)
+- [x] Building placement along roads
+- [x] Z-aware collision and interaction system
+- [x] Multi-floor building generation
 
 ---
 
@@ -171,35 +172,41 @@ A traditional turn-based roguelike set in a cyberpunk dystopia. Features permade
 
 ### TIER 3: World Expansion (Features 7-8)
 
-#### 7. Robust World Builder ⭐ MAJOR SYSTEM
-**Status:** Not Started  
-**Priority:** MEDIUM  
-**Estimated Time:** 4-5 hours
+#### 7. ✅ Robust World Builder ⭐ MAJOR SYSTEM
+**Status:** ✅ Complete  
+**Completed:** February 4, 2026
 
-**Scope:**
-- Building generation (rooms, corridors, prefabs)
-- Road and pathway systems
+**Delivered:**
+- Building generation (rectangular, L-shaped, T-shaped)
+- Road and pathway systems (biome-specific)
+- Sewer system with rooms and branches
+- Building placement along roads with doors
+- Structured generation replacing random noise
+- Multi-floor building support
+
+**Future Enhancements:**
 - Natural features (trees, rocks, mountains)
 - Terrain elevation and cliffs
-- Structured generation replacing random noise
 - POI (Points of Interest) system
+- Building prefabs and templates
 
-**Dependencies:** None, but enhances all gameplay
+#### 8. ✅ Z-Level System
+**Status:** ✅ Complete  
+**Completed:** February 4, 2026
 
-#### 8. Z-Level System
-**Status:** Not Started  
-**Priority:** MEDIUM  
-**Estimated Time:** 3-4 hours
-
-**Scope:**
-- Vertical movement (stairs, elevators, ladders, ropes)
-- Multi-floor buildings
+**Delivered:**
+- Vertical movement (stairs, manholes, ladders)
+- Multi-floor buildings (ground, second floor, basement)
 - Underground sewers and tunnels
-- Track player Z position
+- Player Z position tracking
 - Render only current level
-- Z-aware pathfinding for NPCs
+- Z-aware collision and interactions
 
-**Dependencies:** Requires Tier 3.7 (World Builder for multi-level structures)
+**Future Enhancements:**
+- Direct keybinds for stair usage (< and >)
+- Z-aware pathfinding for NPCs
+- Elevators and ropes
+- Multi-level combat tactics
 
 ---
 
@@ -326,6 +333,29 @@ A roguelike where every run feels different, player choices matter, and the worl
 
 ## 📝 Session Notes
 
+### Session: February 4, 2026
+**Completed:**
+- **Z-Level Collision & Interaction Fix** - Made all gameplay queries Z-aware
+  - Updated World.isBlocked(), getEntityAt(), getItemsAt() to accept z parameter
+  - Updated Player.tryMove(), tryPickup(), dropItem() to pass player.z
+  - Updated NPC AI to only chase/attack on same Z-level
+  - Updated all UIManager calls to pass player.z for ground item queries
+  - NPCs now respect Z-levels for movement and combat
+  - Items dropped now inherit player's Z-level
+  - All 15+ locations in UIManager updated for Z-awareness
+
+**Impact:**
+- Walls now properly block movement on correct Z-level
+- Entities only interact on same Z-level
+- Items only visible/pickupable on same Z-level
+- NPCs can't attack through floors/ceilings
+- Multi-level gameplay now fully functional
+
+**Next Session Goals:**
+- Add direct keybinds for staircase usage (< and >)
+- Improve building interior features
+- Begin crafting system planning
+
 ### Session: February 3, 2026
 **Completed:**
 - **Item Interaction System** - Complete item operations framework
@@ -408,11 +438,12 @@ A roguelike where every run feels different, player choices matter, and the worl
 - [x] **Alpha 0.3:** FoV and exploration (Complete)
 - [x] **Alpha 0.4:** Extraction objective (Complete)
 - [x] **Alpha 0.5:** Movement modes and stealth (Complete)
-- [ ] **Alpha 0.6:** Deep character creation
-- [ ] **Alpha 0.7:** Robust inventory system
-- [ ] **Beta 0.1:** Crafting and item interactions
-- [ ] **Beta 0.2:** World builder and structures
-- [ ] **Beta 0.3:** Z-levels and vertical exploration
+- [x] **Alpha 0.6:** Deep character creation (Complete)
+- [x] **Alpha 0.7:** Robust inventory system (Complete)
+- [x] **Alpha 0.8:** Item interactions and food systems (Complete)
+- [x] **Beta 0.1:** World builder and structures (Complete)
+- [x] **Beta 0.2:** Z-levels and vertical exploration (Complete)
+- [ ] **Beta 0.3:** Crafting and disassembly system
 - [ ] **Beta 0.4:** NPC interactions and trading
 - [ ] **Release 1.0:** Full feature set, polished, balanced
 
