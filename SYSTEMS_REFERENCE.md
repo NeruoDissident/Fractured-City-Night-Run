@@ -398,18 +398,69 @@ World.init()
 Generate chunks around spawn
     ↓
 For each chunk:
-    - Select biome (ruins, industrial, wasteland)
-    - Generate tiles based on biome
-    - Spawn random items (5% chance per tile)
-    ↓
-Chunk.generateRandomItem()
-    ↓
-Select random item family
-    ↓
-If food/tool → Create without material/modifier
-    ↓
-Else → Create with random material and modifier
+    - Select biome (zone-based: urban_core, suburbs, industrial, etc.)
+    - Generate clean terrain
+    - Generate road network
+    - Generate sewer system (z=-1)
+    - Generate buildings along roads
+        → Try prefab match (size + biome + door orientation)
+        → Fallback to procedural rectangular building
+    - Add obstacles and debris
+    - Spawn items (building-aware loot tables)
 ```
+
+### Prefab Building System
+**Files:** `src/content/BuildingPrefabs.js`, `src/world/Chunk.js`
+
+**Prefabs:** 9 validated ASCII layouts
+- **Small:** studio_apartment (10×8), corner_store (12×10), pharmacy (10×10), garage (12×10)
+- **Medium:** two_bedroom_apartment (16×14), small_office (14×14), clinic (16×14)
+- **Large:** warehouse (20×20), large_apartment (20×18)
+
+**Layout Symbols:**
+- `#` = exterior wall, `|`/`-` = interior walls
+- `+` = exterior door (WorldObject via createDoor, biome-based type, lock chance)
+- `d` = interior door (WorldObject, always unlocked)
+- `.` = floor, `<`/`>` = stairs, `~` = skip tile
+
+**Door Types by Biome (`BIOME_DOOR_TYPES`):**
+- urban_core: glass exterior, wood_basic interior
+- suburbs/rural/forest/ruins: wood_basic both
+- industrial: metal exterior, wood_basic interior
+- rich_neighborhood: wood_reinforced exterior, wood_basic interior
+
+**Prefab Selection:** `findMatchingPrefab(width, height, biome, doorSide)` — only matches when door should be on bottom (doorSide=2), ensuring doors face the road.
+
+### Loot Table System
+**File:** `src/content/LootTables.js`
+
+**Room Types (16):**
+- Residential: living, bedroom, kitchen, bathroom
+- Commercial: store, backroom
+- Office: office, reception
+- Medical: store, storage, waiting, exam
+- Industrial: garage_bay, garage_tools, warehouse_floor, warehouse_storage
+
+**How It Works:**
+```
+Chunk.spawnItems(biome)
+    ↓
+Scan all floor tiles at z=0
+    ↓
+Group by tile.roomType
+    ↓
+For tagged tiles → generateRoomLoot(roomType, floorTiles)
+    → Weighted random from room-specific item pools
+    → Respects maxItems per room and spawnChance per tile
+    ↓
+For untagged tiles → OUTDOOR_LOOT (2% per-tile chance)
+    → Sparse random items on roads/sidewalks/outdoors
+```
+
+**Each room type defines:**
+- `spawnChance` — per-tile probability of attempting a spawn
+- `maxItems` — cap per room instance
+- `pools` — weighted list of `{ familyId, weight }` entries
 
 ---
 
@@ -518,20 +569,304 @@ Route to specific handler
 - Natural healing during rest
 - Modified by `slowHealer` trait
 
-### Loot System
-- Will use `lucky` trait
-- Better quality items
-- More frequent rare drops
-
-### Crafting System
-- Combine items to create new items
-- Tool requirements with alternatives
-- Quality affected by tools used
+### Loot System ✅ (Implemented)
+- Building-aware spawning via room-type loot tables
+- 16 room types with weighted item pools
+- Outdoor loot at 2% per-tile chance
+- Future: `lucky` trait for better quality/rare drops
 
 ### Combat System
 - Action cost modifiers from traits
 - Cybernetic enhancements
 - Weapon durability degradation
+
+---
+
+## Crafting System
+**Files:** `src/systems/CraftingSystem.js`, `src/ui/CraftingUI.js`, `src/content/ContentManager.js`
+
+**Purpose:** Manages component-based crafting and disassembly with quality mechanics.
+
+### Core Concepts
+
+**Component Property System:**
+- Components have numeric properties (e.g., `cutting: 3`, `grip: 2`, `fastening: 1`)
+- Recipes require minimum property values
+- Multiple components can satisfy the same requirement
+- Example: "Requires cutting +2" accepts Knife Blade (cutting: 3) or 2x Metal Shards (cutting: 1 each)
+
+**Specific Component Requirements:**
+- Some recipes require exact component types (e.g., `component: 'fabric_panel'`)
+- Matched by `componentId` field, not properties
+- Example: Backpack requires exactly 2 Strap components, not just any item with binding property
+
+**Mixed Requirements:**
+- Recipes can combine both requirement types
+- Example: Backpack needs specific fabric_panel + strap components AND any fasteners with fastening +2
+
+### Component Properties
+
+**Available Properties:**
+```javascript
+cutting: 1-3      // Sharp edges (Metal Shard: 1, Blade: 3)
+piercing: 1-2     // Sharp points (Metal Shard: 1, Blade: 2)
+grip: 1-3         // Handle quality (Cloth Wrap: 1, Handle: 3)
+fastening: 1-3    // Fastener strength (Button: 1, Zipper: 2, Bolt: 3)
+binding: 1-3      // Binding strength (Thread: 1, Wire: 2, Strap: 3)
+structural: 1-3   // Support strength (Handle: 1, Metal Tube: 2)
+padding: 1-3      // Cushioning (Cloth Wrap: 1, Fabric Panel: 2)
+medical: 1-3      // Medical value (Bandage: 1, Antiseptic: 2)
+container: 1-3    // Container capacity (Metal Casing: 1)
+chemical: 1-3     // Chemical potency (Antiseptic: 1, Acid: 2)
+conductor: 1-3    // Electrical conductivity (Wire: 1, Carbon Rod: 2)
+electrical: 1-3   // Electrical complexity (Wire: 1, Circuit: 2)
+insulation: 1-3   // Insulation quality (Fabric Panel: 1)
+```
+
+### Quality & Durability System
+
+**Component Quality:**
+- All components have quality value (0-100)
+- Quality degrades during disassembly based on tool
+- Quality affects crafted item durability
+
+**Disassembly Quality Modifiers:**
+```javascript
+qualityMod values in disassemblyMethods:
+- Hand: 0.60-0.75 (loses 25-40% quality)
+- Knife: 0.80-0.90 (loses 10-20% quality)  
+- Proper tool: 0.85-1.00 (loses 0-15% quality)
+```
+
+**Crafting Quality Calculation:**
+```javascript
+// Average all component qualities
+const avgQuality = componentsUsed.reduce((sum, c) => sum + c.quality, 0) / componentsUsed.length;
+craftedItem.durability = Math.floor(avgQuality);
+```
+
+**Quality Degradation Loop:**
+```
+1. Find pristine knife (100% durability)
+2. Disassemble with hands (qualityMod: 0.6)
+   → Components: 60 quality
+3. Craft new knife from degraded parts
+   → New knife: 60% durability
+4. Disassemble again
+   → Components: 36 quality (60 * 0.6)
+5. Eventually unusable
+```
+
+### Component Matching Logic
+
+**Property-Based Matching:**
+```javascript
+// Requirement: { property: 'cutting', minValue: 2, quantity: 1 }
+matchingComponents = availableComponents.filter(comp => {
+    const properties = comp.properties || {};
+    return properties['cutting'] >= 2;
+});
+```
+
+**Specific Component Matching:**
+```javascript
+// Requirement: { component: 'fabric_panel', quantity: 3 }
+matchingComponents = availableComponents.filter(comp => 
+    comp.componentId === 'fabric_panel' || 
+    comp.id.startsWith('fabric_panel')
+);
+```
+
+### Component Creation
+
+**From Disassembly:**
+```javascript
+CraftingSystem.createComponentItem(compDef, quality, quantity) {
+    return {
+        id: `${compDef.id}_${Date.now()}_${Math.random()}`,
+        componentId: compDef.id,           // For matching
+        name: compDef.name,
+        type: 'component',
+        properties: componentTemplate.properties || {},  // Copy properties
+        quality: quality,
+        quantity: quantity,
+        isComponent: true
+    };
+}
+```
+
+**From Crafting:**
+```javascript
+ContentManager.createItem(familyId) {
+    // If component-type item, add componentId and properties
+    if (family.type === 'component' && this.components[familyId]) {
+        item.componentId = familyId;
+        item.properties = this.components[familyId].properties || {};
+        item.isComponent = true;
+    }
+}
+```
+
+### Recipe Structure
+
+**Property-Based Recipe (Shiv):**
+```javascript
+shiv: {
+    componentRequirements: [
+        { property: 'cutting', minValue: 1, quantity: 1, name: 'Sharp Edge' },
+        { property: 'grip', minValue: 1, quantity: 1, name: 'Handle/Grip' }
+    ],
+    components: [
+        { id: 'scrap_metal_shard', quantity: 1, quality: 100 },
+        { id: 'cloth_wrap', quantity: 1, quality: 100 }
+    ],
+    disassemblyMethods: {
+        hand: { componentYield: 1.0, qualityMod: 0.7, timeRequired: 1 },
+        knife: { componentYield: 1.0, qualityMod: 0.9, timeRequired: 1 }
+    }
+}
+```
+
+**Mixed Recipe (Backpack):**
+```javascript
+backpack: {
+    componentRequirements: [
+        { component: 'fabric_panel', quantity: 3, name: 'Fabric Panel' },  // Specific
+        { component: 'strap', quantity: 2, name: 'Strap' },                // Specific
+        { property: 'fastening', minValue: 2, quantity: 2, name: 'Fasteners' },  // Property
+        { component: 'thread', quantity: 1, name: 'Thread' }               // Specific
+    ],
+    components: [
+        { id: 'fabric_panel', quantity: 3, quality: 100 },
+        { id: 'strap', quantity: 2, quality: 100 },
+        { id: 'buckle', quantity: 2, quality: 100 },
+        { id: 'zipper', quantity: 2, quality: 100 },
+        { id: 'thread', quantity: 1, quality: 100 }
+    ],
+    disassemblyMethods: {
+        hand: { componentYield: 0.75, qualityMod: 0.6, timeRequired: 3, excludeComponents: ['thread'] },
+        knife: { componentYield: 1.0, qualityMod: 0.85, timeRequired: 2 }
+    }
+}
+```
+
+### Key Methods
+
+**CraftingSystem:**
+- `getPlayerComponents(player)` - Gathers all components from equipped, carried, stored, and ground
+- `canCraftItem(player, itemFamilyId)` - Checks if player has required components
+- `craftItem(player, itemFamilyId)` - Consumes components and creates item
+- `canDisassembleItem(item)` - Checks if item has components array
+- `disassembleItem(item, tool, player)` - Breaks item into components with quality loss
+- `createComponentItem(compDef, quality, quantity)` - Creates component with properties
+
+**Component Gathering:**
+```javascript
+getPlayerComponents(player) {
+    const components = [];
+    
+    // 1. Equipped items
+    for (const slot in player.equipment) {
+        if (item && item.isComponent) components.push(item);
+    }
+    
+    // 2. Carried items (hands)
+    if (player.carrying.leftHand?.isComponent) components.push(...);
+    if (player.carrying.rightHand?.isComponent) components.push(...);
+    
+    // 3. Stored items (pockets/containers)
+    const storedItems = player.containerSystem.getAllStoredItems(player);
+    for (const stored of storedItems) {
+        if (stored.item.isComponent) components.push(stored.item);
+    }
+    
+    // 4. Ground items at player location
+    const groundItems = world.getItemsAt(player.x, player.y, player.z);
+    for (const item of groundItems) {
+        if (item.isComponent) components.push(item);
+    }
+    
+    return components;
+}
+```
+
+### Disassembly Methods
+
+**Structure:**
+```javascript
+disassemblyMethods: {
+    hand: {
+        componentYield: 0.75,           // 75% of components returned
+        qualityMod: 0.6,                // Components at 60% quality
+        timeRequired: 3,                // Takes 3 turns
+        excludeComponents: ['thread']   // Thread is lost
+    },
+    knife: {
+        componentYield: 1.0,            // 100% of components returned
+        qualityMod: 0.85,               // Components at 85% quality
+        timeRequired: 1                 // Takes 1 turn
+    }
+}
+```
+
+**Exclude Options:**
+- `excludeComponents: ['thread', 'rivet']` - Specific components lost
+- `excludeProperties: ['fastening']` - All components with property lost
+
+### UI Integration
+
+**Workshop Panel (V key):**
+- Shows all craftable items
+- Displays requirement status (have/need)
+- Lists valid components for property requirements
+- Shows disassemblable items
+
+**Crafting UI:**
+```javascript
+showRecipeDetails(itemFamilyId) {
+    // For each requirement
+    if (requirement.component) {
+        // Show specific component requirement
+        html += `Requires: ${requirement.name} (x${requirement.quantity})`;
+    } else if (requirement.property) {
+        // Show property requirement + valid items
+        html += `Requires: ${requirement.property} +${requirement.minValue}`;
+        html += `Valid items: ${allMatchingItems.join(', ')}`;
+    }
+}
+```
+
+### Equipment Integration
+
+**Back Slot:**
+- Added to `Player.equipment` object
+- Backpack equips to `back` slot
+- `EquipmentSystem.getValidSlotsForItem()` recognizes 'back' slot type
+- `EquipmentSystem.getSlotDisplayName()` shows "Back"
+
+**Container Access:**
+- Equipped items with pockets accessible via `ContainerSystem.getAllStoredItems()`
+- Backpack pockets appear in "Stored Items" section when equipped
+- Items can be moved to/from backpack pockets
+
+### Strategic Implications
+
+**Quality Management:**
+- Use proper tools to preserve component quality
+- Knife is best general-purpose disassembly tool (0.85-0.9 quality retention)
+- Hand disassembly degrades quality significantly (0.6-0.75)
+- Fresh items are valuable - quality loss is permanent
+
+**Component Economy:**
+- Disassemble found items for components
+- Craft needed items from components
+- Quality degrades with each craft/disassemble cycle
+- Eventually need to find fresh items
+
+**Recipe Design:**
+- Property-based requirements allow flexibility
+- Specific component requirements ensure exact items
+- Mixed requirements balance flexibility and specificity
 
 ---
 
@@ -867,7 +1202,7 @@ my_armor: {
 
 ### Adding ANY Item:
 1. **`src/content/ContentManager.js`** - Define item in `itemFamilies`
-2. **`src/world/Chunk.js`** - Add to spawn pool (if spawning in world)
+2. **`src/content/LootTables.js`** - Add to room-type loot pools (building spawns) and/or `OUTDOOR_LOOT` (outdoor spawns)
 
 ### Adding Food/Drink:
 3. **`src/content/ContentManager.js`** - Add to container contents (cans/bottles)

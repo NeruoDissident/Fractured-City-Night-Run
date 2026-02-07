@@ -1,6 +1,6 @@
 # Fractured City - Game Design Philosophy
 
-**Last Updated:** February 4, 2026
+**Last Updated:** February 6, 2026
 
 ---
 
@@ -362,10 +362,14 @@ When starting a new session, remember:
 
 ## Future Systems (Planned)
 
-### Phase 3: World Expansion
-- Building interiors (furniture, loot containers)
-- Enhanced sewer generation (rooms, corridors)
-- Furniture disassembly (chairs → legs, screws, wood)
+### Phase 3: World Expansion ✅ (Partially Complete)
+- ✅ Building interiors via prefab system (9 layouts with room-type tagging)
+- ✅ Context-aware loot spawning (16 room types with weighted item pools)
+- ✅ Interactive doors as WorldObjects (biome-based types, lock chance, HP)
+- ✅ Location UI panel (biome, floor, room/area display)
+- Furniture as WorldObjects (chairs, desks, shelves — planned)
+- Furniture disassembly (chairs → legs, screws, wood — planned)
+- Enhanced sewer generation (rooms, corridors — planned)
 
 ### Phase 4: NPC Systems
 - Z-level pathfinding for NPCs

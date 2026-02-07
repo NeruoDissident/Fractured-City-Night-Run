@@ -1,5 +1,6 @@
 import { showDisassembleModal } from './DisassembleModal.js';
 import { showCraftingUI } from './CraftingUI.js';
+import { showWorldObjectModal } from './WorldObjectModal.js';
 
 export class UIManager {
     constructor(game) {
@@ -12,10 +13,15 @@ export class UIManager {
         this.maxLogEntries = 50;
         this.disassembleContext = null;
         this.craftingContext = null;
+        this.worldObjectContext = null;
     }
     
     showDisassembleModal(item, sourceType, sourceData) {
         showDisassembleModal(this, item, sourceType, sourceData);
+    }
+    
+    showWorldObjectModal(worldObject) {
+        showWorldObjectModal(this, worldObject);
     }
     
     toggleCraftingScreen() {
@@ -32,6 +38,7 @@ export class UIManager {
         this.characterPanel = document.getElementById('character-content');
         this.inventoryPanel = document.getElementById('inventory-content');
         this.contextPanel = document.getElementById('context-content');
+        this.locationPanel = document.getElementById('location-content');
         
         this.detailedCharacterModal = document.getElementById('detailed-character');
         this.detailedInventoryModal = document.getElementById('detailed-inventory');
@@ -78,6 +85,7 @@ export class UIManager {
         this.updateCharacterPanel();
         this.updateInventoryPanel();
         this.updateContextPanel();
+        this.updateLocationPanel();
     }
     
     updateCharacterPanel() {
@@ -162,6 +170,85 @@ export class UIManager {
         }
         
         this.contextPanel.innerHTML = html;
+    }
+    
+    updateLocationPanel() {
+        if (!this.locationPanel || !this.game.player || !this.game.world) return;
+        
+        const player = this.game.player;
+        const world = this.game.world;
+        const tile = world.getTile(player.x, player.y, player.z);
+        const biome = world.getBiomeAt(player.x, player.y);
+        
+        const biomeNames = {
+            urban_core: 'Urban Core',
+            suburbs: 'Suburbs',
+            industrial: 'Industrial Zone',
+            rich_neighborhood: 'Rich Neighborhood',
+            rural: 'Rural Outskirts',
+            forest: 'Forest',
+            ruins: 'Ruins',
+            unknown: 'Unknown'
+        };
+        
+        const biomeColors = {
+            urban_core: '#00ccff',
+            suburbs: '#88cc44',
+            industrial: '#cc8800',
+            rich_neighborhood: '#ddaa44',
+            rural: '#aa8855',
+            forest: '#44aa44',
+            ruins: '#888888',
+            unknown: '#666666'
+        };
+        
+        const roomTypeNames = {
+            residential_living: 'Living Room',
+            residential_bedroom: 'Bedroom',
+            residential_kitchen: 'Kitchen',
+            residential_bathroom: 'Bathroom',
+            commercial_store: 'Store',
+            commercial_backroom: 'Back Room',
+            office: 'Office',
+            office_reception: 'Reception',
+            medical_store: 'Pharmacy',
+            medical_storage: 'Medical Storage',
+            medical_waiting: 'Waiting Room',
+            medical_exam: 'Exam Room',
+            garage_bay: 'Garage Bay',
+            garage_tools: 'Tool Room',
+            warehouse_floor: 'Warehouse Floor',
+            warehouse_storage: 'Storage Bay'
+        };
+        
+        let html = '';
+        
+        // Biome
+        const biomeName = biomeNames[biome] || biome;
+        const biomeColor = biomeColors[biome] || '#aaaaaa';
+        html += `<div class="stat-line"><span class="stat-label">Biome:</span> <span class="stat-value" style="color: ${biomeColor};">${biomeName}</span></div>`;
+        
+        // Floor level
+        const floorLabel = player.z === 0 ? 'Ground' : player.z > 0 ? `Floor ${player.z}` : `Basement ${Math.abs(player.z)}`;
+        html += `<div class="stat-line"><span class="stat-label">Floor:</span> <span class="stat-value">${floorLabel}</span></div>`;
+        
+        // Building / Room
+        if (tile.roomType) {
+            const roomName = roomTypeNames[tile.roomType] || tile.roomType;
+            html += `<div class="stat-line"><span class="stat-label">Room:</span> <span class="stat-value" style="color: #ffcc44;">${roomName}</span></div>`;
+        } else if (tile.name === 'Floor') {
+            html += `<div class="stat-line"><span class="stat-label">Area:</span> <span class="stat-value" style="color: #aaaaaa;">Building Interior</span></div>`;
+        } else if (tile.name === 'Wall' || tile.name === 'Interior Wall') {
+            html += `<div class="stat-line"><span class="stat-label">Area:</span> <span class="stat-value" style="color: #666666;">Wall</span></div>`;
+        } else if (tile.name === 'Sidewalk') {
+            html += `<div class="stat-line"><span class="stat-label">Area:</span> <span class="stat-value" style="color: #888888;">Sidewalk</span></div>`;
+        } else if (tile.name === 'Road') {
+            html += `<div class="stat-line"><span class="stat-label">Area:</span> <span class="stat-value" style="color: #555555;">Road</span></div>`;
+        } else {
+            html += `<div class="stat-line"><span class="stat-label">Area:</span> <span class="stat-value" style="color: #888888;">Outdoors</span></div>`;
+        }
+        
+        this.locationPanel.innerHTML = html;
     }
     
     updateInspectInfo(x, y) {

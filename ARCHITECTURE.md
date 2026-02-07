@@ -74,25 +74,30 @@
 - Multi-level support (z=-1 sewers/basements, z=0 ground, z=1 second floors)
 - Only active chunks (within radius) are simulated
 - Entities and items tracked globally with Z-level awareness
+- Each chunk stores its biome for UI queries via `World.getBiomeAt(x, y)`
 
-**Biomes:**
-- Ruins (40% spawn rate) - Cracked pavement, broken paths
-- Industrial (40% spawn rate) - Paved roads, asphalt streets
-- Wasteland (20% spawn rate) - Dirt roads, trails
+**Biomes (zone-based, distance from origin):**
+- Urban Core (distance 0-3) - Dense city center
+- Suburbs (distance 3-6) - Residential areas, some industrial
+- Mixed Zone (distance 6-10) - Industrial, ruins, rich neighborhoods
+- Outer Zone (distance 10-15) - Rural, forest
+- Far Edges (distance 15+) - Mostly forest
 
 **World Features:**
 - Road networks (biome-specific styling)
-- Buildings along roads (rectangular, L-shaped, T-shaped)
-- Multi-floor buildings with staircases (80% have upstairs, 60% have basements)
+- Prefab buildings (9 validated ASCII layouts) with room-type tagging
+- Procedural rectangular buildings as fallback
+- Interactive doors as WorldObjects (biome-based types, lock chance)
+- Multi-floor buildings with staircases
 - Sewer systems at z=-1 with manholes and ladders
-- Doors connecting buildings to roads
+- Building-aware item spawning via loot tables (16 room types)
 - Obstacles and debris (placed after structures)
 
 **Expansion Points:**
 - Add chunk serialization (save/load distant chunks)
 - Add natural features (trees, rocks, mountains)
 - Add POI (Points of Interest) system
-- Add building prefabs and templates
+- Add more prefab layouts and building types
 - Add weather/environmental effects per biome
 
 ---
@@ -215,7 +220,8 @@ content.createItem(familyId, materialId, modifierId)
 - **Log Panel** - Turn-by-turn message feed
 - **Character Panel** - Quick stats (HP, stats, vision/hearing)
 - **Inventory Panel** - Item list
-- **Context Panel** - Current tile info
+- **Context Panel** - Current tile info, items at feet
+- **Location Panel** - Biome, floor level, room/area type
 
 **Modal Screens:**
 - **Character Creation** - Stat allocation
@@ -390,9 +396,11 @@ Fractured-City-Night-Run/
 ├── README.md
 ├── ARCHITECTURE.md         # This file
 ├── DEVLOG.md              # Development progress
-├── DESIGN_PHILOSOPHY.md   # Design principles
+├── GAME_DESIGN.md         # Design principles
 ├── SPEED_SYSTEM.md        # Movement mechanics
 ├── SYSTEMS_REFERENCE.md   # System documentation
+├── LORE.md                # World lore and narrative
+├── CRAFTING_DATABASE.md   # Crafting recipes reference
 ├── src/
 │   ├── main.js            # Bootstrap
 │   ├── core/
@@ -400,9 +408,12 @@ Fractured-City-Night-Run/
 │   │   ├── Renderer.js    # Canvas drawing
 │   │   └── InputHandler.js # Keyboard
 │   ├── world/
-│   │   ├── World.js       # Chunk manager, Z-level support
-│   │   ├── Chunk.js       # Terrain generation, buildings, sewers
-│   │   └── ExtractionPoint.js # Win condition
+│   │   ├── World.js       # Chunk manager, Z-level support, getBiomeAt()
+│   │   ├── Chunk.js       # Terrain gen, prefab placement, loot spawning
+│   │   ├── WorldObject.js # Base class for interactive objects
+│   │   ├── ExtractionPoint.js # Win condition
+│   │   └── objects/
+│   │       └── Door.js    # Interactive door WorldObject
 │   ├── entities/
 │   │   ├── Entity.js      # Base class
 │   │   ├── Player.js      # Player character
@@ -414,11 +425,18 @@ Fractured-City-Night-Run/
 │   │   ├── SoundSystem.js # Sound propagation
 │   │   ├── ItemSystem.js  # Item interactions
 │   │   ├── ContainerSystem.js # Weight/volume
+│   │   ├── CraftingSystem.js  # Crafting and disassembly
+│   │   ├── WorldObjectSystem.js # WorldObject interactions
 │   │   └── CharacterCreationSystem.js # Character gen
 │   ├── content/
-│   │   └── ContentManager.js  # Data-driven content
+│   │   ├── ContentManager.js    # Data-driven content
+│   │   ├── BuildingPrefabs.js   # 9 ASCII prefab layouts + biome door types
+│   │   └── LootTables.js        # 16 room-type loot pools + outdoor loot
 │   └── ui/
-│       └── UIManager.js   # All UI rendering
+│       ├── UIManager.js         # Panels, modals, location display
+│       ├── CraftingUI.js        # Crafting workshop UI
+│       ├── DisassembleModal.js  # Disassembly interface
+│       └── WorldObjectModal.js  # Door/object interaction modal
 ```
 
 ---

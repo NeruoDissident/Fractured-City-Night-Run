@@ -6,9 +6,10 @@ export class World {
     constructor(game) {
         this.game = game;
         this.chunks = new Map();
-        this.chunkSize = 32;
+        this.chunkSize = 64;
         this.entities = [];
         this.items = [];
+        this.worldObjects = []; // Doors, furniture, etc.
         this.extractionPoint = null;
         this.activeRadius = 2;
     }
@@ -43,6 +44,13 @@ export class World {
             this.chunks.set(key, chunk);
         }
         return this.chunks.get(key);
+    }
+    
+    getBiomeAt(x, y) {
+        const cx = Math.floor(x / this.chunkSize);
+        const cy = Math.floor(y / this.chunkSize);
+        const chunk = this.getOrCreateChunk(cx, cy);
+        return chunk.biome || 'unknown';
     }
     
     getTile(x, y, z = 0) {
@@ -91,6 +99,10 @@ export class World {
     
     addEntity(entity) {
         this.entities.push(entity);
+    }
+    
+    getAllEntities() {
+        return this.entities;
     }
     
     removeEntity(entity) {
@@ -376,5 +388,38 @@ export class World {
         const b = Math.floor(parseInt(hex.substr(4, 2), 16) * 0.4);
         
         return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+    }
+    
+    // World Object Management
+    addWorldObject(worldObject) {
+        this.worldObjects.push(worldObject);
+        // Note: Tile update is handled by the chunk during generation
+        // We don't call updateTileAt here to avoid circular dependency
+    }
+    
+    getWorldObjectAt(x, y, z = 0) {
+        return this.worldObjects.find(obj => obj.x === x && obj.y === y && obj.z === z);
+    }
+    
+    removeWorldObject(worldObject) {
+        const index = this.worldObjects.indexOf(worldObject);
+        if (index !== -1) {
+            this.worldObjects.splice(index, 1);
+        }
+    }
+    
+    updateTileAt(x, y, z, tileData) {
+        const cx = Math.floor(x / this.chunkSize);
+        const cy = Math.floor(y / this.chunkSize);
+        const chunk = this.getOrCreateChunk(cx, cy);
+        
+        const localX = x - cx * this.chunkSize;
+        const localY = y - cy * this.chunkSize;
+        
+        chunk.setTile(localX, localY, tileData, z);
+    }
+    
+    getTileAt(x, y, z = 0) {
+        return this.getTile(x, y, z);
     }
 }

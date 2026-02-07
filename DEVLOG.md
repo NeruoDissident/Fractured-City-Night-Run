@@ -3,7 +3,7 @@
 **Project:** Fractured City - Browser-based Cyberpunk Roguelike  
 **Engine:** Vanilla JavaScript + HTML5 Canvas 2D  
 **Status:** Active Development  
-**Last Updated:** February 4, 2026
+**Last Updated:** February 6, 2026
 
 ---
 
@@ -52,30 +52,46 @@ A traditional turn-based roguelike set in a cyberpunk dystopia. Features permade
 - [x] **Status Effects System** - Food poisoning, heal-over-time, duration-based effects
 - [x] **Z-Level System** - Multi-floor buildings, basements, staircases, vertical movement
 - [x] **Robust World Builder** - Road networks, building generation, sewer systems, structured world generation
+- [x] **Prefab Building System** - 9 ASCII layout prefabs with interactive doors, room tagging, biome-aware door types
+- [x] **Loot Table System** - 16 room-type weighted loot pools, building-aware item spawning, outdoor loot
+- [x] **Location UI** - Sidebar panel showing biome, floor level, and room/area type
 
 ### Current Build Stats
-- **Files:** 22+ modular ES6 modules
-- **Systems:** 11 core systems (Renderer, World, Entities, Equipment, FoV, UI, Content, Input, Container, CharCreation, ItemSystem)
+- **Files:** 28+ modular ES6 modules
+- **Systems:** 14 core systems (Renderer, World, Entities, Equipment, FoV, UI, Content, Input, Container, CharCreation, ItemSystem, Crafting, WorldObject, Sound)
 - **Item Types:** 15+ families (weapons, armor, materials, tools, food, drinks, containers)
+- **Building Prefabs:** 9 validated layouts (small, medium, large)
+- **Loot Room Types:** 16 (residential, commercial, office, medical, industrial)
 - **NPCs:** 2 types (Scavengers, Raiders)
-- **Biomes:** 3 (Ruins, Industrial, Wasteland)
+- **Biomes:** 7 (Urban Core, Suburbs, Industrial, Rich Neighborhood, Rural, Forest, Ruins)
 - **Z-Levels:** 3 levels (z=-1 sewers/basements, z=0 ground, z=1 second floors)
-- **Buildings:** Multi-floor structures with staircases, doors, and pathways
+- **Buildings:** Prefab and procedural structures with interactive doors and room-tagged loot
 
 ---
 
 ## 🚧 Current Sprint
 
-### Active: Quality of Life & Polish
-**Status:** In Progress  
+### Active: NPC & Content Expansion
+**Status:** Not Started  
 **Priority:** HIGH  
-**Estimated Time:** 2-3 hours
+**Estimated Time:** 3-4 hours
 
 #### Goals
-- Add direct keybinds for staircase usage (< and >)
-- Improve NPC Z-level pathfinding
-- Add building interior features (furniture, loot containers)
-- Balance and polish existing systems
+- NPC system improvements (Z-level pathfinding, new AI types)
+- Additional content (more items, more prefab variety)
+- Combat system enhancements
+
+#### Previous Sprint: Prefab Buildings & Loot Tables ✅
+**Status:** ✅ Complete  
+**Completed:** February 6, 2026
+
+**Delivered:**
+- [x] 9 prefab building layouts (small, medium, large)
+- [x] Interactive doors as WorldObjects with biome-based types
+- [x] 16 room-type loot tables with weighted item pools
+- [x] Building-aware item spawning (replaced random spawning)
+- [x] Location UI panel (biome, floor, room type)
+- [x] Bug fixes (door.getTile(), entrance bypass, variable conflicts)
 
 #### Previous Sprint: Z-Levels & World Builder ✅
 **Status:** ✅ Complete  
@@ -332,6 +348,46 @@ A roguelike where every run feels different, player choices matter, and the worl
 ---
 
 ## 📝 Session Notes
+
+### Session: February 6, 2026
+**Completed:**
+- **Prefab Building System** - 9 validated ASCII layout prefabs
+  - Small: studio_apartment (10×8), corner_store (12×10), pharmacy (10×10), garage (12×10)
+  - Medium: two_bedroom_apartment (16×14), small_office (14×14), clinic (16×14)
+  - Large: warehouse (20×20), large_apartment (20×18)
+  - Doors are interactive WorldObjects created via `createDoor()` with biome-based types
+  - Interior walls use `|`/`-` symbols, exterior use `#`
+  - `findMatchingPrefab()` ensures doors face the road based on building orientation
+  - Fallback to procedural rectangular generation when no prefab matches
+
+- **Loot Table System** - Building-aware item spawning
+  - Created `LootTables.js` with 16 room-type loot pools
+  - Room types: residential (living, bedroom, kitchen, bathroom), commercial (store, backroom), office (office, reception), medical (store, storage, waiting, exam), industrial (garage_bay, garage_tools, warehouse_floor, warehouse_storage)
+  - Each room type has weighted item pools, spawn chance, and max items
+  - Replaced old random `spawnItems()` with building-aware system
+  - Outdoor loot at 2% per-tile chance for untagged tiles
+  - Items spawn contextually (medkits in clinics, food in kitchens, tools in garages)
+
+- **Location UI Panel** - New sidebar panel below Target Info
+  - Shows current biome (color-coded), floor level, and room/area type
+  - Added `getBiomeAt()` to World.js, stored biome on Chunk during generation
+  - Updates every turn as player moves
+
+- **Bug Fixes**
+  - Fixed `door.getTile()` crash — method didn't exist on Door class, replaced with inline tile construction
+  - Fixed door bypass bug — removed `_` (open floor) characters from all entrance rows, single-door entrances only
+  - Fixed `doorSide` variable redeclaration conflict in procedural building path
+
+**Impact:**
+- Buildings now have cohesive, purpose-driven room layouts
+- Items spawn in contextually appropriate locations
+- Players can see biome and room info in real-time
+- All doors are interactive WorldObjects with HP, lock state, and interaction modal
+
+**Next Session Goals:**
+- NPC system improvements
+- Additional content (more items, more prefab variety)
+- Combat system enhancements
 
 ### Session: February 4, 2026
 **Completed:**

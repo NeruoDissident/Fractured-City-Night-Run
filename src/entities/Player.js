@@ -74,6 +74,9 @@ export class Player extends Entity {
         this.maxThirst = 100;
         this.thirstRate = 0.2;
         
+        // Debug mode
+        this.exploreMode = false; // Toggle with F key - disables hunger/thirst
+        
         this.equipmentSystem = new EquipmentSystem(this);
         this.containerSystem = new ContainerSystem();
     }
@@ -407,9 +410,11 @@ export class Player extends Entity {
     }
     
     processStatusEffects() {
-        // Process hunger and thirst
-        this.hunger = Math.max(0, this.hunger - this.hungerRate);
-        this.thirst = Math.max(0, this.thirst - this.thirstRate);
+        // Process hunger and thirst (skip in explore mode)
+        if (!this.exploreMode) {
+            this.hunger = Math.max(0, this.hunger - this.hungerRate);
+            this.thirst = Math.max(0, this.thirst - this.thirstRate);
+        }
         
         // Starvation effects
         if (this.hunger <= 0) {

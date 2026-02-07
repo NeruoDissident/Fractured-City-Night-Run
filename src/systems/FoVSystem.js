@@ -91,7 +91,9 @@ export class FoVSystem {
      */
     isBlocked(x, y) {
         const tile = this.world.getTile(x, y, this.currentZ);
-        return tile.blocked;
+        // Check blocksVision property first (for closed doors, etc.)
+        // Fall back to blocked property for walls
+        return tile.blocksVision !== undefined ? tile.blocksVision : tile.blocked;
     }
     
     /**

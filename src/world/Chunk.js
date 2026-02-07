@@ -1,3 +1,7 @@
+import { createDoor } from './objects/Door.js';
+import { findMatchingPrefab, BIOME_DOOR_TYPES } from '../content/BuildingPrefabs.js';
+import { ROOM_LOOT_TABLES, OUTDOOR_LOOT, rollLootPool, generateRoomLoot } from '../content/LootTables.js';
+
 export class Chunk {
     constructor(world, cx, cy) {
         this.world = world;
@@ -10,6 +14,7 @@ export class Chunk {
     
     generate() {
         const biome = this.selectBiome();
+        this.biome = biome;
         
         // Initialize ground level (z=0)
         this.tiles[0] = [];
@@ -50,58 +55,112 @@ export class Chunk {
     }
     
     spawnItems(biome) {
-        const itemCount = Math.floor(Math.random() * 5) + 2;
+        const content = this.world.game.content;
         
-        for (let i = 0; i < itemCount; i++) {
-            const x = Math.floor(Math.random() * this.size);
-            const y = Math.floor(Math.random() * this.size);
+        // Collect floor tiles grouped by roomType
+        const roomTiles = {};   // { roomType: [{x, y}, ...] }
+        const outdoorTiles = []; // floor tiles with no roomType
+        
+        const z = 0;
+        for (let ly = 0; ly < this.size; ly++) {
+            for (let lx = 0; lx < this.size; lx++) {
+                const tile = this.getTile(lx, ly, z);
+                if (!tile || tile.blocked) continue;
+                
+                if (tile.roomType && ROOM_LOOT_TABLES[tile.roomType]) {
+                    if (!roomTiles[tile.roomType]) roomTiles[tile.roomType] = [];
+                    roomTiles[tile.roomType].push({ x: lx, y: ly });
+                } else if (tile.name === 'Floor' || tile.name === 'Sidewalk' || tile.name === 'Road') {
+                    outdoorTiles.push({ x: lx, y: ly });
+                }
+            }
+        }
+        
+        // Spawn items in tagged rooms using loot tables
+        for (const [roomType, tiles] of Object.entries(roomTiles)) {
+            const lootItems = generateRoomLoot(roomType, tiles);
+            for (const loot of lootItems) {
+                const item = content.createItem(loot.familyId);
+                if (item) {
+                    item.x = this.cx * this.size + loot.x;
+                    item.y = this.cy * this.size + loot.y;
+                    item.z = z;
+                    this.world.addItem(item);
+                }
+            }
+        }
+        
+        // Spawn sparse outdoor loot on untagged tiles
+        for (const tile of outdoorTiles) {
+            if (Math.random() > OUTDOOR_LOOT.spawnChance) continue;
             
-            const tile = this.getTile(x, y);
-            if (tile.blocked) continue;
-            
-            const worldX = this.cx * this.size + x;
-            const worldY = this.cy * this.size + y;
-            
-            const item = this.generateRandomItem(biome);
+            const familyId = rollLootPool(OUTDOOR_LOOT.pools);
+            const item = content.createItem(familyId);
             if (item) {
-                item.x = worldX;
-                item.y = worldY;
-                item.z = 0; // Items spawn on ground level only
+                item.x = this.cx * this.size + tile.x;
+                item.y = this.cy * this.size + tile.y;
+                item.z = z;
                 this.world.addItem(item);
             }
         }
     }
     
-    generateRandomItem(biome) {
-        const content = this.world.game.content;
-        
-        const itemFamilies = ['shiv', 'knife', 'pipe', 'trenchcoat', 'medkit', 'battery', 'can_sealed', 'bottle_sealed', 'can_opener'];
-        const familyId = itemFamilies[Math.floor(Math.random() * itemFamilies.length)];
-        
-        // Items now have component definitions, don't assign materials
-        // Materials were a placeholder system that's being replaced by components
-        return content.createItem(familyId);
-    }
-    
     selectBiome() {
+        // Zone-based biome selection for coherent city structure
+        // Distance from origin determines biome type
+        const distFromOrigin = Math.sqrt(this.cx * this.cx + this.cy * this.cy);
         const hash = this.cx * 73856093 ^ this.cy * 19349663;
-        const rand = Math.abs(Math.sin(hash)) * 10000;
+        const rand = Math.abs(Math.sin(hash)) * 100;
         
-        if (rand % 100 < 40) return 'ruins';
-        if (rand % 100 < 80) return 'industrial';
-        return 'wasteland';
+        // Urban core: center of map (distance 0-3)
+        if (distFromOrigin < 3) {
+            return 'urban_core';
+        }
+        
+        // Suburbs: ring around urban core (distance 3-6)
+        if (distFromOrigin < 6) {
+            // Mix suburbs with occasional industrial
+            return rand < 80 ? 'suburbs' : 'industrial';
+        }
+        
+        // Mixed zone: industrial, ruins, rich neighborhoods (distance 6-10)
+        if (distFromOrigin < 10) {
+            if (rand < 40) return 'industrial';
+            if (rand < 70) return 'ruins';
+            if (rand < 85) return 'rich_neighborhood';
+            return 'suburbs';
+        }
+        
+        // Outer zone: rural and forest (distance 10+)
+        if (distFromOrigin < 15) {
+            return rand < 60 ? 'rural' : 'forest';
+        }
+        
+        // Far edges: mostly forest
+        return 'forest';
     }
     
     generateCleanTerrain(x, y, biome) {
         // Phase 1: Generate ONLY floor tiles (no obstacles)
         // Obstacles will be added later in addObstaclesAndDebris()
         
-        if (biome === 'ruins') {
-            return { glyph: '.', fgColor: '#444444', bgColor: '#0a0a0a', blocked: false, name: 'Cracked Floor' };
-        } else if (biome === 'industrial') {
-            return { glyph: '.', fgColor: '#555555', bgColor: '#0a0a0a', blocked: false, name: 'Concrete Floor' };
-        } else {
-            return { glyph: '.', fgColor: '#3a3a3a', bgColor: '#050505', blocked: false, name: 'Wasteland' };
+        switch(biome) {
+            case 'urban_core':
+                return { glyph: '.', fgColor: '#666666', bgColor: '#0f0f0f', blocked: false, name: 'Paved Ground' };
+            case 'suburbs':
+                return { glyph: '.', fgColor: '#556b2f', bgColor: '#0a0a0a', blocked: false, name: 'Suburban Ground' };
+            case 'industrial':
+                return { glyph: '.', fgColor: '#555555', bgColor: '#0a0a0a', blocked: false, name: 'Concrete Floor' };
+            case 'rich_neighborhood':
+                return { glyph: '.', fgColor: '#6b8e23', bgColor: '#0f0f0a', blocked: false, name: 'Manicured Ground' };
+            case 'rural':
+                return { glyph: '.', fgColor: '#8b7355', bgColor: '#0a0805', blocked: false, name: 'Dirt Ground' };
+            case 'forest':
+                return { glyph: ',', fgColor: '#4a6741', bgColor: '#0a0f0a', blocked: false, name: 'Forest Floor' };
+            case 'ruins':
+                return { glyph: '.', fgColor: '#444444', bgColor: '#0a0a0a', blocked: false, name: 'Cracked Floor' };
+            default:
+                return { glyph: '.', fgColor: '#3a3a3a', bgColor: '#050505', blocked: false, name: 'Ground' };
         }
     }
     
@@ -122,7 +181,12 @@ export class Chunk {
                 const isEmptyFloor = (
                     tile.name === 'Cracked Floor' ||
                     tile.name === 'Concrete Floor' ||
-                    tile.name === 'Wasteland'
+                    tile.name === 'Wasteland' ||
+                    tile.name === 'Paved Ground' ||
+                    tile.name === 'Suburban Ground' ||
+                    tile.name === 'Manicured Ground' ||
+                    tile.name === 'Dirt Ground' ||
+                    tile.name === 'Forest Floor'
                 );
                 
                 if (!isEmptyFloor) {
@@ -136,32 +200,90 @@ export class Chunk {
                 const rand = Math.abs(Math.sin(hash)) * 100;
                 
                 // Place obstacles based on biome
-                if (biome === 'ruins') {
-                    if (rand < 3) {
-                        // 3% chance of rubble wall
-                        this.setTile(x, y, { glyph: '#', fgColor: '#555555', bgColor: '#1a1a1a', blocked: true, name: 'Rubble Wall' }, 0);
-                        obstaclesPlaced++;
-                    } else if (rand < 8) {
-                        // 5% chance of debris
-                        this.setTile(x, y, { glyph: '~', fgColor: '#663300', bgColor: '#0a0a0a', blocked: false, name: 'Debris' }, 0);
-                        debrisPlaced++;
-                    }
-                } else if (biome === 'industrial') {
-                    if (rand < 5) {
-                        // 5% chance of metal wall
-                        this.setTile(x, y, { glyph: '█', fgColor: '#333333', bgColor: '#0f0f0f', blocked: true, name: 'Metal Wall' }, 0);
-                        obstaclesPlaced++;
-                    } else if (rand < 10) {
-                        // 5% chance of grating
-                        this.setTile(x, y, { glyph: '=', fgColor: '#666666', bgColor: '#0a0a0a', blocked: false, name: 'Grating' }, 0);
-                        debrisPlaced++;
-                    }
-                } else {
-                    if (rand < 4) {
-                        // 4% chance of wreckage
-                        this.setTile(x, y, { glyph: '▓', fgColor: '#2a2a2a', bgColor: '#0a0a0a', blocked: true, name: 'Wreckage' }, 0);
-                        obstaclesPlaced++;
-                    }
+                switch(biome) {
+                    case 'urban_core':
+                        if (rand < 2) {
+                            // 2% chance of barriers
+                            this.setTile(x, y, { glyph: '▓', fgColor: '#ffaa00', bgColor: '#1a1a0a', blocked: true, name: 'Barrier' }, 0);
+                            obstaclesPlaced++;
+                        } else if (rand < 5) {
+                            // 3% chance of street furniture
+                            this.setTile(x, y, { glyph: '║', fgColor: '#888888', bgColor: '#0f0f0f', blocked: false, name: 'Street Sign' }, 0);
+                            debrisPlaced++;
+                        }
+                        break;
+                    
+                    case 'suburbs':
+                        if (rand < 1) {
+                            // 1% chance of fence
+                            this.setTile(x, y, { glyph: '|', fgColor: '#8b7355', bgColor: '#0a0a0a', blocked: true, name: 'Fence' }, 0);
+                            obstaclesPlaced++;
+                        } else if (rand < 4) {
+                            // 3% chance of bushes
+                            this.setTile(x, y, { glyph: '♣', fgColor: '#4a6741', bgColor: '#0a0a0a', blocked: false, name: 'Bush' }, 0);
+                            debrisPlaced++;
+                        }
+                        break;
+                    
+                    case 'industrial':
+                        if (rand < 5) {
+                            // 5% chance of metal wall
+                            this.setTile(x, y, { glyph: '█', fgColor: '#333333', bgColor: '#0f0f0f', blocked: true, name: 'Metal Wall' }, 0);
+                            obstaclesPlaced++;
+                        } else if (rand < 10) {
+                            // 5% chance of grating
+                            this.setTile(x, y, { glyph: '=', fgColor: '#666666', bgColor: '#0a0a0a', blocked: false, name: 'Grating' }, 0);
+                            debrisPlaced++;
+                        }
+                        break;
+                    
+                    case 'rich_neighborhood':
+                        if (rand < 1) {
+                            // 1% chance of decorative wall
+                            this.setTile(x, y, { glyph: '▓', fgColor: '#d4af37', bgColor: '#1a1a0a', blocked: true, name: 'Decorative Wall' }, 0);
+                            obstaclesPlaced++;
+                        } else if (rand < 3) {
+                            // 2% chance of garden features
+                            this.setTile(x, y, { glyph: '♠', fgColor: '#6b8e23', bgColor: '#0f0f0a', blocked: false, name: 'Garden' }, 0);
+                            debrisPlaced++;
+                        }
+                        break;
+                    
+                    case 'rural':
+                        if (rand < 2) {
+                            // 2% chance of rocks
+                            this.setTile(x, y, { glyph: '●', fgColor: '#696969', bgColor: '#0a0805', blocked: true, name: 'Boulder' }, 0);
+                            obstaclesPlaced++;
+                        } else if (rand < 6) {
+                            // 4% chance of tall grass
+                            this.setTile(x, y, { glyph: '"', fgColor: '#9acd32', bgColor: '#0a0805', blocked: false, name: 'Tall Grass' }, 0);
+                            debrisPlaced++;
+                        }
+                        break;
+                    
+                    case 'forest':
+                        if (rand < 15) {
+                            // 15% chance of trees
+                            this.setTile(x, y, { glyph: '♣', fgColor: '#228b22', bgColor: '#0a0f0a', blocked: true, name: 'Tree' }, 0);
+                            obstaclesPlaced++;
+                        } else if (rand < 25) {
+                            // 10% chance of bushes
+                            this.setTile(x, y, { glyph: '♠', fgColor: '#4a6741', bgColor: '#0a0f0a', blocked: false, name: 'Bush' }, 0);
+                            debrisPlaced++;
+                        }
+                        break;
+                    
+                    case 'ruins':
+                        if (rand < 3) {
+                            // 3% chance of rubble wall
+                            this.setTile(x, y, { glyph: '#', fgColor: '#555555', bgColor: '#1a1a1a', blocked: true, name: 'Rubble Wall' }, 0);
+                            obstaclesPlaced++;
+                        } else if (rand < 8) {
+                            // 5% chance of debris
+                            this.setTile(x, y, { glyph: '~', fgColor: '#663300', bgColor: '#0a0a0a', blocked: false, name: 'Debris' }, 0);
+                            debrisPlaced++;
+                        }
+                        break;
                 }
             }
         }
@@ -225,61 +347,137 @@ export class Chunk {
         
         this.roads = []; // Track all road segments
         
+        // Forest biome has no roads
+        if (biome === 'forest') {
+            console.log('  Forest biome: Skipping road generation');
+            return;
+        }
+        
         // Biome-specific road configuration
         let roadConfig;
-        if (biome === 'industrial') {
-            roadConfig = {
-                mainRoadTile: { glyph: '=', fgColor: '#00ffff', bgColor: '#0a2a2a', blocked: false, name: 'Paved Road' },
-                sideStreetTile: { glyph: '-', fgColor: '#00aaaa', bgColor: '#0a1a1a', blocked: false, name: 'Asphalt Street' },
-                mainWidth: 3,
-                sideWidth: 2,
-                density: 'high'
-            };
-        } else if (biome === 'ruins') {
-            roadConfig = {
-                mainRoadTile: { glyph: '~', fgColor: '#ff8800', bgColor: '#1a0a00', blocked: false, name: 'Cracked Pavement' },
-                sideStreetTile: { glyph: '.', fgColor: '#aa5500', bgColor: '#0a0500', blocked: false, name: 'Broken Path' },
-                mainWidth: 2,
-                sideWidth: 1,
-                density: 'medium'
-            };
-        } else {
-            roadConfig = {
-                mainRoadTile: { glyph: '·', fgColor: '#aa6633', bgColor: '#0a0500', blocked: false, name: 'Dirt Road' },
-                sideStreetTile: { glyph: ',', fgColor: '#885522', bgColor: '#050200', blocked: false, name: 'Dirt Trail' },
-                mainWidth: 2,
-                sideWidth: 1,
-                density: 'low'
-            };
+        switch(biome) {
+            case 'urban_core':
+                roadConfig = {
+                    mainRoadTile: { glyph: '=', fgColor: '#00ffff', bgColor: '#0a2a2a', blocked: false, name: 'City Street' },
+                    sideStreetTile: { glyph: '-', fgColor: '#00aaaa', bgColor: '#0a1a1a', blocked: false, name: 'Side Street' },
+                    sidewalkTile: { glyph: '·', fgColor: '#888888', bgColor: '#1a1a1a', blocked: false, name: 'Sidewalk' },
+                    mainWidth: 4,
+                    sideWidth: 3,
+                    density: 'very_high',
+                    hasSidewalks: true
+                };
+                break;
+            
+            case 'suburbs':
+                roadConfig = {
+                    mainRoadTile: { glyph: '=', fgColor: '#00aaaa', bgColor: '#0a1a1a', blocked: false, name: 'Suburban Road' },
+                    sideStreetTile: { glyph: '-', fgColor: '#008888', bgColor: '#0a0a0a', blocked: false, name: 'Residential Street' },
+                    mainWidth: 3,
+                    sideWidth: 2,
+                    density: 'high',
+                    hasSidewalks: false
+                };
+                break;
+            
+            case 'industrial':
+                roadConfig = {
+                    mainRoadTile: { glyph: '=', fgColor: '#00ffff', bgColor: '#0a2a2a', blocked: false, name: 'Paved Road' },
+                    sideStreetTile: { glyph: '-', fgColor: '#00aaaa', bgColor: '#0a1a1a', blocked: false, name: 'Asphalt Street' },
+                    mainWidth: 3,
+                    sideWidth: 2,
+                    density: 'high',
+                    hasSidewalks: false
+                };
+                break;
+            
+            case 'rich_neighborhood':
+                roadConfig = {
+                    mainRoadTile: { glyph: '=', fgColor: '#d4af37', bgColor: '#1a1a0a', blocked: false, name: 'Pristine Road' },
+                    sideStreetTile: { glyph: '-', fgColor: '#b8860b', bgColor: '#0f0f0a', blocked: false, name: 'Private Drive' },
+                    mainWidth: 3,
+                    sideWidth: 2,
+                    density: 'medium',
+                    hasSidewalks: false
+                };
+                break;
+            
+            case 'rural':
+                roadConfig = {
+                    mainRoadTile: { glyph: '·', fgColor: '#aa6633', bgColor: '#0a0500', blocked: false, name: 'Dirt Road' },
+                    sideStreetTile: { glyph: ',', fgColor: '#885522', bgColor: '#050200', blocked: false, name: 'Dirt Trail' },
+                    mainWidth: 2,
+                    sideWidth: 1,
+                    density: 'low',
+                    hasSidewalks: false
+                };
+                break;
+            
+            case 'ruins':
+                roadConfig = {
+                    mainRoadTile: { glyph: '~', fgColor: '#ff8800', bgColor: '#1a0a00', blocked: false, name: 'Cracked Pavement' },
+                    sideStreetTile: { glyph: '.', fgColor: '#aa5500', bgColor: '#0a0500', blocked: false, name: 'Broken Path' },
+                    mainWidth: 2,
+                    sideWidth: 1,
+                    density: 'medium',
+                    hasSidewalks: false
+                };
+                break;
+            
+            default:
+                roadConfig = {
+                    mainRoadTile: { glyph: '=', fgColor: '#00aaaa', bgColor: '#0a1a1a', blocked: false, name: 'Road' },
+                    sideStreetTile: { glyph: '-', fgColor: '#008888', bgColor: '#0a0a0a', blocked: false, name: 'Street' },
+                    mainWidth: 3,
+                    sideWidth: 2,
+                    density: 'medium',
+                    hasSidewalks: false
+                };
         }
         
-        // Generate main roads that cross the chunk
-        // Horizontal main road
-        const mainRoadY = Math.floor(this.size / 2) + (this.cy % 3 - 1) * 8;
-        if (mainRoadY >= 2 && mainRoadY < this.size - 2) {
-            this.createHorizontalRoad(0, this.size - 1, mainRoadY, roadConfig.mainRoadTile, roadConfig.mainWidth, 'main');
+        // NEW APPROACH: Sparse, purposeful roads that connect across chunks
+        // Only place roads every few chunks to leave room for buildings and exploration
+        
+        // Major roads run every 3 chunks (creates a grid with large blocks)
+        const hasHorizontalMajorRoad = (this.cy % 3 === 0);
+        const hasVerticalMajorRoad = (this.cx % 3 === 0);
+        
+        if (hasHorizontalMajorRoad) {
+            // Place horizontal major road in middle of chunk
+            const roadY = Math.floor(this.size / 2);
+            this.createHorizontalRoad(0, this.size - 1, roadY, roadConfig.mainRoadTile, roadConfig.mainWidth, 'main');
         }
         
-        // Vertical main road
-        const mainRoadX = Math.floor(this.size / 2) + (this.cx % 3 - 1) * 8;
-        if (mainRoadX >= 2 && mainRoadX < this.size - 2) {
-            this.createVerticalRoad(0, this.size - 1, mainRoadX, roadConfig.mainRoadTile, roadConfig.mainWidth, 'main');
+        if (hasVerticalMajorRoad) {
+            // Place vertical major road in middle of chunk
+            const roadX = Math.floor(this.size / 2);
+            this.createVerticalRoad(0, this.size - 1, roadX, roadConfig.mainRoadTile, roadConfig.mainWidth, 'main');
         }
         
-        // Add side streets perpendicular to main roads
-        if (roadConfig.density === 'high') {
-            // Industrial: More side streets
-            for (let i = 0; i < 2; i++) {
-                const sideY = Math.floor(Math.random() * (this.size - 8)) + 4;
+        // Side streets only in high-density biomes, and only occasionally
+        if (roadConfig.density === 'very_high') {
+            // Urban core: Add ONE side street if we have a major road
+            if (hasHorizontalMajorRoad && Math.random() < 0.4) {
+                // Add a perpendicular vertical connector
+                const sideX = Math.floor(this.size * 0.25) + Math.floor(Math.random() * Math.floor(this.size * 0.5));
+                this.createVerticalRoad(0, this.size - 1, sideX, roadConfig.sideStreetTile, roadConfig.sideWidth, 'side');
+            } else if (hasVerticalMajorRoad && Math.random() < 0.4) {
+                // Add a perpendicular horizontal connector
+                const sideY = Math.floor(this.size * 0.25) + Math.floor(Math.random() * Math.floor(this.size * 0.5));
                 this.createHorizontalRoad(0, this.size - 1, sideY, roadConfig.sideStreetTile, roadConfig.sideWidth, 'side');
             }
-        } else if (roadConfig.density === 'medium') {
-            // Ruins: Some side paths
-            if (Math.random() < 0.6) {
-                const sideY = Math.floor(Math.random() * (this.size - 8)) + 4;
-                this.createHorizontalRoad(0, this.size - 1, sideY, roadConfig.sideStreetTile, roadConfig.sideWidth, 'side');
+        } else if (roadConfig.density === 'high') {
+            // Suburbs/Industrial: Rare side streets
+            if ((hasHorizontalMajorRoad || hasVerticalMajorRoad) && Math.random() < 0.2) {
+                if (hasHorizontalMajorRoad) {
+                    const sideX = Math.floor(this.size * 0.3) + Math.floor(Math.random() * Math.floor(this.size * 0.4));
+                    this.createVerticalRoad(0, this.size - 1, sideX, roadConfig.sideStreetTile, roadConfig.sideWidth, 'side');
+                } else {
+                    const sideY = Math.floor(this.size * 0.3) + Math.floor(Math.random() * Math.floor(this.size * 0.4));
+                    this.createHorizontalRoad(0, this.size - 1, sideY, roadConfig.sideStreetTile, roadConfig.sideWidth, 'side');
+                }
             }
         }
+        // Medium and low density: No side streets at all
     }
     
     createHorizontalRoad(x1, x2, y, roadTile, width, type) {
@@ -321,9 +519,9 @@ export class Chunk {
     generateSewerSystem(biome) {
         if (this.roads.length === 0) return;
         
-        // Wasteland doesn't have sewers - dirt paths don't need underground infrastructure
-        if (biome === 'wasteland') {
-            console.log(`Chunk (${this.cx},${this.cy}): Skipping sewers for wasteland biome`);
+        // Forest and rural don't have sewers - no underground infrastructure
+        if (biome === 'forest' || biome === 'rural') {
+            console.log(`Chunk (${this.cx},${this.cy}): Skipping sewers for ${biome} biome`);
             return;
         }
         
@@ -389,8 +587,8 @@ export class Chunk {
             currentX += spacing;
         }
         
-        // Place manholes every 12-18 tiles (reduced density)
-        const manholeSpacing = 12 + Math.floor(Math.random() * 7);
+        // Place manholes every 24-32 tiles (sparse placement)
+        const manholeSpacing = 24 + Math.floor(Math.random() * 9);
         for (let x = x1; x <= x2; x += manholeSpacing) {
             // Manhole on surface
             this.setTile(x, y, { ...manhole }, 0);
@@ -443,8 +641,8 @@ export class Chunk {
             currentY += spacing;
         }
         
-        // Place manholes every 12-18 tiles (reduced density)
-        const manholeSpacing = 12 + Math.floor(Math.random() * 7);
+        // Place manholes every 24-32 tiles (sparse placement)
+        const manholeSpacing = 24 + Math.floor(Math.random() * 9);
         for (let y = y1; y <= y2; y += manholeSpacing) {
             // Manhole on surface
             this.setTile(x, y, { ...manhole }, 0);
@@ -529,8 +727,8 @@ export class Chunk {
     
     placeBuildingsAlongRoad(road, biome) {
         // NEW: Spacing-based placement instead of fixed counts
-        const minSpacing = 10;
-        const maxSpacing = 20;
+        const minSpacing = 15;
+        const maxSpacing = 25;
         const roadOffset = Math.floor(road.width / 2) + 2;
         
         let placedCount = 0;
@@ -542,9 +740,23 @@ export class Chunk {
         console.log(`  Placing buildings along ${road.direction} road (length: ${roadLength})`);
         
         while (currentPos < roadLength - minSpacing) {
-            // Random building size
-            const width = Math.floor(Math.random() * 7) + 8;  // 8-14
-            const height = Math.floor(Math.random() * 7) + 8; // 8-14
+            // Random building size with variety (small, medium, large)
+            const sizeRoll = Math.random();
+            let width, height;
+            
+            if (sizeRoll < 0.4) {
+                // 40% small buildings (8-12 tiles)
+                width = Math.floor(Math.random() * 5) + 8;
+                height = Math.floor(Math.random() * 5) + 8;
+            } else if (sizeRoll < 0.75) {
+                // 35% medium buildings (14-18 tiles)
+                width = Math.floor(Math.random() * 5) + 14;
+                height = Math.floor(Math.random() * 5) + 14;
+            } else {
+                // 25% large buildings (20-24 tiles)
+                width = Math.floor(Math.random() * 5) + 20;
+                height = Math.floor(Math.random() * 5) + 20;
+            }
             
             let x, y;
             
@@ -577,7 +789,7 @@ export class Chunk {
             // Try to place building
             if (x >= 2 && y >= 2 && x + width <= this.size - 2 && y + height <= this.size - 2) {
                 if (this.canPlaceBuildingAt(x, y, width, height)) {
-                    const placed = this.placeBuilding(x, y, width, height, biome);
+                    const placed = this.placeBuilding(x, y, width, height, biome, road.direction, side);
                     if (placed !== false) {
                         placedCount++;
                         console.log(`    Building ${placedCount}: SUCCESS at (${x},${y}) size ${width}x${height}`);
@@ -646,38 +858,130 @@ export class Chunk {
         return true;
     }
     
-    placeBuilding(x, y, width, height, biome) {
+    placeBuilding(x, y, width, height, biome, roadDirection = null, roadSide = null) {
         // Determine wall style based on biome
         let wallTile;
-        if (biome === 'ruins') {
-            wallTile = { glyph: '▓', fgColor: '#aaaaaa', bgColor: '#3a3a3a', blocked: true, name: 'Crumbling Wall' };
-        } else if (biome === 'industrial') {
-            wallTile = { glyph: '▓', fgColor: '#aaaaaa', bgColor: '#3a3a3a', blocked: true, name: 'Concrete Wall' };
-        } else {
-            wallTile = { glyph: '▓', fgColor: '#aaaaaa', bgColor: '#3a3a3a', blocked: true, name: 'Makeshift Wall' };
+        switch(biome) {
+            case 'urban_core':
+                wallTile = { glyph: '▓', fgColor: '#cccccc', bgColor: '#3a3a3a', blocked: true, name: 'Glass & Steel Wall' };
+                break;
+            case 'suburbs':
+                wallTile = { glyph: '▓', fgColor: '#d2b48c', bgColor: '#3a3a3a', blocked: true, name: 'Brick Wall' };
+                break;
+            case 'industrial':
+                wallTile = { glyph: '▓', fgColor: '#aaaaaa', bgColor: '#3a3a3a', blocked: true, name: 'Concrete Wall' };
+                break;
+            case 'rich_neighborhood':
+                wallTile = { glyph: '▓', fgColor: '#f5f5dc', bgColor: '#3a3a3a', blocked: true, name: 'Marble Wall' };
+                break;
+            case 'rural':
+                wallTile = { glyph: '▓', fgColor: '#8b7355', bgColor: '#3a3a3a', blocked: true, name: 'Wood Wall' };
+                break;
+            case 'forest':
+                wallTile = { glyph: '▓', fgColor: '#654321', bgColor: '#2a2a2a', blocked: true, name: 'Log Wall' };
+                break;
+            case 'ruins':
+                wallTile = { glyph: '▓', fgColor: '#888888', bgColor: '#3a3a3a', blocked: true, name: 'Crumbling Wall' };
+                break;
+            default:
+                wallTile = { glyph: '▓', fgColor: '#aaaaaa', bgColor: '#3a3a3a', blocked: true, name: 'Wall' };
         }
         
         const floorTile = { glyph: '.', fgColor: '#aaaaaa', bgColor: '#2a2a2a', blocked: false, name: 'Floor' };
         
-        // SIMPLIFIED: Only rectangles for now
+        // Determine which side the door should face to be accessible from the road
+        // Prefab doors are on the bottom row, so we need doorSide=2 (bottom)
+        // That means: horizontal road + building above road (side=-1), door faces down toward road
+        let doorSide = -1; // -1 means no valid orientation for prefabs
+        if (roadDirection === 'horizontal' && roadSide === -1) {
+            doorSide = 2; // Building above road, door on bottom faces road
+        } else if (roadDirection === 'horizontal' && roadSide === 1) {
+            doorSide = 0; // Building below road, door on top faces road
+        } else if (roadDirection === 'vertical' && roadSide === -1) {
+            doorSide = 1; // Building left of road, door on right faces road
+        } else if (roadDirection === 'vertical' && roadSide === 1) {
+            doorSide = 3; // Building right of road, door on left faces road
+        }
+        
+        // Try to use a prefab first, fall back to procedural rectangles
+        const prefab = findMatchingPrefab(width, height, biome, doorSide);
+        if (prefab) {
+            console.log(`    Using prefab: ${prefab.name} (${prefab.width}x${prefab.height})`);
+            this.placePrefabBuilding(x, y, prefab, biome, wallTile, floorTile);
+            
+            // Track door positions from prefab (find + characters)
+            for (let py = 0; py < prefab.layout.length; py++) {
+                const row = prefab.layout[py];
+                for (let px = 0; px < row.length; px++) {
+                    if (row[px] === '+') {
+                        this.buildingDoors.push({ x: x + px, y: y + py });
+                    }
+                }
+            }
+            
+            // Handle stairs and upper/lower floors from prefab features
+            if (prefab.features.hasUpstairs || prefab.features.hasBasement) {
+                const stairX = x + Math.floor(Math.random() * (prefab.width - 2)) + 1;
+                const stairY = y + Math.floor(Math.random() * (prefab.height - 2)) + 1;
+                
+                // Find a valid floor tile for stairs
+                let foundStair = false;
+                for (let radius = 0; radius <= 3 && !foundStair; radius++) {
+                    for (let dy = -radius; dy <= radius && !foundStair; dy++) {
+                        for (let dx = -radius; dx <= radius && !foundStair; dx++) {
+                            const checkX = stairX + dx;
+                            const checkY = stairY + dy;
+                            const checkTile = this.getTile(checkX, checkY, 0);
+                            if (checkTile && checkTile.name === 'Floor' && !checkTile.blocked) {
+                                const stairGlyph = (prefab.features.hasUpstairs && prefab.features.hasBasement) ? '≈' : 
+                                                   (prefab.features.hasUpstairs ? '<' : '>');
+                                const stairTile = {
+                                    glyph: stairGlyph,
+                                    fgColor: '#ffff00',
+                                    bgColor: '#3a3a3a',
+                                    blocked: false,
+                                    name: 'Staircase',
+                                    isStaircase: true,
+                                    canAscend: prefab.features.hasUpstairs,
+                                    canDescend: prefab.features.hasBasement
+                                };
+                                this.setTile(checkX, checkY, stairTile, 0);
+                                
+                                if (prefab.features.hasUpstairs) {
+                                    this.generateFloor(x, y, prefab.width, prefab.height, biome, 1, checkX, checkY, false, true);
+                                }
+                                if (prefab.features.hasBasement) {
+                                    this.generateFloor(x, y, prefab.width, prefab.height, biome, -1, checkX, checkY, true, false);
+                                }
+                                foundStair = true;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            return; // Prefab placed successfully, skip procedural generation below
+        }
+        
+        // Fallback: procedural rectangular building
         this.placeRectangularBuilding(x, y, width, height, wallTile, floorTile);
         
         // Add door with validation - ensure it leads to floor inside
-        const doorSide = Math.floor(Math.random() * 4); // 0=top, 1=right, 2=bottom, 3=left
+        const procDoorSide = Math.floor(Math.random() * 4); // 0=top, 1=right, 2=bottom, 3=left
         let doorX, doorY;
         let insideX, insideY; // Tile directly inside the door
         
-        if (doorSide === 0) { // Top
+        if (procDoorSide === 0) { // Top
             doorX = x + Math.floor(width / 2);
             doorY = y;
             insideX = doorX;
             insideY = doorY + 1;
-        } else if (doorSide === 1) { // Right
+        } else if (procDoorSide === 1) { // Right
             doorX = x + width - 1;
             doorY = y + Math.floor(height / 2);
             insideX = doorX - 1;
             insideY = doorY;
-        } else if (doorSide === 2) { // Bottom
+        } else if (procDoorSide === 2) { // Bottom
             doorX = x + Math.floor(width / 2);
             doorY = y + height - 1;
             insideX = doorX;
@@ -696,8 +1000,30 @@ export class Chunk {
             return; // Don't place this building
         }
         
-        const doorTile = { glyph: '+', fgColor: '#ff8800', bgColor: '#3a3a3a', blocked: false, name: 'Door' };
-        this.setTile(doorX, doorY, doorTile, 0);
+        // Create Door object (50% locked for testing)
+        try {
+            const worldX = this.cx * this.size + doorX;
+            const worldY = this.cy * this.size + doorY;
+            const isLocked = Math.random() < 0.5; // 50% locked for testing
+            
+            const door = createDoor('wood_basic', worldX, worldY, 0, isLocked, false);
+            
+            // Add to world's object list
+            if (this.world && this.world.addWorldObject) {
+                this.world.addWorldObject(door);
+                // Set the door tile in this chunk
+                this.setTile(doorX, doorY, { glyph: door.glyph, fgColor: door.fgColor, bgColor: '#3a3a3a', blocked: door.blocked, blocksVision: door.blocksVision, name: door.name, worldObjectId: door.id }, 0);
+            } else {
+                console.warn('World.addWorldObject not available, placing simple door tile instead');
+                const doorTile = { glyph: '+', fgColor: '#ff8800', bgColor: '#3a3a3a', blocked: false, name: 'Door' };
+                this.setTile(doorX, doorY, doorTile, 0);
+            }
+        } catch (error) {
+            console.error('Error creating door:', error);
+            // Fallback to simple door tile
+            const doorTile = { glyph: '+', fgColor: '#ff8800', bgColor: '#3a3a3a', blocked: false, name: 'Door' };
+            this.setTile(doorX, doorY, doorTile, 0);
+        }
         
         // Track door position for pathway generation
         this.buildingDoors.push({ x: doorX, y: doorY });
@@ -706,11 +1032,22 @@ export class Chunk {
         const hasUpstairs = Math.random() < 0.8;
         const hasBasement = Math.random() < 0.6; // Basements coexist with sewers (different locations)
         
-        // Pick ONE stair position for all floors
+        // Pick ONE stair position for all floors (will be placed AFTER rooms)
         const stairX = x + Math.floor(Math.random() * (width - 2)) + 1;
         const stairY = y + Math.floor(Math.random() * (height - 2)) + 1;
         
-        // Place staircase on ground floor if building has any vertical levels
+        // Add rooms for all buildings BEFORE placing staircase
+        if (width >= 8 && height >= 8) {
+            if (width >= 14 && height >= 14) {
+                // Medium/large buildings: hallway with multiple rooms
+                this.generateSimpleRooms(x, y, width, height, wallTile, floorTile, stairX, stairY, doorX, doorY);
+            } else {
+                // Small buildings: simple 2-room layout
+                this.generateSmallBuildingRooms(x, y, width, height, wallTile, floorTile, stairX, stairY, doorX, doorY);
+            }
+        }
+        
+        // NOW place staircase AFTER rooms are generated
         if (hasUpstairs || hasBasement) {
             const stairTile = { 
                 glyph: (hasUpstairs && hasBasement) ? '≈' : (hasUpstairs ? '<' : '>'),
@@ -722,10 +1059,28 @@ export class Chunk {
                 canAscend: hasUpstairs,
                 canDescend: hasBasement
             };
-            this.setTile(stairX, stairY, stairTile, 0);
+            // Verify we're placing on a floor tile AFTER rooms are generated
+            const currentTile = this.getTile(stairX, stairY, 0);
+            if (currentTile && !currentTile.blocked) {
+                this.setTile(stairX, stairY, stairTile, 0);
+            } else {
+                // Staircase position was blocked by room wall, find nearest floor
+                let foundFloor = false;
+                for (let radius = 1; radius <= 3 && !foundFloor; radius++) {
+                    for (let dy = -radius; dy <= radius && !foundFloor; dy++) {
+                        for (let dx = -radius; dx <= radius && !foundFloor; dx++) {
+                            const checkX = stairX + dx;
+                            const checkY = stairY + dy;
+                            const checkTile = this.getTile(checkX, checkY, 0);
+                            if (checkTile && !checkTile.blocked && checkTile.name === 'Floor') {
+                                this.setTile(checkX, checkY, stairTile, 0);
+                                foundFloor = true;
+                            }
+                        }
+                    }
+                }
+            }
         }
-        
-        // REMOVED: No interior features for now - keeping it simple
         
         // Generate second floor if building has upstairs
         if (hasUpstairs) {
@@ -741,15 +1096,135 @@ export class Chunk {
         }
     }
     
+    generateSmallBuildingRooms(x, y, width, height, wallTile, floorTile, stairX, stairY, doorX, doorY) {
+        // Simple 2-room layout: one wall from exterior to exterior, dividing the space
+        const isVerticalDivider = height > width;
+        
+        if (isVerticalDivider) {
+            // Horizontal wall from left exterior to right exterior
+            const dividerY = y + Math.floor(height / 2);
+            
+            for (let dx = 1; dx < width - 1; dx++) {
+                const absX = x + dx;
+                if (absX === stairX && dividerY === stairY) continue;
+                this.setTile(absX, dividerY, { ...wallTile }, 0);
+            }
+            
+            // Doorway in middle
+            const doorwayX = x + Math.floor(width / 2);
+            this.setTile(doorwayX, dividerY, { ...floorTile }, 0);
+        } else {
+            // Vertical wall from top exterior to bottom exterior
+            const dividerX = x + Math.floor(width / 2);
+            
+            for (let dy = 1; dy < height - 1; dy++) {
+                const absY = y + dy;
+                if (dividerX === stairX && absY === stairY) continue;
+                this.setTile(dividerX, absY, { ...wallTile }, 0);
+            }
+            
+            // Doorway in middle
+            const doorwayY = y + Math.floor(height / 2);
+            this.setTile(dividerX, doorwayY, { ...floorTile }, 0);
+        }
+    }
+    
+    generateSimpleRooms(x, y, width, height, wallTile, floorTile, stairX, stairY, doorX, doorY) {
+        // Simple approach: 2-4 dividing walls with varied spacing
+        const numDividers = Math.floor(Math.min(width, height) / 7) + 1;
+        
+        // Randomly choose to divide vertically or horizontally (or both for larger buildings)
+        const divideVertically = Math.random() < 0.5 || width > height;
+        const divideHorizontally = Math.random() < 0.5 || height > width;
+        
+        if (divideVertically && width >= 14) {
+            // Vertical walls from top to bottom
+            const numVertical = Math.min(numDividers, Math.floor(width / 8));
+            
+            for (let i = 0; i < numVertical; i++) {
+                // Random position with variation
+                const basePos = (width / (numVertical + 1)) * (i + 1);
+                const variation = Math.floor(Math.random() * 4) - 2;
+                const dividerX = Math.floor(x + basePos + variation);
+                
+                // Skip if too close to entrance door
+                if (Math.abs(dividerX - doorX) <= 3) continue;
+                
+                // Wall from top to bottom
+                for (let dy = 1; dy < height - 1; dy++) {
+                    const absY = y + dy;
+                    if (dividerX === stairX && absY === stairY) continue;
+                    // Skip if near entrance - larger protection zone
+                    if (Math.abs(dividerX - doorX) <= 2 && Math.abs(absY - doorY) <= 2) continue;
+                    this.setTile(dividerX, absY, { ...wallTile }, 0);
+                }
+                
+                // GUARANTEED doorway at varied position - always place it
+                let doorwayY = y + Math.floor(height / 2) + Math.floor(Math.random() * 5) - 2;
+                // Clamp to valid range to ensure it's always placed
+                doorwayY = Math.max(y + 1, Math.min(doorwayY, y + height - 2));
+                this.setTile(dividerX, doorwayY, { ...floorTile }, 0);
+            }
+        }
+        
+        if (divideHorizontally && height >= 14) {
+            // Horizontal walls from left to right
+            const numHorizontal = Math.min(numDividers, Math.floor(height / 8));
+            
+            for (let i = 0; i < numHorizontal; i++) {
+                // Random position with variation
+                const basePos = (height / (numHorizontal + 1)) * (i + 1);
+                const variation = Math.floor(Math.random() * 4) - 2;
+                const dividerY = Math.floor(y + basePos + variation);
+                
+                // Skip if too close to entrance door
+                if (Math.abs(dividerY - doorY) <= 3) continue;
+                
+                // Wall from left to right
+                for (let dx = 1; dx < width - 1; dx++) {
+                    const absX = x + dx;
+                    if (absX === stairX && dividerY === stairY) continue;
+                    // Skip if near entrance - larger protection zone
+                    if (Math.abs(absX - doorX) <= 2 && Math.abs(dividerY - doorY) <= 2) continue;
+                    this.setTile(absX, dividerY, { ...wallTile }, 0);
+                }
+                
+                // GUARANTEED doorway at varied position - always place it
+                let doorwayX = x + Math.floor(width / 2) + Math.floor(Math.random() * 5) - 2;
+                // Clamp to valid range to ensure it's always placed
+                doorwayX = Math.max(x + 1, Math.min(doorwayX, x + width - 2));
+                this.setTile(doorwayX, dividerY, { ...floorTile }, 0);
+            }
+        }
+    }
+    
     generateFloor(x, y, width, height, biome, z, stairX, stairY, canAscend, canDescend) {
         // Generate walls and floors for this z-level
         let wallTile;
-        if (biome === 'ruins') {
-            wallTile = { glyph: '▓', fgColor: '#aaaaaa', bgColor: '#3a3a3a', blocked: true, name: 'Crumbling Wall' };
-        } else if (biome === 'industrial') {
-            wallTile = { glyph: '▓', fgColor: '#aaaaaa', bgColor: '#3a3a3a', blocked: true, name: 'Concrete Wall' };
-        } else {
-            wallTile = { glyph: '▓', fgColor: '#aaaaaa', bgColor: '#3a3a3a', blocked: true, name: 'Makeshift Wall' };
+        switch(biome) {
+            case 'urban_core':
+                wallTile = { glyph: '▓', fgColor: '#cccccc', bgColor: '#3a3a3a', blocked: true, name: 'Glass & Steel Wall' };
+                break;
+            case 'suburbs':
+                wallTile = { glyph: '▓', fgColor: '#d2b48c', bgColor: '#3a3a3a', blocked: true, name: 'Brick Wall' };
+                break;
+            case 'industrial':
+                wallTile = { glyph: '▓', fgColor: '#aaaaaa', bgColor: '#3a3a3a', blocked: true, name: 'Concrete Wall' };
+                break;
+            case 'rich_neighborhood':
+                wallTile = { glyph: '▓', fgColor: '#f5f5dc', bgColor: '#3a3a3a', blocked: true, name: 'Marble Wall' };
+                break;
+            case 'rural':
+                wallTile = { glyph: '▓', fgColor: '#8b7355', bgColor: '#3a3a3a', blocked: true, name: 'Wood Wall' };
+                break;
+            case 'forest':
+                wallTile = { glyph: '▓', fgColor: '#654321', bgColor: '#2a2a2a', blocked: true, name: 'Log Wall' };
+                break;
+            case 'ruins':
+                wallTile = { glyph: '▓', fgColor: '#888888', bgColor: '#3a3a3a', blocked: true, name: 'Crumbling Wall' };
+                break;
+            default:
+                wallTile = { glyph: '▓', fgColor: '#aaaaaa', bgColor: '#3a3a3a', blocked: true, name: 'Wall' };
         }
         
         const floorTile = { glyph: '.', fgColor: '#aaaaaa', bgColor: '#2a2a2a', blocked: false, name: 'Floor' };
@@ -786,6 +1261,135 @@ export class Chunk {
             canDescend: canDescend
         };
         this.setTile(stairX, stairY, stairTile, z);
+    }
+    
+    placePrefabBuilding(x, y, prefab, biome, wallTile, floorTile) {
+        const doorTypes = BIOME_DOOR_TYPES[biome] || BIOME_DOOR_TYPES.suburbs;
+        const lockChance = prefab.features.lockChance || 0.5;
+        
+        // Interior wall uses same style but different name
+        const interiorWallTile = { ...wallTile, name: 'Interior Wall' };
+        
+        for (let py = 0; py < prefab.layout.length; py++) {
+            const row = prefab.layout[py];
+            for (let px = 0; px < row.length; px++) {
+                const char = row[px];
+                const tileX = x + px;
+                const tileY = y + py;
+                
+                switch (char) {
+                    case '#': // Exterior wall
+                        this.setTile(tileX, tileY, { ...wallTile }, 0);
+                        break;
+                    
+                    case '|': // Interior wall (vertical)
+                    case '-': // Interior wall (horizontal)
+                        this.setTile(tileX, tileY, { ...interiorWallTile }, 0);
+                        break;
+                    
+                    case '.': // Floor
+                        this.setTile(tileX, tileY, { ...floorTile }, 0);
+                        break;
+                    
+                    case '_': // Open floor next to door (double-wide entrance)
+                        this.setTile(tileX, tileY, { ...floorTile }, 0);
+                        break;
+                    
+                    case '+': { // Exterior door (WorldObject)
+                        const worldX = this.cx * this.size + tileX;
+                        const worldY = this.cy * this.size + tileY;
+                        const isLocked = Math.random() < lockChance;
+                        
+                        try {
+                            const door = createDoor(doorTypes.exterior, worldX, worldY, 0, isLocked, false);
+                            if (this.world && this.world.addWorldObject) {
+                                this.world.addWorldObject(door);
+                                this.setTile(tileX, tileY, { glyph: door.glyph, fgColor: door.fgColor, bgColor: '#3a3a3a', blocked: door.blocked, blocksVision: door.blocksVision, name: door.name, worldObjectId: door.id }, 0);
+                            } else {
+                                this.setTile(tileX, tileY, { ...floorTile, name: 'Doorway' }, 0);
+                            }
+                        } catch (error) {
+                            console.error('Error creating prefab exterior door:', error);
+                            this.setTile(tileX, tileY, { ...floorTile, name: 'Doorway' }, 0);
+                        }
+                        break;
+                    }
+                    
+                    case 'd': { // Interior door (WorldObject, always unlocked)
+                        const worldX = this.cx * this.size + tileX;
+                        const worldY = this.cy * this.size + tileY;
+                        
+                        try {
+                            const door = createDoor(doorTypes.interior, worldX, worldY, 0, false, false);
+                            if (this.world && this.world.addWorldObject) {
+                                this.world.addWorldObject(door);
+                                this.setTile(tileX, tileY, { glyph: door.glyph, fgColor: door.fgColor, bgColor: '#3a3a3a', blocked: door.blocked, blocksVision: door.blocksVision, name: door.name, worldObjectId: door.id }, 0);
+                            } else {
+                                this.setTile(tileX, tileY, { ...floorTile, name: 'Doorway' }, 0);
+                            }
+                        } catch (error) {
+                            console.error('Error creating prefab interior door:', error);
+                            this.setTile(tileX, tileY, { ...floorTile, name: 'Doorway' }, 0);
+                        }
+                        break;
+                    }
+                    
+                    case '<': { // Stairs up
+                        const stairTile = {
+                            glyph: '<',
+                            fgColor: '#ffff00',
+                            bgColor: '#3a3a3a',
+                            blocked: false,
+                            name: 'Staircase',
+                            isStaircase: true,
+                            canAscend: true,
+                            canDescend: false
+                        };
+                        this.setTile(tileX, tileY, stairTile, 0);
+                        break;
+                    }
+                    
+                    case '>': { // Stairs down
+                        const stairTile = {
+                            glyph: '>',
+                            fgColor: '#ffff00',
+                            bgColor: '#3a3a3a',
+                            blocked: false,
+                            name: 'Staircase',
+                            isStaircase: true,
+                            canAscend: false,
+                            canDescend: true
+                        };
+                        this.setTile(tileX, tileY, stairTile, 0);
+                        break;
+                    }
+                    
+                    case '~': // Skip - leave terrain as-is
+                        break;
+                    
+                    default:
+                        // Unknown character, treat as floor
+                        this.setTile(tileX, tileY, { ...floorTile }, 0);
+                        break;
+                }
+            }
+        }
+        
+        // Apply loot zone tags to floor tiles
+        if (prefab.lootZones) {
+            for (const zone of prefab.lootZones) {
+                for (let zy = zone.y; zy < zone.y + zone.h; zy++) {
+                    for (let zx = zone.x; zx < zone.x + zone.w; zx++) {
+                        const tileX = x + zx;
+                        const tileY = y + zy;
+                        const tile = this.getTile(tileX, tileY, 0);
+                        if (tile && !tile.blocked && tile.name === 'Floor') {
+                            tile.roomType = zone.type;
+                        }
+                    }
+                }
+            }
+        }
     }
     
     placeRectangularBuilding(x, y, width, height, wallTile, floorTile) {

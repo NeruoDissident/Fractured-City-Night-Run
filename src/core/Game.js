@@ -9,6 +9,7 @@ import { SoundSystem } from '../systems/SoundSystem.js';
 import { CharacterCreationSystem } from '../systems/CharacterCreationSystem.js';
 import { ItemSystem } from '../systems/ItemSystem.js';
 import { CraftingSystem } from '../systems/CraftingSystem.js';
+import { WorldObjectSystem } from '../systems/WorldObjectSystem.js';
 
 export class Game {
     constructor() {
@@ -60,6 +61,7 @@ export class Game {
         this.soundSystem = new SoundSystem(this);
         this.itemSystem = new ItemSystem(this);
         this.craftingSystem = new CraftingSystem(this);
+        this.worldObjectSystem = new WorldObjectSystem(this);
         
         this.player = new Player(this, characterData);
         const spawnPos = this.world.getSpawnPosition();
@@ -110,6 +112,26 @@ export class Game {
         this.render();
     }
     
+    /**
+     * Advance game turns for actions that take time
+     * Used by systems like WorldObjectSystem for door interactions, crafting, etc.
+     * @param {number} turns - Number of turns to advance
+     */
+    advanceTurn(turns = 1) {
+        if (!this.isRunning) return;
+        
+        for (let i = 0; i < turns; i++) {
+            this.turnCount++;
+            this.player.processStatusEffects();
+            this.updateFoV();
+            this.world.processTurn();
+            this.soundSystem.processTurn();
+            this.checkGameOver();
+        }
+        
+        this.render();
+    }
+    
     updateFoV() {
         if (!this.fov) {
             console.error('FoV system not initialized!');
@@ -137,6 +159,37 @@ export class Game {
         this.inspectCursor.x += dx;
         this.inspectCursor.y += dy;
         this.render();
+    }
+    
+    interactWithWorldObject() {
+        // Check adjacent tiles (including current position) for world objects
+        const range = 1;
+        const candidates = [];
+        
+        for (let dy = -range; dy <= range; dy++) {
+            for (let dx = -range; dx <= range; dx++) {
+                const checkX = this.player.x + dx;
+                const checkY = this.player.y + dy;
+                const worldObject = this.world.getWorldObjectAt(checkX, checkY, this.player.z);
+                
+                if (worldObject) {
+                    const distance = Math.abs(dx) + Math.abs(dy); // Manhattan distance
+                    candidates.push({ object: worldObject, distance, dx, dy });
+                }
+            }
+        }
+        
+        if (candidates.length === 0) {
+            this.ui.log('Nothing to interact with nearby.', 'info');
+            return;
+        }
+        
+        // Sort by distance, prefer closest
+        candidates.sort((a, b) => a.distance - b.distance);
+        
+        // If multiple at same distance, could show selection UI, but for now just take first
+        const closest = candidates[0];
+        this.ui.showWorldObjectModal(closest.object);
     }
     
     checkGameOver() {

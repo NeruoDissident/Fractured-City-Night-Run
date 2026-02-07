@@ -59,10 +59,29 @@ export class InputHandler {
             return;
         }
         
+        if (e.key === 'e' || e.key === 'E') {
+            e.preventDefault();
+            if (this.game.gameState === 'playing' && !this.game.inspectMode) {
+                this.game.interactWithWorldObject();
+            }
+            return;
+        }
+        
         if (e.key === 'm' || e.key === 'M') {
             e.preventDefault();
             if (this.game.gameState === 'playing' && !this.game.inspectMode) {
                 this.game.processTurn({ type: 'cycle_movement' });
+            }
+            return;
+        }
+        
+        if (e.key === 'f' || e.key === 'F') {
+            e.preventDefault();
+            if (this.game.gameState === 'playing') {
+                this.game.player.exploreMode = !this.game.player.exploreMode;
+                const status = this.game.player.exploreMode ? 'ENABLED' : 'DISABLED';
+                const color = this.game.player.exploreMode ? 'success' : 'info';
+                this.game.ui.log(`Explore Mode ${status} (Hunger/Thirst frozen)`, color);
             }
             return;
         }
