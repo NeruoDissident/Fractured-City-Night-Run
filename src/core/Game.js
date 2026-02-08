@@ -10,6 +10,7 @@ import { CharacterCreationSystem } from '../systems/CharacterCreationSystem.js';
 import { ItemSystem } from '../systems/ItemSystem.js';
 import { CraftingSystem } from '../systems/CraftingSystem.js';
 import { WorldObjectSystem } from '../systems/WorldObjectSystem.js';
+import { MobileControls } from '../ui/MobileControls.js';
 
 export class Game {
     constructor() {
@@ -21,6 +22,7 @@ export class Game {
         this.player = null;
         this.fov = null;
         this.soundSystem = null;
+        this.mobileControls = null;
         
         this.isRunning = false;
         this.turnCount = 0;
@@ -44,6 +46,9 @@ export class Game {
         
         this.input = new InputHandler(this);
         this.input.init();
+        
+        this.mobileControls = new MobileControls(this);
+        this.mobileControls.init();
         
         this.ui.showCharacterCreation();
         
@@ -228,10 +233,14 @@ export class Game {
             }
             
             this.ui.updateCharacterPanel();
-            this.ui.updateInventoryPanel();
+            this.ui.updateMinimap();
             this.ui.updateInspectInfo(this.inspectCursor.x, this.inspectCursor.y);
         } else {
             this.ui.updatePanels();
+        }
+        
+        if (this.mobileControls) {
+            this.mobileControls.updateHUD();
         }
     }
 }

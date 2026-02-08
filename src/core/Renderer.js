@@ -25,13 +25,22 @@ export class Renderer {
         const availableWidth = mainView.clientWidth;
         const availableHeight = mainView.clientHeight;
         
+        // Detect mobile
+        const isMobile = window.matchMedia('(max-width: 1024px), (pointer: coarse)').matches;
+        
         // Calculate how many tiles can fit at base size (32px)
         const maxTilesX = Math.floor(availableWidth / this.tileSize);
         const maxTilesY = Math.floor(availableHeight / this.tileSize);
         
-        // Use slightly fewer tiles to leave some margin
-        this.tilesX = Math.max(30, maxTilesX - 2);
-        this.tilesY = Math.max(20, maxTilesY - 2);
+        if (isMobile) {
+            // On mobile, use fewer tiles so they remain readable
+            this.tilesX = Math.max(12, Math.min(maxTilesX, 20));
+            this.tilesY = Math.max(10, Math.min(maxTilesY, 16));
+        } else {
+            // Desktop: use slightly fewer tiles to leave some margin
+            this.tilesX = Math.max(30, maxTilesX - 2);
+            this.tilesY = Math.max(20, maxTilesY - 2);
+        }
         
         // Set canvas to actual pixel dimensions (32px tiles)
         this.canvas.width = this.tileSize * this.tilesX;

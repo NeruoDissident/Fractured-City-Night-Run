@@ -1,0 +1,22 @@
+{
+    "name": "Fractured City",
+    "short_name": "Fractured City",
+    "description": "A cyberpunk roguelike survival game",
+    "start_url": "/index.html",
+    "display": "standalone",
+    "orientation": "landscape",
+    "background_color": "#0a0a0a",
+    "theme_color": "#00ffff",
+    "icons": [
+        {
+            "src": "icons/icon-192.svg",
+            "sizes": "192x192",
+            "type": "image/svg+xml"
+        },
+        {
+            "src": "icons/icon-512.svg",
+            "sizes": "512x512",
+            "type": "image/svg+xml"
+        }
+    ]
+}

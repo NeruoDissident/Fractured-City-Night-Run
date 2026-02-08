@@ -246,6 +246,16 @@ export class Player extends Entity {
         return { success: false };
     }
     
+    cycleMovementMode() {
+        const modes = Object.keys(this.movementModes);
+        const currentIndex = modes.indexOf(this.movementMode);
+        const nextIndex = (currentIndex + 1) % modes.length;
+        this.movementMode = modes[nextIndex];
+        const mode = this.movementModes[this.movementMode];
+        this.game.ui.log(`Movement: ${mode.name}`, 'info');
+        return true;
+    }
+    
     tryMove(dx, dy) {
         const newX = this.x + dx;
         const newY = this.y + dy;

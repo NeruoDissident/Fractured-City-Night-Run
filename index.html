@@ -2,7 +2,11 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#0a0a0a">
+    <link rel="manifest" href="manifest.json">
     <title>Fractured City - Roguelike</title>
     <link rel="stylesheet" href="styles.css">
 </head>
@@ -23,9 +27,9 @@
                 <div id="character-content"></div>
             </div>
             
-            <div id="inventory-panel" class="panel">
-                <h3>Inventory</h3>
-                <div id="inventory-content"></div>
+            <div id="minimap-panel" class="panel">
+                <h3>Map</h3>
+                <canvas id="minimap-canvas"></canvas>
             </div>
             
             <div id="context-panel" class="panel">
@@ -36,6 +40,54 @@
             <div id="location-panel" class="panel">
                 <h3>Location</h3>
                 <div id="location-content"></div>
+            </div>
+        </div>
+        
+        <!-- Mobile Controls (hidden on desktop) -->
+        <div id="mobile-controls">
+            <div id="mobile-hud">
+                <span id="mobile-hp"></span>
+                <span id="mobile-status"></span>
+                <span id="mobile-zone"></span>
+            </div>
+            
+            <div id="mobile-bottom">
+                <div id="mobile-dpad">
+                    <button type="button" class="dpad-btn" id="dpad-up" data-dx="0" data-dy="-1">&#9650;</button>
+                    <div class="dpad-mid-row">
+                        <button type="button" class="dpad-btn" id="dpad-left" data-dx="-1" data-dy="0">&#9664;</button>
+                        <button type="button" class="dpad-btn dpad-center" id="dpad-wait" data-action="wait">&#9679;</button>
+                        <button type="button" class="dpad-btn" id="dpad-right" data-dx="1" data-dy="0">&#9654;</button>
+                    </div>
+                    <button type="button" class="dpad-btn" id="dpad-down" data-dx="0" data-dy="1">&#9660;</button>
+                </div>
+                
+                <div id="mobile-actions">
+                    <div class="action-row">
+                        <button type="button" class="action-btn" id="btn-interact" data-action="interact">ACT</button>
+                        <button type="button" class="action-btn" id="btn-inspect" data-action="inspect">LOOK</button>
+                        <button type="button" class="action-btn" id="btn-inventory" data-action="inventory">INV</button>
+                        <button type="button" class="action-btn" id="btn-character" data-action="character">CHAR</button>
+                    </div>
+                    <div class="action-row">
+                        <button type="button" class="action-btn" id="btn-move-mode" data-action="move_mode">MODE</button>
+                        <button type="button" class="action-btn" id="btn-ascend" data-action="ascend">&#9650;Z</button>
+                        <button type="button" class="action-btn" id="btn-descend" data-action="descend">&#9660;Z</button>
+                        <button type="button" class="action-btn" id="btn-craft" data-action="craft">CRAFT</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="mobile-panel-tabs">
+                <button class="panel-tab active" data-panel="log-panel">LOG</button>
+                <button class="panel-tab" data-panel="character-panel">CHAR</button>
+                <button class="panel-tab" data-panel="minimap-panel">MAP</button>
+                <button class="panel-tab" data-panel="context-panel">INFO</button>
+                <button class="panel-tab" data-panel="location-panel">LOC</button>
+            </div>
+            
+            <div id="mobile-panel-drawer" class="hidden">
+                <div id="mobile-panel-content"></div>
             </div>
         </div>
     </div>
@@ -72,5 +124,10 @@
     </div>
     
     <script type="module" src="src/main.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js').catch(() => {});
+        }
+    </script>
 </body>
 </html>

@@ -36,9 +36,13 @@ export class UIManager {
     init() {
         this.logPanel = document.getElementById('log-content');
         this.characterPanel = document.getElementById('character-content');
-        this.inventoryPanel = document.getElementById('inventory-content');
         this.contextPanel = document.getElementById('context-content');
         this.locationPanel = document.getElementById('location-content');
+        
+        this.minimapCanvas = document.getElementById('minimap-canvas');
+        if (this.minimapCanvas) {
+            this.minimapCtx = this.minimapCanvas.getContext('2d');
+        }
         
         this.detailedCharacterModal = document.getElementById('detailed-character');
         this.detailedInventoryModal = document.getElementById('detailed-inventory');
@@ -83,9 +87,9 @@ export class UIManager {
     
     updatePanels() {
         this.updateCharacterPanel();
-        this.updateInventoryPanel();
         this.updateContextPanel();
         this.updateLocationPanel();
+        this.updateMinimap();
     }
     
     updateCharacterPanel() {
@@ -121,22 +125,122 @@ export class UIManager {
         this.characterPanel.innerHTML = html;
     }
     
-    updateInventoryPanel() {
-        if (!this.inventoryPanel || !this.game.player) return;
+    updateMinimap() {
+        if (!this.minimapCanvas || !this.minimapCtx || !this.game.player || !this.game.fov) return;
         
+        const ctx = this.minimapCtx;
         const player = this.game.player;
+        const world = this.game.world;
+        const fov = this.game.fov;
         
-        let html = '';
+        const RADIUS = 64;
+        const TILE_PX = 2;
+        const mapSize = RADIUS * 2 + 1;
+        const canvasSize = mapSize * TILE_PX;
         
-        if (player.inventory.length === 0) {
-            html += '<div style="color: #666;">Empty</div>';
-        } else {
-            for (const item of player.inventory) {
-                html += `<div style="color: ${item.color};">${item.name}</div>`;
+        // Set canvas internal resolution
+        if (this.minimapCanvas.width !== canvasSize || this.minimapCanvas.height !== canvasSize) {
+            this.minimapCanvas.width = canvasSize;
+            this.minimapCanvas.height = canvasSize;
+        }
+        
+        // Clear
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, canvasSize, canvasSize);
+        
+        const z = player.z;
+        const startX = player.x - RADIUS;
+        const startY = player.y - RADIUS;
+        
+        // Tile color lookup
+        const getColor = (tile, visible) => {
+            const dim = visible ? 1.0 : 0.4;
+            let r = 0, g = 0, b = 0;
+            
+            if (tile.name === 'Wall' || tile.name === 'Interior Wall') {
+                r = 80; g = 80; b = 80;
+            } else if (tile.name === 'Floor') {
+                r = 60; g = 50; b = 40;
+            } else if (tile.name === 'Road') {
+                r = 50; g = 50; b = 55;
+            } else if (tile.name === 'Sidewalk') {
+                r = 70; g = 70; b = 65;
+            } else if (tile.name === 'Grass') {
+                r = 30; g = 60; b = 20;
+            } else if (tile.name === 'Dirt') {
+                r = 70; g = 55; b = 35;
+            } else if (tile.isStaircase || tile.isManhole || tile.isLadder) {
+                r = 0; g = 200; b = 200;
+            } else if (tile.blocked) {
+                r = 60; g = 60; b = 60;
+            } else {
+                r = 40; g = 40; b = 35;
+            }
+            
+            // Room-tagged tiles get a subtle tint
+            if (tile.roomType) {
+                r = Math.min(255, r + 15);
+                g = Math.min(255, g + 10);
+            }
+            
+            r = Math.round(r * dim);
+            g = Math.round(g * dim);
+            b = Math.round(b * dim);
+            return `rgb(${r},${g},${b})`;
+        };
+        
+        // Draw explored tiles
+        for (let dy = 0; dy < mapSize; dy++) {
+            for (let dx = 0; dx < mapSize; dx++) {
+                const wx = startX + dx;
+                const wy = startY + dy;
+                const key = `${wx},${wy},${z}`;
+                
+                if (fov.exploredTiles.has(key)) {
+                    const tile = world.getTile(wx, wy, z);
+                    const visible = fov.visibleTiles.has(key);
+                    ctx.fillStyle = getColor(tile, visible);
+                    ctx.fillRect(dx * TILE_PX, dy * TILE_PX, TILE_PX, TILE_PX);
+                }
             }
         }
         
-        this.inventoryPanel.innerHTML = html;
+        // Draw entities (NPCs) in visible range
+        if (world.entities) {
+            for (const entity of world.entities) {
+                if (entity === player) continue;
+                if (entity.z !== z) continue;
+                const ex = entity.x - startX;
+                const ey = entity.y - startY;
+                if (ex >= 0 && ex < mapSize && ey >= 0 && ey < mapSize) {
+                    if (fov.visibleTiles.has(`${entity.x},${entity.y},${z}`)) {
+                        ctx.fillStyle = '#ff4444';
+                        ctx.fillRect(ex * TILE_PX, ey * TILE_PX, TILE_PX, TILE_PX);
+                    }
+                }
+            }
+        }
+        
+        // Draw items in visible range
+        if (world.items) {
+            for (const item of world.items) {
+                if (item.z !== undefined && item.z !== z) continue;
+                const ix = item.x - startX;
+                const iy = item.y - startY;
+                if (ix >= 0 && ix < mapSize && iy >= 0 && iy < mapSize) {
+                    if (fov.visibleTiles.has(`${item.x},${item.y},${z}`)) {
+                        ctx.fillStyle = '#ffcc00';
+                        ctx.fillRect(ix * TILE_PX, iy * TILE_PX, TILE_PX, TILE_PX);
+                    }
+                }
+            }
+        }
+        
+        // Draw player (bright white, 3x3 for visibility)
+        const px = RADIUS * TILE_PX;
+        const py = RADIUS * TILE_PX;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(px - 1, py - 1, TILE_PX + 2, TILE_PX + 2);
     }
     
     updateContextPanel() {
