@@ -14,7 +14,13 @@ export function showWorldObjectModal(uiManager, worldObject) {
     html += `<button id="close-world-object" class="small-btn" style="margin-bottom: 15px;">← Back</button>`;
     
     // Object header with icon
-    const icon = worldObject.type === 'door' ? '🚪' : '📦';
+    const furnitureIcons = {
+        cabinet: '🗄', dresser: '🗄', shelf: '📚', locker: '🔒', crate: '📦',
+        filing_cabinet: '🗄', table: '🪑', chair: '🪑', couch: '🛋', bed: '🛏',
+        sink: '🚰', counter: '🗄', stove: '🔥', toilet: '🚽', shower: '🚿',
+        workbench: '🔨'
+    };
+    const icon = worldObject.type === 'door' ? '🚪' : (furnitureIcons[worldObject.furnitureType] || '📦');
     html += `<h3 style="color: #ff8800; margin-bottom: 15px;">${icon} ${worldObject.name}</h3>`;
     
     // Object status
@@ -105,6 +111,12 @@ function getActionInfo(action, worldObject, player, game) {
             description: 'Knock on the door (1 turn, makes noise)',
             available: !worldObject.state.open
         },
+        search: {
+            name: 'Search',
+            icon: '🔍',
+            description: 'Search for items inside (1 turn)',
+            available: worldObject.isContainer === true
+        },
         smash: {
             name: 'Smash',
             icon: '💥',
@@ -116,7 +128,7 @@ function getActionInfo(action, worldObject, player, game) {
             name: 'Disassemble',
             icon: '🔧',
             description: `Carefully remove (${worldObject.dropTable?.disassembleTool || 'tool'} required, 5-10 turns)`,
-            available: worldObject.state.open,
+            available: worldObject.type === 'door' ? worldObject.state.open : true,
             requirement: !hasTool(player, worldObject.dropTable?.disassembleTool) ? `Requires ${worldObject.dropTable?.disassembleTool}` : null
         },
         lockpick: {
@@ -221,6 +233,13 @@ function handleWorldObjectAction(uiManager, worldObject, action) {
         game.render();
         game.ui.updatePanels();
         
+        // Special handling for search - show transfer UI
+        if (result.showContents && result.worldObject) {
+            game.ui.log(result.message, 'info');
+            showFurnitureContentsModal(uiManager, result.worldObject);
+            return;
+        }
+        
         // Show success feedback in modal
         const content = document.getElementById('detailed-inventory-content');
         
@@ -280,4 +299,154 @@ function handleWorldObjectAction(uiManager, worldObject, action) {
             });
         }
     }
+}
+
+/**
+ * Show furniture contents modal - transfer UI for storage furniture
+ */
+export function showFurnitureContentsModal(uiManager, furniture) {
+    const game = uiManager.game;
+    const player = game.player;
+    const content = document.getElementById('detailed-inventory-content');
+    
+    const furnitureIcons = {
+        cabinet: '🗄', dresser: '🗄', shelf: '📚', locker: '🔒', crate: '📦',
+        filing_cabinet: '🗄', counter: '🗄', workbench: '🔨'
+    };
+    const icon = furnitureIcons[furniture.furnitureType] || '📦';
+    
+    let html = '<div style="padding: 15px;">';
+    html += `<button id="close-furniture-contents" class="small-btn" style="margin-bottom: 10px;">← Close</button>`;
+    html += `<h3 style="color: #ff8800; margin-bottom: 10px;">${icon} ${furniture.name}</h3>`;
+    
+    // Furniture contents section
+    html += `<div style="padding: 10px; background: #1a1a1a; border: 2px solid #ff8800; margin-bottom: 10px; max-height: 35vh; overflow-y: auto;">`;
+    html += `<h4 style="color: #ff8800; margin-bottom: 8px;">Contents</h4>`;
+    
+    if (furniture.pockets) {
+        let hasItems = false;
+        for (let pi = 0; pi < furniture.pockets.length; pi++) {
+            const pocket = furniture.pockets[pi];
+            if (pocket.contents && pocket.contents.length > 0) {
+                hasItems = true;
+                html += `<div style="color: #888; font-size: 12px; margin-bottom: 4px;">${pocket.name}:</div>`;
+                for (let ii = 0; ii < pocket.contents.length; ii++) {
+                    const item = pocket.contents[ii];
+                    html += `<button class="small-btn" data-take-pocket="${pi}" data-take-item="${ii}" style="width: 100%; margin-bottom: 4px; text-align: left; padding: 6px 8px;">`;
+                    html += `<span style="color: ${item.color || '#fff'};">${item.glyph || '*'} ${item.name}</span>`;
+                    if (item.weight) {
+                        const w = item.weight >= 1000 ? `${(item.weight/1000).toFixed(1)}kg` : `${item.weight}g`;
+                        html += `<span style="color: #666; font-size: 11px; float: right;">${w}</span>`;
+                    }
+                    html += `</button>`;
+                }
+            }
+        }
+        if (!hasItems) {
+            html += `<div style="color: #555; font-style: italic;">Empty</div>`;
+        }
+    }
+    html += `</div>`;
+    
+    // Player inventory section - items that can be stored
+    html += `<div style="padding: 10px; background: #1a1a1a; border: 2px solid #4488ff; max-height: 25vh; overflow-y: auto;">`;
+    html += `<h4 style="color: #4488ff; margin-bottom: 8px;">Your Items (tap to store)</h4>`;
+    
+    const storedItems = player.containerSystem.getAllStoredItems(player);
+    if (storedItems.length > 0) {
+        for (let si = 0; si < storedItems.length; si++) {
+            const stored = storedItems[si];
+            const item = stored.item;
+            html += `<button class="small-btn" data-store-index="${si}" style="width: 100%; margin-bottom: 4px; text-align: left; padding: 6px 8px;">`;
+            html += `<span style="color: ${item.color || '#fff'};">${item.glyph || '*'} ${item.name}</span>`;
+            html += `<span style="color: #555; font-size: 11px; float: right;">${stored.location}</span>`;
+            html += `</button>`;
+        }
+    } else {
+        html += `<div style="color: #555; font-style: italic;">No items to store</div>`;
+    }
+    html += `</div>`;
+    
+    html += '</div>';
+    content.innerHTML = html;
+    
+    // Show modal
+    uiManager.detailedInventoryModal.classList.remove('hidden');
+    
+    // Close button
+    document.getElementById('close-furniture-contents')?.addEventListener('click', () => {
+        uiManager.detailedInventoryModal.classList.add('hidden');
+        uiManager.worldObjectContext = null;
+    });
+    
+    // Store furniture reference for back-navigation from actions modal
+    uiManager.furnitureContext = furniture;
+    
+    // Take item buttons - open actions modal for the item
+    const takeButtons = document.querySelectorAll('button[data-take-pocket]');
+    takeButtons.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const pocketIndex = parseInt(btn.dataset.takePocket);
+            const itemIndex = parseInt(btn.dataset.takeItem);
+            
+            const pocket = furniture.pockets[pocketIndex];
+            if (!pocket || !pocket.contents || !pocket.contents[itemIndex]) return;
+            
+            const item = pocket.contents[itemIndex];
+            
+            // Open the standard item actions modal with furniture source
+            uiManager.showActionsModal(item, 'actions-furniture', { 
+                furnitureId: furniture.id, 
+                pocketIndex, 
+                itemIndex 
+            });
+        });
+    });
+    
+    // Store item buttons
+    const storeButtons = document.querySelectorAll('button[data-store-index]');
+    storeButtons.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const storeIndex = parseInt(btn.dataset.storeIndex);
+            
+            const storedItems = player.containerSystem.getAllStoredItems(player);
+            const stored = storedItems[storeIndex];
+            if (!stored) return;
+            
+            const item = stored.item;
+            
+            // Find a pocket in furniture with space
+            let placed = false;
+            for (const pocket of furniture.pockets) {
+                const currentWeight = (pocket.contents || []).reduce((sum, i) => sum + (i.weight || 100), 0);
+                const currentVolume = (pocket.contents || []).reduce((sum, i) => sum + (i.volume || 100), 0);
+                const itemWeight = item.weight || 100;
+                const itemVolume = item.volume || 100;
+                
+                if (currentWeight + itemWeight <= pocket.maxWeight && currentVolume + itemVolume <= pocket.maxVolume) {
+                    // Remove from player
+                    player.containerSystem.removeItem(stored.container, item, stored.pocketIndex);
+                    const invIndex = player.inventory.indexOf(item);
+                    if (invIndex !== -1) player.inventory.splice(invIndex, 1);
+                    
+                    // Add to furniture
+                    if (!pocket.contents) pocket.contents = [];
+                    pocket.contents.push(item);
+                    
+                    game.ui.log(`Stored ${item.name} in ${furniture.name}.`, 'info');
+                    placed = true;
+                    break;
+                }
+            }
+            
+            if (!placed) {
+                game.ui.log(`${furniture.name} is full.`, 'warning');
+            }
+            
+            // Refresh the modal
+            showFurnitureContentsModal(uiManager, furniture);
+        });
+    });
 }

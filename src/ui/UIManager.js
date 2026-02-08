@@ -1,6 +1,6 @@
 import { showDisassembleModal } from './DisassembleModal.js';
 import { showCraftingUI } from './CraftingUI.js';
-import { showWorldObjectModal } from './WorldObjectModal.js';
+import { showWorldObjectModal, showFurnitureContentsModal } from './WorldObjectModal.js';
 
 export class UIManager {
     constructor(game) {
@@ -1573,6 +1573,11 @@ export class UIManager {
         } else if (sourceType === 'ground') {
             const groundItems = this.game.world.getItemsAt(player.x, player.y, player.z);
             item = groundItems[sourceData.index];
+        } else if (sourceType === 'furniture') {
+            const furniture = this.game.world.worldObjects.find(o => o.id === sourceData.furnitureId);
+            if (furniture && furniture.pockets && furniture.pockets[sourceData.pocketIndex]) {
+                item = furniture.pockets[sourceData.pocketIndex].contents[sourceData.itemIndex];
+            }
         } else if (sourceType === 'pocket') {
             // Find the container and get the item from the pocket
             const container = player.inventory.find(i => i.id === sourceData.containerId) || 
@@ -1747,6 +1752,11 @@ export class UIManager {
             delete item.carriedIn;
         } else if (sourceType === 'ground') {
             this.game.world.removeItem(item);
+        } else if (sourceType === 'furniture') {
+            const furniture = this.game.world.worldObjects.find(o => o.id === sourceData.furnitureId);
+            if (furniture && furniture.pockets && furniture.pockets[sourceData.pocketIndex]) {
+                furniture.pockets[sourceData.pocketIndex].contents.splice(sourceData.itemIndex, 1);
+            }
         } else if (sourceType === 'pocket') {
             // Remove from pocket contents
             const container = player.inventory.find(i => i.id === sourceData.containerId) || 
@@ -2261,6 +2271,56 @@ export class UIManager {
         });
     }
     
+    showGroundItemsModal() {
+        const player = this.game.player;
+        const containerSys = player.containerSystem;
+        const content = document.getElementById('detailed-inventory-content');
+        const groundItems = this.game.world.getItemsAt(player.x, player.y, player.z);
+        
+        let html = '<div style="padding: 15px;">';
+        html += `<button id="close-ground-modal" class="small-btn" style="margin-bottom: 10px;">← Close</button>`;
+        html += `<h3 style="color: #00ffff; margin-bottom: 10px;">Items on Ground</h3>`;
+        
+        html += `<div style="padding: 10px; background: #1a1a1a; border: 2px solid #00ffff; max-height: 60vh; overflow-y: auto;">`;
+        
+        if (groundItems.length === 0) {
+            html += `<div style="color: #555; font-style: italic;">Nothing here.</div>`;
+        } else {
+            for (let i = 0; i < groundItems.length; i++) {
+                const item = groundItems[i];
+                const itemWeight = containerSys.getItemWeight(item);
+                const w = itemWeight >= 1000 ? `${(itemWeight/1000).toFixed(1)}kg` : `${itemWeight}g`;
+                html += `<button class="small-btn" data-ground-interact="${i}" style="width: 100%; margin-bottom: 4px; text-align: left; padding: 8px;">`;
+                html += `<span style="color: ${item.color || '#fff'};">${item.glyph || '*'} ${item.name}</span>`;
+                html += `<span style="color: #666; font-size: 11px; float: right;">${w}</span>`;
+                html += `</button>`;
+            }
+        }
+        
+        html += `</div>`;
+        html += '</div>';
+        
+        content.innerHTML = html;
+        this.detailedInventoryModal.classList.remove('hidden');
+        
+        document.getElementById('close-ground-modal')?.addEventListener('click', () => {
+            this.detailedInventoryModal.classList.add('hidden');
+        });
+        
+        const itemButtons = document.querySelectorAll('button[data-ground-interact]');
+        itemButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const index = parseInt(btn.dataset.groundInteract);
+                const items = this.game.world.getItemsAt(player.x, player.y, player.z);
+                const item = items[index];
+                if (item) {
+                    this.showActionsModal(item, 'actions-ground-interact', { index });
+                }
+            });
+        });
+    }
+    
     showActionsModal(item, sourceType, sourceData) {
         const player = this.game.player;
         const content = document.getElementById('detailed-inventory-content');
@@ -2352,7 +2412,15 @@ export class UIManager {
         
         // Attach event listeners
         document.getElementById('close-actions-modal')?.addEventListener('click', () => {
-            this.showDetailedInventory();
+            if (sourceType === 'actions-furniture' && this.furnitureContext) {
+                // Go back to furniture contents modal
+                showFurnitureContentsModal(this, this.furnitureContext);
+            } else if (sourceType === 'actions-ground-interact') {
+                // Go back to ground items modal
+                this.showGroundItemsModal();
+            } else {
+                this.showDetailedInventory();
+            }
         });
         
         const actionButtons = document.querySelectorAll('button[data-item-action]');
@@ -2377,6 +2445,8 @@ export class UIManager {
             let moveSourceType = sourceType.replace('actions-', '');
             if (moveSourceType === 'pocket-item') moveSourceType = 'pocket';
             if (moveSourceType === 'container-item') moveSourceType = 'container-item';
+            if (moveSourceType === 'furniture') moveSourceType = 'furniture';
+            if (moveSourceType === 'ground-interact') moveSourceType = 'ground';
             this.showMoveModal(moveSourceType, sourceData);
         } else if (action === 'drop') {
             this.handleDropAction(item, sourceType, sourceData);
@@ -2422,8 +2492,13 @@ export class UIManager {
                 player.carrying[sourceData.hand + 'Hand'] = null;
             }
             delete item.carriedIn;
-        } else if (sourceType === 'actions-ground') {
+        } else if (sourceType === 'actions-ground' || sourceType === 'actions-ground-interact') {
             this.game.world.removeItem(item);
+        } else if (sourceType === 'actions-furniture') {
+            const furniture = this.game.world.worldObjects.find(o => o.id === sourceData.furnitureId);
+            if (furniture && furniture.pockets && furniture.pockets[sourceData.pocketIndex]) {
+                furniture.pockets[sourceData.pocketIndex].contents.splice(sourceData.itemIndex, 1);
+            }
         } else if (sourceType === 'actions-pocket-item') {
             const container = player.inventory.find(i => i.id === sourceData.containerId) || 
                             player.equipment.head?.id === sourceData.containerId ? player.equipment.head :
@@ -2499,8 +2574,13 @@ export class UIManager {
                     const invIndex = player.inventory.indexOf(item);
                     if (invIndex !== -1) player.inventory.splice(invIndex, 1);
                 }
-            } else if (sourceType === 'actions-ground') {
+            } else if (sourceType === 'actions-ground' || sourceType === 'actions-ground-interact') {
                 this.game.world.removeItem(item);
+            } else if (sourceType === 'actions-furniture') {
+                const furniture = this.game.world.worldObjects.find(o => o.id === sourceData.furnitureId);
+                if (furniture && furniture.pockets && furniture.pockets[sourceData.pocketIndex]) {
+                    furniture.pockets[sourceData.pocketIndex].contents.splice(sourceData.itemIndex, 1);
+                }
             } else if (sourceType === 'actions-pocket-item') {
                 const container = player.inventory.find(i => i.id === sourceData.containerId) || 
                                 player.equipment.head?.id === sourceData.containerId ? player.equipment.head :
@@ -2688,8 +2768,13 @@ export class UIManager {
                 const invIndex = player.inventory.indexOf(item);
                 if (invIndex !== -1) player.inventory.splice(invIndex, 1);
             }
-        } else if (sourceType === 'actions-ground') {
+        } else if (sourceType === 'actions-ground' || sourceType === 'actions-ground-interact') {
             this.game.world.removeItem(item);
+        } else if (sourceType === 'actions-furniture') {
+            const furniture = this.game.world.worldObjects.find(o => o.id === sourceData.furnitureId);
+            if (furniture && furniture.pockets && furniture.pockets[sourceData.pocketIndex]) {
+                furniture.pockets[sourceData.pocketIndex].contents.splice(sourceData.itemIndex, 1);
+            }
         } else if (sourceType === 'actions-pocket-item') {
             const container = player.inventory.find(i => i.id === sourceData.containerId) || 
                             player.equipment.head?.id === sourceData.containerId ? player.equipment.head :

@@ -1,4 +1,5 @@
 import { createDoor } from './objects/Door.js';
+import { createFurniture, populateFurniture } from './objects/Furniture.js';
 import { findMatchingPrefab, BIOME_DOOR_TYPES } from '../content/BuildingPrefabs.js';
 import { ROOM_LOOT_TABLES, OUTDOOR_LOOT, rollLootPool, generateRoomLoot } from '../content/LootTables.js';
 
@@ -1388,6 +1389,50 @@ export class Chunk {
                         }
                     }
                 }
+            }
+        }
+        
+        // Spawn furniture from prefab data
+        if (prefab.furnitureSpawns && this.world && this.world.addWorldObject) {
+            let furnitureCount = 0;
+            for (const spawn of prefab.furnitureSpawns) {
+                const tileX = x + spawn.x;
+                const tileY = y + spawn.y;
+                const tile = this.getTile(tileX, tileY, 0);
+                
+                // Only place on floor tiles that don't already have a world object
+                if (!tile || tile.worldObjectId) continue;
+                if (tile.name !== 'Floor') continue;
+                
+                const worldX = this.cx * this.size + tileX;
+                const worldY = this.cy * this.size + tileY;
+                
+                try {
+                    const furniture = createFurniture(spawn.type, worldX, worldY, 0);
+                    
+                    // Populate storage furniture with items based on room type
+                    if (furniture.isContainer && tile.roomType && this.world.game && this.world.game.content) {
+                        populateFurniture(furniture, tile.roomType, this.world.game.content);
+                    }
+                    
+                    this.world.addWorldObject(furniture);
+                    this.setTile(tileX, tileY, {
+                        glyph: furniture.glyph,
+                        fgColor: furniture.fgColor,
+                        bgColor: furniture.bgColor || '#3a3a3a',
+                        blocked: furniture.blocked,
+                        blocksVision: furniture.blocksVision,
+                        name: furniture.name,
+                        worldObjectId: furniture.id,
+                        roomType: tile.roomType
+                    }, 0);
+                    furnitureCount++;
+                } catch (error) {
+                    console.error(`Error creating furniture ${spawn.type} at ${tileX},${tileY}:`, error);
+                }
+            }
+            if (furnitureCount > 0) {
+                console.log(`    Placed ${furnitureCount} furniture pieces in ${prefab.name}`);
             }
         }
     }

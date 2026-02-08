@@ -50,6 +50,16 @@ export const BUILDING_PREFABS = {
             { x: 5, y: 1, w: 4, h: 3, type: 'residential_kitchen' },
             { x: 1, y: 4, w: 8, h: 3, type: 'residential_living' }
         ],
+        furnitureSpawns: [
+            { type: 'toilet', x: 1, y: 1 },
+            { type: 'sink', x: 2, y: 1 },
+            { type: 'counter', x: 5, y: 1 },
+            { type: 'stove', x: 7, y: 1 },
+            { type: 'cabinet', x: 8, y: 1 },
+            { type: 'couch', x: 2, y: 5 },
+            { type: 'table', x: 5, y: 5 },
+            { type: 'shelf', x: 7, y: 6 }
+        ],
         features: {
             hasUpstairs: false,
             hasBasement: false,
@@ -82,6 +92,18 @@ export const BUILDING_PREFABS = {
         lootZones: [
             { x: 1, y: 1, w: 10, h: 5, type: 'commercial_store' },
             { x: 1, y: 7, w: 10, h: 2, type: 'commercial_backroom' }
+        ],
+        furnitureSpawns: [
+            { type: 'shelf', x: 1, y: 1 },
+            { type: 'shelf', x: 1, y: 2 },
+            { type: 'shelf', x: 1, y: 3 },
+            { type: 'shelf', x: 5, y: 1 },
+            { type: 'shelf', x: 5, y: 2 },
+            { type: 'shelf', x: 5, y: 3 },
+            { type: 'counter', x: 8, y: 5 },
+            { type: 'shelf', x: 1, y: 7 },
+            { type: 'crate', x: 5, y: 7 },
+            { type: 'crate', x: 8, y: 8 }
         ],
         features: {
             hasUpstairs: false,
@@ -125,6 +147,22 @@ export const BUILDING_PREFABS = {
             { x: 1, y: 10, w: 4, h: 3, type: 'residential_bathroom' },
             { x: 6, y: 10, w: 9, h: 3, type: 'residential_kitchen' }
         ],
+        furnitureSpawns: [
+            { type: 'bed', x: 1, y: 1 },
+            { type: 'dresser', x: 4, y: 1 },
+            { type: 'bed', x: 8, y: 1 },
+            { type: 'dresser', x: 12, y: 1 },
+            { type: 'couch', x: 3, y: 7 },
+            { type: 'table', x: 6, y: 7 },
+            { type: 'shelf', x: 10, y: 6 },
+            { type: 'cabinet', x: 13, y: 6 },
+            { type: 'toilet', x: 1, y: 11 },
+            { type: 'sink', x: 2, y: 11 },
+            { type: 'counter', x: 6, y: 11 },
+            { type: 'stove', x: 8, y: 11 },
+            { type: 'cabinet', x: 10, y: 10 },
+            { type: 'cabinet', x: 13, y: 10 }
+        ],
         features: {
             hasUpstairs: false,
             hasBasement: false,
@@ -163,6 +201,18 @@ export const BUILDING_PREFABS = {
             { x: 1, y: 5, w: 12, h: 4, type: 'office_reception' },
             { x: 1, y: 10, w: 12, h: 3, type: 'office' }
         ],
+        furnitureSpawns: [
+            { type: 'table', x: 3, y: 1 },
+            { type: 'chair', x: 4, y: 2 },
+            { type: 'filing_cabinet', x: 10, y: 1 },
+            { type: 'table', x: 5, y: 6 },
+            { type: 'chair', x: 6, y: 7 },
+            { type: 'chair', x: 3, y: 6 },
+            { type: 'filing_cabinet', x: 1, y: 5 },
+            { type: 'table', x: 3, y: 11 },
+            { type: 'chair', x: 4, y: 11 },
+            { type: 'filing_cabinet', x: 10, y: 10 }
+        ],
         features: {
             hasUpstairs: true,
             hasBasement: false,
@@ -196,6 +246,17 @@ export const BUILDING_PREFABS = {
             { x: 1, y: 1, w: 8, h: 4, type: 'medical_store' },
             { x: 1, y: 6, w: 8, h: 3, type: 'medical_storage' }
         ],
+        furnitureSpawns: [
+            { type: 'shelf', x: 1, y: 1 },
+            { type: 'shelf', x: 1, y: 2 },
+            { type: 'shelf', x: 4, y: 1 },
+            { type: 'shelf', x: 4, y: 2 },
+            { type: 'counter', x: 7, y: 4 },
+            { type: 'cabinet', x: 1, y: 6 },
+            { type: 'cabinet', x: 3, y: 6 },
+            { type: 'shelf', x: 6, y: 7 },
+            { type: 'cabinet', x: 8, y: 7 }
+        ],
         features: {
             hasUpstairs: false,
             hasBasement: false,
@@ -228,6 +289,14 @@ export const BUILDING_PREFABS = {
         lootZones: [
             { x: 1, y: 1, w: 10, h: 6, type: 'garage_bay' },
             { x: 4, y: 7, w: 7, h: 2, type: 'garage_tools' }
+        ],
+        furnitureSpawns: [
+            { type: 'workbench', x: 1, y: 1 },
+            { type: 'locker', x: 9, y: 1 },
+            { type: 'crate', x: 5, y: 3 },
+            { type: 'shelf', x: 4, y: 8 },
+            { type: 'workbench', x: 7, y: 8 },
+            { type: 'locker', x: 10, y: 8 }
         ],
         features: {
             hasUpstairs: false,
@@ -268,6 +337,22 @@ export const BUILDING_PREFABS = {
             { x: 7, y: 6, w: 8, h: 3, type: 'medical_exam' },
             { x: 1, y: 10, w: 5, h: 3, type: 'medical_storage' },
             { x: 7, y: 10, w: 8, h: 3, type: 'medical_exam' }
+        ],
+        furnitureSpawns: [
+            { type: 'chair', x: 2, y: 1 },
+            { type: 'chair', x: 4, y: 1 },
+            { type: 'chair', x: 6, y: 1 },
+            { type: 'counter', x: 12, y: 1 },
+            { type: 'cabinet', x: 14, y: 1 },
+            { type: 'table', x: 2, y: 7 },
+            { type: 'cabinet', x: 4, y: 6 },
+            { type: 'table', x: 9, y: 7 },
+            { type: 'cabinet', x: 12, y: 6 },
+            { type: 'cabinet', x: 1, y: 11 },
+            { type: 'shelf', x: 3, y: 11 },
+            { type: 'cabinet', x: 4, y: 10 },
+            { type: 'table', x: 9, y: 11 },
+            { type: 'cabinet', x: 12, y: 10 }
         ],
         features: {
             hasUpstairs: false,
@@ -317,6 +402,27 @@ export const BUILDING_PREFABS = {
             { x: 1, y: 16, w: 6, h: 3, type: 'office' },
             { x: 8, y: 16, w: 11, h: 3, type: 'warehouse_storage' }
         ],
+        furnitureSpawns: [
+            { type: 'crate', x: 3, y: 2 },
+            { type: 'crate', x: 5, y: 2 },
+            { type: 'crate', x: 3, y: 5 },
+            { type: 'crate', x: 10, y: 3 },
+            { type: 'crate', x: 14, y: 3 },
+            { type: 'shelf', x: 16, y: 5 },
+            { type: 'shelf', x: 16, y: 7 },
+            { type: 'crate', x: 10, y: 8 },
+            { type: 'table', x: 2, y: 13 },
+            { type: 'filing_cabinet', x: 5, y: 13 },
+            { type: 'shelf', x: 8, y: 13 },
+            { type: 'crate', x: 12, y: 13 },
+            { type: 'crate', x: 16, y: 13 },
+            { type: 'table', x: 2, y: 17 },
+            { type: 'chair', x: 3, y: 17 },
+            { type: 'filing_cabinet', x: 5, y: 16 },
+            { type: 'shelf', x: 8, y: 17 },
+            { type: 'crate', x: 12, y: 17 },
+            { type: 'crate', x: 16, y: 17 }
+        ],
         features: {
             hasUpstairs: false,
             hasBasement: true,
@@ -363,6 +469,32 @@ export const BUILDING_PREFABS = {
             { x: 1, y: 15, w: 8, h: 2, type: 'residential_bathroom' },
             { x: 10, y: 15, w: 9, h: 2, type: 'residential_bathroom' }
         ],
+        furnitureSpawns: [
+            { type: 'bed', x: 1, y: 1 },
+            { type: 'dresser', x: 5, y: 1 },
+            { type: 'cabinet', x: 7, y: 2 },
+            { type: 'bed', x: 10, y: 1 },
+            { type: 'dresser', x: 15, y: 1 },
+            { type: 'cabinet', x: 17, y: 2 },
+            { type: 'couch', x: 4, y: 7 },
+            { type: 'table', x: 8, y: 7 },
+            { type: 'shelf', x: 14, y: 6 },
+            { type: 'cabinet', x: 17, y: 6 },
+            { type: 'counter', x: 1, y: 11 },
+            { type: 'stove', x: 3, y: 11 },
+            { type: 'cabinet', x: 5, y: 10 },
+            { type: 'sink', x: 7, y: 10 },
+            { type: 'counter', x: 10, y: 11 },
+            { type: 'stove', x: 13, y: 11 },
+            { type: 'cabinet', x: 15, y: 10 },
+            { type: 'sink', x: 17, y: 10 },
+            { type: 'toilet', x: 1, y: 15 },
+            { type: 'sink', x: 3, y: 15 },
+            { type: 'shower', x: 6, y: 15 },
+            { type: 'toilet', x: 10, y: 15 },
+            { type: 'sink', x: 13, y: 15 },
+            { type: 'shower', x: 16, y: 15 }
+        ],
         features: {
             hasUpstairs: true,
             hasBasement: true,
@@ -392,14 +524,9 @@ export function getPrefabsByCluster(clusterType) {
 }
 
 // Get a matching prefab for the given size range, biome, and door side
-// doorSide: 0=top, 1=right, 2=bottom, 3=left (which side the door should face)
-// Currently all prefabs have doors on bottom, so we only match when doorSide=2
-// Future: add rotation support or prefabs with doors on other sides
+// doorSide param kept for API compatibility but no longer restricts matching
+// All prefabs have doors on bottom row - player walks around to find entrance
 export function findMatchingPrefab(width, height, biome, doorSide = 2) {
-    // Only use prefabs when door should be on bottom (building below road)
-    // This avoids blocked doors from misaligned orientation
-    if (doorSide !== 2) return null;
-    
     const candidates = Object.values(BUILDING_PREFABS).filter(prefab => {
         // Check biome match
         if (!prefab.biomes.includes(biome)) return false;

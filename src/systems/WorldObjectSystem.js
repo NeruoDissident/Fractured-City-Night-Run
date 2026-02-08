@@ -22,6 +22,10 @@ export class WorldObjectSystem {
                 return this.knockOnDoor(worldObject, player);
             case 'smash':
                 return this.smashObject(worldObject, player, tool);
+            case 'search':
+                return this.searchFurniture(worldObject, player);
+            case 'use':
+                return this.useObject(worldObject, player, tool);
             case 'disassemble':
                 return this.disassembleObject(worldObject, player, tool);
             case 'lockpick':
@@ -176,6 +180,26 @@ export class WorldObjectSystem {
             if (materials.length > 0) {
                 message += ` Some materials scatter on the ground.`;
             }
+            
+            // Spill stored contents on ground if furniture was a container
+            if (object.isContainer && object.pockets) {
+                let spillCount = 0;
+                for (const pocket of object.pockets) {
+                    if (pocket.contents) {
+                        for (const item of pocket.contents) {
+                            item.x = object.x;
+                            item.y = object.y;
+                            item.z = object.z;
+                            this.game.world.addItem(item);
+                            spillCount++;
+                        }
+                        pocket.contents = [];
+                    }
+                }
+                if (spillCount > 0) {
+                    message += ` ${spillCount} item(s) spill out onto the ground.`;
+                }
+            }
         } else {
             // Check if lock broke
             if (object.state && object.state.locked && object.hp < object.maxHP * 0.3) {
@@ -238,6 +262,27 @@ export class WorldObjectSystem {
         // Drop materials
         this.dropMaterials(materials, object.x, object.y, object.z);
         
+        // Spill stored contents on ground if furniture was a container
+        let spillMsg = '';
+        if (object.isContainer && object.pockets) {
+            let spillCount = 0;
+            for (const pocket of object.pockets) {
+                if (pocket.contents) {
+                    for (const item of pocket.contents) {
+                        item.x = object.x;
+                        item.y = object.y;
+                        item.z = object.z;
+                        this.game.world.addItem(item);
+                        spillCount++;
+                    }
+                    pocket.contents = [];
+                }
+            }
+            if (spillCount > 0) {
+                spillMsg = ` ${spillCount} stored item(s) dropped on ground.`;
+            }
+        }
+        
         // Small durability damage to tool
         if (tool.durability !== undefined) {
             tool.durability = Math.max(0, tool.durability - 1);
@@ -247,7 +292,7 @@ export class WorldObjectSystem {
         
         return {
             success: true,
-            message: `You carefully disassemble the ${object.name}. (${materials.length} materials recovered)`,
+            message: `You carefully disassemble the ${object.name}. (${materials.length} materials recovered)${spillMsg}`,
             materials
         };
     }
@@ -282,6 +327,27 @@ export class WorldObjectSystem {
         return { 
             success: false, 
             message: 'Barricade removal not yet implemented.' 
+        };
+    }
+    
+    /**
+     * Search furniture - marks as searched and signals UI to show contents
+     */
+    searchFurniture(furniture, player) {
+        if (!furniture.isContainer) {
+            return { success: false, message: 'Nothing to search here.' };
+        }
+        
+        furniture.state.searched = true;
+        this.game.advanceTurn(1);
+        
+        const itemCount = furniture.getStoredItemCount ? furniture.getStoredItemCount() : 0;
+        
+        return {
+            success: true,
+            message: `You search the ${furniture.name}. ${itemCount > 0 ? `Found ${itemCount} item(s).` : 'It\'s empty.'}`,
+            showContents: true,
+            worldObject: furniture
         };
     }
     

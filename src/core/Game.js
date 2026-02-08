@@ -185,6 +185,12 @@ export class Game {
         }
         
         if (candidates.length === 0) {
+            // No world objects nearby - check for ground items at player position
+            const groundItems = this.world.getItemsAt(this.player.x, this.player.y, this.player.z);
+            if (groundItems.length > 0) {
+                this.ui.showGroundItemsModal();
+                return;
+            }
             this.ui.log('Nothing to interact with nearby.', 'info');
             return;
         }
