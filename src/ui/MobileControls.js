@@ -305,16 +305,64 @@ export class MobileControls {
     }
 
     preventZoom() {
-        // Prevent double-tap zoom
+        // Prevent pinch zoom (multi-touch)
         document.addEventListener('touchstart', (e) => {
             if (e.touches.length > 1) {
                 e.preventDefault();
             }
         }, { passive: false });
 
-        // Prevent pinch zoom
+        // Prevent Safari gesturestart (pinch)
         document.addEventListener('gesturestart', (e) => {
             e.preventDefault();
         }, { passive: false });
+
+        // Prevent context menu on long-press
+        document.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+        }, { passive: false });
+
+        // Prevent double-tap zoom by intercepting rapid taps
+        let lastTap = 0;
+        document.addEventListener('touchend', (e) => {
+            const now = Date.now();
+            if (now - lastTap < 300) {
+                e.preventDefault();
+            }
+            lastTap = now;
+        }, { passive: false });
+
+        // Prevent pull-to-refresh and overscroll bounce
+        document.addEventListener('touchmove', (e) => {
+            // Allow scrolling inside modal-content and panel drawers
+            const scrollable = e.target.closest('.modal-content, #mobile-panel-drawer, #log-content');
+            if (scrollable) {
+                const atTop = scrollable.scrollTop <= 0;
+                const atBottom = scrollable.scrollTop + scrollable.clientHeight >= scrollable.scrollHeight;
+                // Only prevent if trying to scroll beyond bounds
+                if ((atTop && atBottom) || (atTop && e.touches[0].clientY > this._lastTouchY) || (atBottom && e.touches[0].clientY < this._lastTouchY)) {
+                    e.preventDefault();
+                }
+                return;
+            }
+            e.preventDefault();
+        }, { passive: false });
+
+        // Track touch Y for pull-to-refresh detection
+        document.addEventListener('touchstart', (e) => {
+            this._lastTouchY = e.touches[0].clientY;
+        }, { passive: true });
+
+        // Prevent text selection via selectstart
+        document.addEventListener('selectstart', (e) => {
+            if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+                e.preventDefault();
+            }
+        });
+
+        // Prevent drag on images/links
+        document.addEventListener('dragstart', (e) => {
+            e.preventDefault();
+        });
     }
 }

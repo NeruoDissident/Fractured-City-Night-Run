@@ -253,12 +253,33 @@ input, select {
 
 /* ===== Mobile Layout ===== */
 @media (max-width: 1024px), (pointer: coarse) {
+    /* Disable all browser-default touch behaviors globally */
+    *,
+    *::before,
+    *::after {
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-touch-callout: none;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    /* Allow text selection only inside input/textarea */
+    input, textarea {
+        -webkit-user-select: text;
+        user-select: text;
+    }
+
     body {
         overflow: hidden;
         position: fixed;
         width: 100%;
         height: 100%;
         touch-action: none;
+        overscroll-behavior: none;
+    }
+
+    html {
+        overscroll-behavior: none;
     }
 
     #game-container {
