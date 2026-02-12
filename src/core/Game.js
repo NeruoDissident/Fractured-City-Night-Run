@@ -10,6 +10,8 @@ import { CharacterCreationSystem } from '../systems/CharacterCreationSystem.js';
 import { ItemSystem } from '../systems/ItemSystem.js';
 import { CraftingSystem } from '../systems/CraftingSystem.js';
 import { WorldObjectSystem } from '../systems/WorldObjectSystem.js';
+import { TimeSystem } from '../systems/TimeSystem.js';
+import { LightingSystem } from '../systems/LightingSystem.js';
 import { MobileControls } from '../ui/MobileControls.js';
 
 export class Game {
@@ -22,6 +24,8 @@ export class Game {
         this.player = null;
         this.fov = null;
         this.soundSystem = null;
+        this.timeSystem = null;
+        this.lightingSystem = null;
         this.mobileControls = null;
         
         this.isRunning = false;
@@ -64,6 +68,8 @@ export class Game {
         
         this.fov = new FoVSystem(this.world);
         this.soundSystem = new SoundSystem(this);
+        this.timeSystem = new TimeSystem();
+        this.lightingSystem = new LightingSystem(this);
         this.itemSystem = new ItemSystem(this);
         this.craftingSystem = new CraftingSystem(this);
         this.worldObjectSystem = new WorldObjectSystem(this);
@@ -75,12 +81,18 @@ export class Game {
         
         this.world.addEntity(this.player);
         
+        // Starting loadout
+        this.giveStartingLoadout();
+        
         this.gameState = 'playing';
         this.isRunning = true;
         
         this.ui.log('Welcome to Fractured City.', 'info');
         this.ui.log('Survive. Extract. Repeat.', 'info');
         this.ui.log('Press [X] to inspect tiles, [?] for help.', 'info');
+        this.ui.log(`Time: ${this.timeSystem.getTimeString()} - ${this.timeSystem.getTimePeriod()} (Day ${this.timeSystem.getDay()})`, 'info');
+        console.log(`[TimeSystem] Started at ${this.timeSystem.getTimeString()}, outdoor ambient: ${this.timeSystem.getOutdoorAmbient().toFixed(2)}`);
+        console.log(`[LightingSystem] Initialized, effective vision range: ${this.lightingSystem.getEffectiveVisionRadius(8)}`);
         
         this.updateFoV();
         this.render();
@@ -107,6 +119,8 @@ export class Game {
         
         if (playerActed) {
             this.turnCount++;
+            this.timeSystem.tick();
+            this.lightingSystem.consumeFuel();
             this.player.processStatusEffects();
             this.updateFoV();
             this.world.processTurn();
@@ -127,6 +141,8 @@ export class Game {
         
         for (let i = 0; i < turns; i++) {
             this.turnCount++;
+            this.timeSystem.tick();
+            this.lightingSystem.consumeFuel();
             this.player.processStatusEffects();
             this.updateFoV();
             this.world.processTurn();
@@ -142,8 +158,19 @@ export class Game {
             console.error('FoV system not initialized!');
             return;
         }
-        const visionRange = this.player.anatomy.getVisionRange();
-        this.fov.calculate(this.player.x, this.player.y, visionRange, this.player.z);
+        const baseVisionRange = this.player.anatomy.getVisionRange();
+        
+        // Lighting affects effective vision radius
+        const effectiveRange = this.lightingSystem 
+            ? this.lightingSystem.getEffectiveVisionRadius(baseVisionRange)
+            : baseVisionRange;
+        
+        this.fov.calculate(this.player.x, this.player.y, effectiveRange, this.player.z);
+        
+        // Calculate lighting for the visible area
+        if (this.lightingSystem) {
+            this.lightingSystem.calculate(this.player.x, this.player.y, this.player.z, effectiveRange);
+        }
     }
     
     toggleInspectMode() {
@@ -164,6 +191,38 @@ export class Game {
         this.inspectCursor.x += dx;
         this.inspectCursor.y += dy;
         this.render();
+    }
+    
+    giveStartingLoadout() {
+        const p = this.player;
+        const c = this.content;
+        
+        // Clothing
+        const coat = c.createItem('coat');
+        if (coat) p.equipment.torso = coat;
+        
+        const pants = c.createItem('pants');
+        if (pants) p.equipment.legs = pants;
+        
+        // Backpack
+        const backpack = c.createItem('backpack');
+        if (backpack) p.equipment.back = backpack;
+        
+        // Flashlight in right hand (comes pre-loaded with batteries)
+        const flashlight = c.createItem('flashlight');
+        if (flashlight) p.equipment.rightHand = flashlight;
+        
+        // Lantern in left hand (comes pre-loaded with fuel)
+        const lantern = c.createItem('lantern');
+        if (lantern) p.equipment.leftHand = lantern;
+        
+        console.log('[Loadout] Starting gear equipped:', {
+            torso: p.equipment.torso?.name,
+            legs: p.equipment.legs?.name,
+            back: p.equipment.back?.name,
+            rightHand: p.equipment.rightHand?.name,
+            leftHand: p.equipment.leftHand?.name
+        });
     }
     
     interactWithWorldObject() {
@@ -227,7 +286,7 @@ export class Game {
         const cameraX = this.player.x - Math.floor(viewWidth / 2);
         const cameraY = this.player.y - Math.floor(viewHeight / 2);
         
-        this.world.render(this.renderer, cameraX, cameraY, viewWidth, viewHeight, this.fov, this.player.z);
+        this.world.render(this.renderer, cameraX, cameraY, viewWidth, viewHeight, this.fov, this.player.z, this.lightingSystem);
         
         if (this.inspectMode) {
             const cursorScreenX = this.inspectCursor.x - cameraX;

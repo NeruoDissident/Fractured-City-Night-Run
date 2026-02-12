@@ -104,11 +104,11 @@ export class Door extends WorldObject {
         }
         
         if (this.state.locked) {
-            return { success: false, message: 'The door is locked.' };
+            return { success: false, message: `The ${this.name} is locked.` };
         }
         
         if (this.barricaded) {
-            return { success: false, message: 'The door is barricaded.' };
+            return { success: false, message: `The ${this.name} is barricaded.` };
         }
         
         this.state.open = true;
@@ -144,7 +144,7 @@ export class Door extends WorldObject {
      */
     peek() {
         if (this.state.open) {
-            return { success: false, message: 'The door is already open.' };
+            return { success: false, message: `The ${this.name} is already open.` };
         }
         
         return {
@@ -160,7 +160,7 @@ export class Door extends WorldObject {
      */
     knock() {
         if (this.state.open) {
-            return { success: false, message: 'The door is already open.' };
+            return { success: false, message: `The ${this.name} is already open.` };
         }
         
         return {

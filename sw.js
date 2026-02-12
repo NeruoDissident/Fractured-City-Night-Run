@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fractured-city-v2';
+const CACHE_NAME = 'fractured-city-v7';
 const ASSETS = [
     '/',
     '/index.html',
@@ -26,6 +26,8 @@ const ASSETS = [
     '/src/systems/CharacterCreationSystem.js',
     '/src/systems/CraftingSystem.js',
     '/src/systems/WorldObjectSystem.js',
+    '/src/systems/TimeSystem.js',
+    '/src/systems/LightingSystem.js',
     '/src/content/ContentManager.js',
     '/src/content/BuildingPrefabs.js',
     '/src/content/LootTables.js',

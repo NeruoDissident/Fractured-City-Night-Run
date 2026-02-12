@@ -276,12 +276,14 @@ export class MobileControls {
             else hpEl.style.color = '#ff4444';
         }
 
-        // Status (movement mode)
+        // Status (movement mode + time)
         const statusEl = document.getElementById('mobile-status');
         if (statusEl) {
             const mode = player.movementMode || 'walk';
             const modeNames = { walk: 'Walk', run: 'Run', crouch: 'Crouch', prone: 'Prone' };
-            statusEl.textContent = modeNames[mode] || mode;
+            const modeText = modeNames[mode] || mode;
+            const timeText = this.game.timeSystem ? this.game.timeSystem.getTimeString() : '';
+            statusEl.textContent = timeText ? `${modeText} | ${timeText}` : modeText;
             statusEl.style.color = mode === 'run' ? '#ffaa00' : mode === 'crouch' ? '#8888ff' : mode === 'prone' ? '#888888' : '#00ff00';
         }
 

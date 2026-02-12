@@ -303,23 +303,13 @@ export class World {
         }
     }
     
-    render(renderer, cameraX, cameraY, viewWidth, viewHeight, fov, z = 0) {
-        // Debug: Log what z-level we're rendering
-        if (Math.random() < 0.01) {
-            console.log(`World.render called with z=${z}`);
-        }
-        
+    render(renderer, cameraX, cameraY, viewWidth, viewHeight, fov, z = 0, lighting = null) {
         for (let y = 0; y < viewHeight; y++) {
             for (let x = 0; x < viewWidth; x++) {
                 const worldX = cameraX + x;
                 const worldY = cameraY + y;
                 
                 const tile = this.getTile(worldX, worldY, z);
-                
-                // Debug: Sample what we're about to draw at z=-1
-                if (z === -1 && Math.random() < 0.001) {
-                    console.log(`World.render drawing at screen(${x},${y}) world(${worldX},${worldY}) z=${z}: ${tile.name} (${tile.glyph})`);
-                }
                 
                 if (!fov) {
                     renderer.drawTile(x, y, tile.glyph, tile.fgColor, tile.bgColor);
@@ -328,7 +318,12 @@ export class World {
                     const isExplored = fov.isExplored(worldX, worldY, z);
                     
                     if (isVisible) {
-                        renderer.drawTile(x, y, tile.glyph, tile.fgColor, tile.bgColor);
+                        // Apply lighting to visible tiles
+                        const light = lighting ? lighting.getLightLevel(worldX, worldY, z) : 1.0;
+                        const tint = lighting ? lighting.getLightTint(worldX, worldY, z) : null;
+                        const litFg = this.applyLight(tile.fgColor, light, tint);
+                        const litBg = this.applyLight(tile.bgColor, light, tint);
+                        renderer.drawTile(x, y, tile.glyph, litFg, litBg);
                     } else if (isExplored) {
                         const dimFg = this.dimColor(tile.fgColor);
                         const dimBg = this.dimColor(tile.bgColor);
@@ -340,28 +335,32 @@ export class World {
         
         // Only render items on the current z-level
         for (const item of this.items) {
-            if (item.z !== z) continue; // Skip items on different z-levels
+            if (item.z !== z) continue;
             
             const screenX = item.x - cameraX;
             const screenY = item.y - cameraY;
             
             if (screenX >= 0 && screenX < viewWidth && screenY >= 0 && screenY < viewHeight) {
                 if (!fov || fov.isVisible(item.x, item.y, z)) {
-                    renderer.drawTile(screenX, screenY, item.glyph, item.color);
+                    const light = lighting ? lighting.getLightLevel(item.x, item.y, z) : 1.0;
+                    const tint = lighting ? lighting.getLightTint(item.x, item.y, z) : null;
+                    renderer.drawTile(screenX, screenY, item.glyph, this.applyLight(item.color, light, tint));
                 }
             }
         }
         
         // Only render entities on the current z-level
         for (const entity of this.entities) {
-            if (entity.z !== z) continue; // Skip entities on different z-levels
+            if (entity.z !== z) continue;
             
             const screenX = entity.x - cameraX;
             const screenY = entity.y - cameraY;
             
             if (screenX >= 0 && screenX < viewWidth && screenY >= 0 && screenY < viewHeight) {
                 if (!fov || fov.isVisible(entity.x, entity.y, z)) {
-                    renderer.drawTile(screenX, screenY, entity.glyph, entity.color);
+                    const light = lighting ? lighting.getLightLevel(entity.x, entity.y, z) : 1.0;
+                    const tint = lighting ? lighting.getLightTint(entity.x, entity.y, z) : null;
+                    renderer.drawTile(screenX, screenY, entity.glyph, this.applyLight(entity.color, light, tint));
                 }
             }
         }
@@ -373,10 +372,55 @@ export class World {
             
             if (screenX >= 0 && screenX < viewWidth && screenY >= 0 && screenY < viewHeight) {
                 if (!fov || fov.isVisible(this.extractionPoint.x, this.extractionPoint.y, z)) {
-                    renderer.drawTile(screenX, screenY, this.extractionPoint.glyph, this.extractionPoint.color);
+                    const light = lighting ? lighting.getLightLevel(this.extractionPoint.x, this.extractionPoint.y, z) : 1.0;
+                    const tint = lighting ? lighting.getLightTint(this.extractionPoint.x, this.extractionPoint.y, z) : null;
+                    renderer.drawTile(screenX, screenY, this.extractionPoint.glyph, this.applyLight(this.extractionPoint.color, light, tint));
                 }
             }
         }
+    }
+    
+    /**
+     * Apply light level to a color
+     * lightLevel: 0.0 (pitch black) to 1.0 (full brightness)
+     * Minimum brightness ensures tiles aren't completely invisible
+     */
+    applyLight(color, lightLevel, tint = null) {
+        if (!color || color === '#000000') return color;
+        if (lightLevel >= 1.0 && !tint) return color;
+        
+        // Minimum light floor so you can still faintly see lit geometry
+        const effective = Math.max(0.08, lightLevel);
+        
+        const hex = color.replace('#', '');
+        let r = parseInt(hex.substr(0, 2), 16);
+        let g = parseInt(hex.substr(2, 2), 16);
+        let b = parseInt(hex.substr(4, 2), 16);
+        
+        // Apply brightness
+        r = Math.floor(r * effective);
+        g = Math.floor(g * effective);
+        b = Math.floor(b * effective);
+        
+        // Blend tint color from light sources (warm yellow glow)
+        if (tint && lightLevel > 0.08) {
+            const tintHex = tint.replace('#', '');
+            const tr = parseInt(tintHex.substr(0, 2), 16);
+            const tg = parseInt(tintHex.substr(2, 2), 16);
+            const tb = parseInt(tintHex.substr(4, 2), 16);
+            
+            // Tint strength based on how much the light source contributes vs ambient
+            const tintStrength = Math.min(0.35, lightLevel * 0.4);
+            r = Math.floor(r * (1 - tintStrength) + tr * tintStrength * effective);
+            g = Math.floor(g * (1 - tintStrength) + tg * tintStrength * effective);
+            b = Math.floor(b * (1 - tintStrength) + tb * tintStrength * effective);
+        }
+        
+        r = Math.min(255, Math.max(0, r));
+        g = Math.min(255, Math.max(0, g));
+        b = Math.min(255, Math.max(0, b));
+        
+        return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
     }
     
     dimColor(color) {

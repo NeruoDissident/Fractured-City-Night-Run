@@ -90,25 +90,25 @@ function getActionInfo(action, worldObject, player, game) {
         open: {
             name: 'Open',
             icon: '↗',
-            description: 'Open the door (1 turn)',
+            description: `Open the ${worldObject.name} (1 turn)`,
             available: !worldObject.state.locked && !worldObject.state.open
         },
         close: {
             name: 'Close',
             icon: '↙',
-            description: 'Close the door (1 turn)',
+            description: `Close the ${worldObject.name} (1 turn)`,
             available: worldObject.state.open
         },
         peek: {
             name: 'Peek',
             icon: '👁',
-            description: 'Look through the door (1 turn)',
+            description: `Look through the ${worldObject.name} (1 turn)`,
             available: !worldObject.state.open
         },
         knock: {
             name: 'Knock',
             icon: '✊',
-            description: 'Knock on the door (1 turn, makes noise)',
+            description: `Knock on the ${worldObject.name} (1 turn, makes noise)`,
             available: !worldObject.state.open
         },
         search: {
@@ -141,14 +141,14 @@ function getActionInfo(action, worldObject, player, game) {
         barricade: {
             name: 'Barricade',
             icon: '🛡',
-            description: 'Board up the door (materials required)',
+            description: `Board up the ${worldObject.name} (materials required)`,
             available: false,
             requirement: 'Not yet implemented'
         },
         remove_barricade: {
             name: 'Remove Barricade',
             icon: '🔨',
-            description: 'Remove boards from door (crowbar required)',
+            description: `Remove boards from ${worldObject.name} (crowbar required)`,
             available: false,
             requirement: 'Not yet implemented'
         }

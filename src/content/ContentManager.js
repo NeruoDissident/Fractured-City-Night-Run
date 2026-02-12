@@ -592,6 +592,31 @@ export class ContentManager {
                     canTwoHand: false
                 }
             },
+            can_opener: {
+                name: 'Can Opener',
+                type: 'tool',
+                glyph: '¬',
+                color: '#999999',
+                slots: ['hand'],
+                tags: ['tool', 'opener'],
+                weight: 80,
+                volume: 100,
+                durability: 100,
+                components: [
+                    { id: 'metal_casing', name: 'Metal Casing', quantity: 1, quality: 100, maxQuality: 100, weight: 15, volume: 8 },
+                    { id: 'handle', name: 'Handle', quantity: 1, quality: 100, maxQuality: 100, weight: 40, volume: 60 }
+                ],
+                disassemblyMethods: {
+                    hand: { componentYield: 1.0, qualityMod: 0.6, timeRequired: 1 },
+                    knife: { componentYield: 1.0, qualityMod: 0.9, timeRequired: 1 }
+                },
+                weaponStats: {
+                    damage: '1d2',
+                    actionCost: 100,
+                    attackType: 'blunt',
+                    canTwoHand: false
+                }
+            },
             battery: {
                 name: 'Battery',
                 type: 'component',
@@ -901,6 +926,101 @@ export class ContentManager {
                     knife: { componentYield: 1.0, qualityMod: 0.85, timeRequired: 2 }
                 },
                 weaponStats: null
+            },
+            flashlight: {
+                name: 'Flashlight',
+                type: 'tool',
+                glyph: '⌐',
+                color: '#ffff88',
+                slots: ['hand'],
+                isContainer: true,
+                contents: [],
+                maxContents: 2,
+                acceptsTags: ['power'],
+                tags: ['tool', 'light', 'electronic'],
+                weight: 200,
+                volume: 150,
+                lightRadius: 12,
+                lightIntensity: 1.0,
+                lightColor: '#ffee88',
+                lightShape: 'cone',
+                lightConeAngle: 60,
+                fuelType: 'battery',
+                fuelPerTurn: 0.02,
+                components: [
+                    { id: 'plastic_case', name: 'Plastic Case', quantity: 1, quality: 100, maxQuality: 100, weight: 80, volume: 150 },
+                    { id: 'wire', name: 'Wire', quantity: 2, quality: 100, maxQuality: 100, weight: 10, volume: 5 },
+                    { id: 'screw', name: 'Screw', quantity: 2, quality: 100, maxQuality: 100, weight: 3, volume: 1 }
+                ],
+                componentRequirements: [
+                    { property: 'container', minValue: 1, quantity: 1, name: 'Plastic Case' },
+                    { property: 'electrical', minValue: 1, quantity: 2, name: 'Wiring' },
+                    { property: 'fastening', minValue: 1, quantity: 2, name: 'Screws' }
+                ],
+                disassemblyMethods: {
+                    hand: { componentYield: 0.66, qualityMod: 0.5, timeRequired: 2 },
+                    knife: { componentYield: 1.0, qualityMod: 0.8, timeRequired: 1 }
+                },
+                weaponStats: {
+                    damage: '1d3',
+                    actionCost: 100,
+                    attackType: 'blunt',
+                    canTwoHand: false
+                }
+            },
+            lantern: {
+                name: 'Lantern',
+                type: 'tool',
+                glyph: '♦',
+                color: '#ffaa44',
+                slots: ['hand'],
+                isContainer: true,
+                contents: [],
+                maxContents: 1,
+                acceptsTags: ['fuel'],
+                tags: ['tool', 'light'],
+                weight: 350,
+                volume: 300,
+                lightRadius: 7,
+                lightIntensity: 0.9,
+                lightColor: '#ffcc55',
+                lightShape: 'radius',
+                fuelType: 'lantern_fuel',
+                fuelPerTurn: 0.03,
+                components: [
+                    { id: 'metal_casing', name: 'Metal Casing', quantity: 2, quality: 100, maxQuality: 100, weight: 15, volume: 8 },
+                    { id: 'wire', name: 'Wire', quantity: 1, quality: 100, maxQuality: 100, weight: 10, volume: 5 },
+                    { id: 'handle', name: 'Handle', quantity: 1, quality: 100, maxQuality: 100, weight: 40, volume: 60 }
+                ],
+                componentRequirements: [
+                    { property: 'container', minValue: 1, quantity: 2, name: 'Metal Casing' },
+                    { property: 'electrical', minValue: 1, quantity: 1, name: 'Wick/Wire' },
+                    { property: 'grip', minValue: 1, quantity: 1, name: 'Handle' }
+                ],
+                disassemblyMethods: {
+                    hand: { componentYield: 0.66, qualityMod: 0.5, timeRequired: 2 },
+                    knife: { componentYield: 1.0, qualityMod: 0.8, timeRequired: 1 }
+                },
+                weaponStats: {
+                    damage: '1d4',
+                    actionCost: 110,
+                    attackType: 'blunt',
+                    canTwoHand: false
+                }
+            },
+            lantern_fuel: {
+                name: 'Lantern Fuel',
+                type: 'fuel',
+                glyph: '~',
+                color: '#ff8844',
+                slots: [],
+                quantity: 500,
+                quantityUnit: 'ml',
+                tags: ['fuel', 'liquid', 'flammable'],
+                weight: 400,
+                volume: 450,
+                components: null,
+                weaponStats: null
             }
         };
     }
@@ -1068,6 +1188,11 @@ export class ContentManager {
         if (!item.isContainer) item.isContainer = false;
         if (!item.contents) item.contents = [];
         
+        // Deep copy pockets to avoid shared references between items
+        if (item.pockets) {
+            item.pockets = item.pockets.map(p => ({ ...p, contents: [...(p.contents || [])] }));
+        }
+        
         if (materialId && this.materials[materialId]) {
             const material = this.materials[materialId];
             item.material = materialId;
@@ -1108,6 +1233,15 @@ export class ContentManager {
             item.contents = [content];
             // Update container name to reflect contents
             item.name = `Sealed Bottle (${content.name})`;
+        } else if (familyId === 'flashlight') {
+            // Flashlight spawns with 2 batteries inside
+            const bat1 = this.createItem('battery');
+            const bat2 = this.createItem('battery');
+            item.contents = [bat1, bat2];
+        } else if (familyId === 'lantern') {
+            // Lantern spawns with fuel inside
+            const fuel = this.createItem('lantern_fuel');
+            item.contents = [fuel];
         }
         
         // Deep copy state object to avoid shared references

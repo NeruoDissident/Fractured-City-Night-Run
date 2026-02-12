@@ -327,6 +327,20 @@ export class UIManager {
         
         let html = '';
         
+        // Time of day
+        if (this.game.timeSystem) {
+            const time = this.game.timeSystem;
+            const period = time.getTimePeriod();
+            const periodColors = {
+                'Dawn': '#ff8844', 'Morning': '#ffcc44', 'Late Morning': '#ffee66',
+                'Midday': '#ffffaa', 'Afternoon': '#ffdd55', 'Evening': '#ff8844',
+                'Dusk': '#cc6644', 'Night': '#4466aa'
+            };
+            const periodColor = periodColors[period] || '#aaaaaa';
+            html += `<div class="stat-line"><span class="stat-label">Time:</span> <span class="stat-value" style="color: ${periodColor};">${time.getTimeString()} - ${period}</span></div>`;
+            html += `<div class="stat-line"><span class="stat-label">Day:</span> <span class="stat-value">${time.getDay()}</span></div>`;
+        }
+        
         // Biome
         const biomeName = biomeNames[biome] || biome;
         const biomeColor = biomeColors[biome] || '#aaaaaa';
@@ -916,10 +930,47 @@ export class UIManager {
                 if (item.isContainer && item.pockets) {
                     html += ` <span style="color: #ffaa00; font-size: 14px;">[${item.pockets.length} pockets]</span>`;
                 }
+                
+                // Show on/off status for light-emitting items
+                if (item.lightRadius) {
+                    const isOn = !item.state || item.state.active !== false;
+                    const statusColor = isOn ? '#44ff44' : '#ff4444';
+                    const statusText = isOn ? 'ON' : 'OFF';
+                    html += ` <span style="color: ${statusColor}; font-size: 14px; font-weight: bold;">[${statusText}]</span>`;
+                }
+                
                 html += `</div>`;
                 html += `<div style="margin-top: 5px; display: flex; gap: 5px;">`;
                 html += `<button class="small-btn" data-action="actions-equipped" data-slot="${slot.key}">Actions</button>`;
+                
+                // Toggle button for light-emitting items
+                if (item.lightRadius) {
+                    const isOn = !item.state || item.state.active !== false;
+                    const toggleLabel = isOn ? 'Turn Off' : 'Turn On';
+                    const toggleColor = isOn ? '#ff4444' : '#44ff44';
+                    html += `<button class="small-btn" data-action="toggle-light" data-slot="${slot.key}" style="background: ${toggleColor}; color: #000;">${toggleLabel}</button>`;
+                }
                 html += `</div>`;
+                
+                // Show contents for light-source containers (batteries, fuel)
+                if (item.isContainer && item.contents && item.contents.length > 0 && item.lightRadius) {
+                    html += `<div style="margin-top: 8px; padding: 6px; background: #0a0a0a; border-left: 2px solid ${item.color};">`;
+                    for (let ci = 0; ci < item.contents.length; ci++) {
+                        const contentItem = item.contents[ci];
+                        html += `<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;">`;
+                        html += `<span style="font-size: 13px; color: ${contentItem.color};">• ${contentItem.name}`;
+                        if (contentItem.quantity) html += ` (${Math.floor(contentItem.quantity)}${contentItem.quantityUnit || ''})`;
+                        if (contentItem.tags && contentItem.tags.includes('power') && contentItem.durability !== undefined) {
+                            html += ` [Charge: ${Math.floor(contentItem.durability)}%]`;
+                        } else if (contentItem.durability !== undefined) {
+                            html += ` [${Math.floor(contentItem.durability)}%]`;
+                        }
+                        html += `</span>`;
+                        html += `<button class="small-btn" data-action="actions-container-item" data-container-id="${item.id}" data-item-index="${ci}" style="font-size: 11px; padding: 2px 6px;">Actions</button>`;
+                        html += `</div>`;
+                    }
+                    html += `</div>`;
+                }
             } else {
                 html += `<span class="stat-value" style="color: #666;">Empty</span></div>`;
             }
@@ -1005,15 +1056,18 @@ export class UIManager {
                 }
                 
                 if (item.durability !== undefined) {
-                    html += `<div style="font-size: 10px; color: #888;">Durability: ${Math.floor(item.durability)}%</div>`;
+                    const durLabel = item.tags && item.tags.includes('power') ? 'Charge' : 'Durability';
+                    html += `<div style="font-size: 10px; color: #888;">${durLabel}: ${Math.floor(item.durability)}%</div>`;
                 }
                 
                 html += `<div style="margin-top: 8px; display: flex; gap: 5px;">`;
                 html += `<button class="small-btn" data-action="actions-stored" data-stored-index="${i}">Actions</button>`;
                 html += `</div>`;
                 
-                // Display opened container contents inline
-                if (item.state && item.state.opened && item.contents && item.contents.length > 0) {
+                // Display opened container contents inline (also show for light-source containers)
+                const showContents = (item.state && item.state.opened && item.contents && item.contents.length > 0) ||
+                                     (item.lightRadius && item.contents && item.contents.length > 0);
+                if (showContents) {
                     html += `<div style="margin-top: 10px; padding: 8px; background: #0a0a0a; border-left: 2px solid #00ffff;">`;
                     html += `<div style="color: #00ffff; font-size: 12px; font-weight: bold; margin-bottom: 5px;">Contents:</div>`;
                     
@@ -1089,7 +1143,8 @@ export class UIManager {
                 }
                 
                 if (item.durability !== undefined) {
-                    html += `<div style="font-size: 15px; color: #aaa;">Durability: ${Math.floor(item.durability)}%</div>`;
+                    const durLabel = item.tags && item.tags.includes('power') ? 'Charge' : 'Durability';
+                    html += `<div style="font-size: 15px; color: #aaa;">${durLabel}: ${Math.floor(item.durability)}%</div>`;
                 }
                 
                 html += `<div style="margin-top: 8px; display: flex; gap: 5px; flex-wrap: wrap;">`;
@@ -1131,7 +1186,8 @@ export class UIManager {
         
         if (item.durability !== undefined) {
             const durColor = item.durability > 75 ? '#00ff00' : item.durability > 50 ? '#ffaa00' : item.durability > 25 ? '#ff8800' : '#ff4444';
-            html += `<div style="margin-bottom: 5px;"><span style="color: #888;">Durability:</span> <span style="color: ${durColor};">${Math.floor(item.durability)}%</span></div>`;
+            const durLabel = item.tags && item.tags.includes('power') ? 'Charge' : 'Durability';
+            html += `<div style="margin-bottom: 5px;"><span style="color: #888;">${durLabel}:</span> <span style="color: ${durColor};">${Math.floor(item.durability)}%</span></div>`;
         }
         html += '</div>';
         
@@ -1177,8 +1233,10 @@ export class UIManager {
                 html += '</div>';
             }
             
-            // Display opened container contents (cans, bottles, etc.) using same pattern as pockets
-            if (item.state && item.state.opened && item.contents && item.contents.length > 0) {
+            // Display opened container contents (cans, bottles, etc.) and light-source contents
+            const showInspectContents = (item.state && item.state.opened && item.contents && item.contents.length > 0) ||
+                                        (item.lightRadius && item.contents && item.contents.length > 0);
+            if (showInspectContents) {
                 html += '<div style="margin-top: 15px;">';
                 html += '<h5 style="color: #00ffff; margin-bottom: 8px;">Contents:</h5>';
                 
@@ -1289,6 +1347,24 @@ export class UIManager {
             });
         });
         
+        // Toggle light on/off button listeners
+        const toggleLightButtons = document.querySelectorAll('button[data-action="toggle-light"]');
+        toggleLightButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const slot = btn.dataset.slot;
+                const item = this.game.player.equipment[slot];
+                if (item && item.lightRadius) {
+                    if (!item.state) item.state = {};
+                    item.state.active = item.state.active === false ? true : false;
+                    const status = item.state.active ? 'on' : 'off';
+                    this.game.ui.log(`Turned ${item.name} ${status}.`, 'info');
+                    this.game.render();
+                    this.showDetailedInventory();
+                }
+            });
+        });
+        
         // Actions button listeners
         const actionsButtons = document.querySelectorAll('button[data-action^="actions-"]');
         actionsButtons.forEach(btn => {
@@ -1321,11 +1397,7 @@ export class UIManager {
                     const containerId = btn.dataset.containerId;
                     const pocketIndex = parseInt(btn.dataset.pocketIndex);
                     const itemIndex = parseInt(btn.dataset.itemIndex);
-                    const container = player.inventory.find(i => i.id === containerId) || 
-                                    player.equipment.head?.id === containerId ? player.equipment.head :
-                                    player.equipment.torso?.id === containerId ? player.equipment.torso :
-                                    player.equipment.legs?.id === containerId ? player.equipment.legs :
-                                    player.equipment.back?.id === containerId ? player.equipment.back : null;
+                    const container = this.findContainerById(containerId);
                     if (container && container.pockets && container.pockets[pocketIndex]) {
                         const pocket = container.pockets[pocketIndex];
                         item = pocket.contents[itemIndex];
@@ -1336,17 +1408,7 @@ export class UIManager {
                     const itemIndex = parseInt(btn.dataset.itemIndex);
                     
                     // Check all locations: inventory, equipment, carrying, and ground
-                    let container = player.inventory.find(i => i.id === containerId);
-                    if (!container && player.equipment.head?.id === containerId) container = player.equipment.head;
-                    if (!container && player.equipment.torso?.id === containerId) container = player.equipment.torso;
-                    if (!container && player.equipment.legs?.id === containerId) container = player.equipment.legs;
-                    if (!container && player.equipment.back?.id === containerId) container = player.equipment.back;
-                    if (!container && player.carrying.leftHand?.id === containerId) container = player.carrying.leftHand;
-                    if (!container && player.carrying.rightHand?.id === containerId) container = player.carrying.rightHand;
-                    if (!container) {
-                        const groundItems = this.game.world.getItemsAt(player.x, player.y, player.z);
-                        container = groundItems.find(i => i.id === containerId);
-                    }
+                    let container = this.findContainerById(containerId);
                     
                     if (container && container.contents && container.contents[itemIndex]) {
                         item = container.contents[itemIndex];
@@ -1580,28 +1642,14 @@ export class UIManager {
             }
         } else if (sourceType === 'pocket') {
             // Find the container and get the item from the pocket
-            const container = player.inventory.find(i => i.id === sourceData.containerId) || 
-                            player.equipment.head?.id === sourceData.containerId ? player.equipment.head :
-                            player.equipment.torso?.id === sourceData.containerId ? player.equipment.torso :
-                            player.equipment.legs?.id === sourceData.containerId ? player.equipment.legs :
-                            player.equipment.back?.id === sourceData.containerId ? player.equipment.back : null;
+            const container = this.findContainerById(sourceData.containerId);
             if (container && container.pockets && container.pockets[sourceData.pocketIndex]) {
                 const pocket = container.pockets[sourceData.pocketIndex];
                 item = pocket.contents[sourceData.itemIndex];
             }
         } else if (sourceType === 'container-item') {
             // Find the container and get the item from its contents
-            let container = player.inventory.find(i => i.id === sourceData.containerId);
-            if (!container && player.equipment.head?.id === sourceData.containerId) container = player.equipment.head;
-            if (!container && player.equipment.torso?.id === sourceData.containerId) container = player.equipment.torso;
-            if (!container && player.equipment.legs?.id === sourceData.containerId) container = player.equipment.legs;
-            if (!container && player.equipment.back?.id === sourceData.containerId) container = player.equipment.back;
-            if (!container && player.carrying.leftHand?.id === sourceData.containerId) container = player.carrying.leftHand;
-            if (!container && player.carrying.rightHand?.id === sourceData.containerId) container = player.carrying.rightHand;
-            if (!container) {
-                const groundItems = this.game.world.getItemsAt(player.x, player.y, player.z);
-                container = groundItems.find(i => i.id === sourceData.containerId);
-            }
+            const container = this.findContainerById(sourceData.containerId);
             
             if (container && container.contents && container.contents[sourceData.itemIndex]) {
                 item = container.contents[sourceData.itemIndex];
@@ -1759,10 +1807,7 @@ export class UIManager {
             }
         } else if (sourceType === 'pocket') {
             // Remove from pocket contents
-            const container = player.inventory.find(i => i.id === sourceData.containerId) || 
-                            player.equipment.head?.id === sourceData.containerId ? player.equipment.head :
-                            player.equipment.torso?.id === sourceData.containerId ? player.equipment.torso :
-                            player.equipment.legs?.id === sourceData.containerId ? player.equipment.legs : null;
+            const container = this.findContainerById(sourceData.containerId);
             if (container && container.pockets && container.pockets[sourceData.pocketIndex]) {
                 const pocket = container.pockets[sourceData.pocketIndex];
                 pocket.contents.splice(sourceData.itemIndex, 1);
@@ -1771,16 +1816,7 @@ export class UIManager {
             if (invIndex !== -1) player.inventory.splice(invIndex, 1);
         } else if (sourceType === 'container-item') {
             // Remove from container contents
-            let container = player.inventory.find(i => i.id === sourceData.containerId);
-            if (!container && player.equipment.head?.id === sourceData.containerId) container = player.equipment.head;
-            if (!container && player.equipment.torso?.id === sourceData.containerId) container = player.equipment.torso;
-            if (!container && player.equipment.legs?.id === sourceData.containerId) container = player.equipment.legs;
-            if (!container && player.carrying.leftHand?.id === sourceData.containerId) container = player.carrying.leftHand;
-            if (!container && player.carrying.rightHand?.id === sourceData.containerId) container = player.carrying.rightHand;
-            if (!container) {
-                const groundItems = this.game.world.getItemsAt(player.x, player.y, player.z);
-                container = groundItems.find(i => i.id === sourceData.containerId);
-            }
+            const container = this.findContainerById(sourceData.containerId);
             
             if (container && container.contents && container.contents[sourceData.itemIndex]) {
                 container.contents.splice(sourceData.itemIndex, 1);
@@ -1812,6 +1848,7 @@ export class UIManager {
         } else if (action === 'drop') {
             item.x = player.x;
             item.y = player.y;
+            item.z = player.z;
             this.game.world.addItem(item);
             this.game.ui.log(`Dropped ${item.name}.`, 'info');
         }
@@ -1992,7 +2029,8 @@ export class UIManager {
         
         if (item.durability !== undefined) {
             const durabilityColor = item.durability > 75 ? '#00ff00' : item.durability > 50 ? '#ffaa00' : item.durability > 25 ? '#ff8800' : '#ff4444';
-            html += `<div style="color: ${durabilityColor}; margin-bottom: 5px;">Durability: ${Math.floor(item.durability)}%</div>`;
+            const durLabel = item.tags && item.tags.includes('power') ? 'Charge' : 'Durability';
+            html += `<div style="color: ${durabilityColor}; margin-bottom: 5px;">${durLabel}: ${Math.floor(item.durability)}%</div>`;
         }
         
         if (item.damage) {
@@ -2192,6 +2230,33 @@ export class UIManager {
         }
     }
     
+    closeAllModals() {
+        let closedAny = false;
+        
+        if (this.detailedCharacterModal && !this.detailedCharacterModal.classList.contains('hidden')) {
+            this.detailedCharacterModal.classList.add('hidden');
+            closedAny = true;
+        }
+        
+        if (this.detailedInventoryModal && !this.detailedInventoryModal.classList.contains('hidden')) {
+            this.detailedInventoryModal.classList.add('hidden');
+            this.disassembleContext = null;
+            this.craftingContext = null;
+            this.worldObjectContext = null;
+            this.actionsContext = null;
+            this.moveContext = null;
+            this.furnitureContext = null;
+            closedAny = true;
+        }
+        
+        if (this.helpModal && !this.helpModal.classList.contains('hidden')) {
+            this.helpModal.classList.add('hidden');
+            closedAny = true;
+        }
+        
+        return closedAny;
+    }
+    
     toggleHelpScreen() {
         if (!this.helpModal) return;
         
@@ -2216,7 +2281,7 @@ export class UIManager {
         html += '<div style="margin-bottom: 20px;">';
         html += '<h4 style="color: #00ffff; margin-bottom: 8px;">Actions</h4>';
         html += '<div class="stat-line"><span class="stat-label">X:</span> <span class="stat-value">Inspect mode (arrow keys to move cursor)</span></div>';
-        html += '<div class="stat-line"><span class="stat-label">Escape:</span> <span class="stat-value">Exit inspect mode</span></div>';
+        html += '<div class="stat-line"><span class="stat-label">Escape:</span> <span class="stat-value">Close windows / Exit inspect mode</span></div>';
         html += '<div class="stat-line"><span class="stat-label">Move into enemy:</span> <span class="stat-value">Attack</span></div>';
         html += '<div class="stat-line"><span class="stat-label">< / >:</span> <span class="stat-value">Use stairs/manholes</span></div>';
         html += '</div>';
@@ -2342,6 +2407,19 @@ export class UIManager {
         // Context-aware actions
         let hasContextActions = false;
         
+        // Toggle on/off for light-emitting items
+        if (item.lightRadius) {
+            if (!hasContextActions) {
+                html += `<div style="border-top: 1px solid #333; padding-top: 10px; margin-top: 10px;">`;
+                html += `<div style="color: #888; font-size: 12px; margin-bottom: 8px; text-transform: uppercase;">Item Specific:</div>`;
+                hasContextActions = true;
+            }
+            const isOn = !item.state || item.state.active !== false;
+            const toggleLabel = isOn ? 'Turn Off' : 'Turn On';
+            const toggleColor = isOn ? '#ff4444' : '#44ff44';
+            html += `<button class="small-btn" data-item-action="toggle-light" style="width: 100%; margin-bottom: 5px; background: ${toggleColor}; color: #000;">${toggleLabel}</button>`;
+        }
+        
         // Check for openable containers
         if (item.state && !item.state.opened && item.openMethods) {
             if (!hasContextActions) {
@@ -2462,6 +2540,13 @@ export class UIManager {
             this.handleResealAction(item, sourceType, sourceData);
         } else if (action === 'disassemble') {
             this.showDisassembleModal(item, sourceType, sourceData);
+        } else if (action === 'toggle-light') {
+            if (!item.state) item.state = {};
+            item.state.active = item.state.active === false ? true : false;
+            const status = item.state.active ? 'on' : 'off';
+            this.game.ui.log(`Turned ${item.name} ${status}.`, 'info');
+            this.game.render();
+            this.showActionsModal(item, sourceType, sourceData);
         }
     }
     
@@ -2500,10 +2585,7 @@ export class UIManager {
                 furniture.pockets[sourceData.pocketIndex].contents.splice(sourceData.itemIndex, 1);
             }
         } else if (sourceType === 'actions-pocket-item') {
-            const container = player.inventory.find(i => i.id === sourceData.containerId) || 
-                            player.equipment.head?.id === sourceData.containerId ? player.equipment.head :
-                            player.equipment.torso?.id === sourceData.containerId ? player.equipment.torso :
-                            player.equipment.legs?.id === sourceData.containerId ? player.equipment.legs : null;
+            const container = this.findContainerById(sourceData.containerId);
             if (container && container.pockets && container.pockets[sourceData.pocketIndex]) {
                 const pocket = container.pockets[sourceData.pocketIndex];
                 pocket.contents.splice(sourceData.itemIndex, 1);
@@ -2511,16 +2593,7 @@ export class UIManager {
             const invIndex = player.inventory.indexOf(item);
             if (invIndex !== -1) player.inventory.splice(invIndex, 1);
         } else if (sourceType === 'actions-container-item') {
-            let container = player.inventory.find(i => i.id === sourceData.containerId);
-            if (!container && player.equipment.head?.id === sourceData.containerId) container = player.equipment.head;
-            if (!container && player.equipment.torso?.id === sourceData.containerId) container = player.equipment.torso;
-            if (!container && player.equipment.legs?.id === sourceData.containerId) container = player.equipment.legs;
-            if (!container && player.carrying.leftHand?.id === sourceData.containerId) container = player.carrying.leftHand;
-            if (!container && player.carrying.rightHand?.id === sourceData.containerId) container = player.carrying.rightHand;
-            if (!container) {
-                const groundItems = this.game.world.getItemsAt(player.x, player.y, player.z);
-                container = groundItems.find(i => i.id === sourceData.containerId);
-            }
+            let container = this.findContainerById(sourceData.containerId);
             
             if (container && container.contents && container.contents[sourceData.itemIndex]) {
                 container.contents.splice(sourceData.itemIndex, 1);
@@ -2582,10 +2655,7 @@ export class UIManager {
                     furniture.pockets[sourceData.pocketIndex].contents.splice(sourceData.itemIndex, 1);
                 }
             } else if (sourceType === 'actions-pocket-item') {
-                const container = player.inventory.find(i => i.id === sourceData.containerId) || 
-                                player.equipment.head?.id === sourceData.containerId ? player.equipment.head :
-                                player.equipment.torso?.id === sourceData.containerId ? player.equipment.torso :
-                                player.equipment.legs?.id === sourceData.containerId ? player.equipment.legs : null;
+                const container = this.findContainerById(sourceData.containerId);
                 if (container && container.pockets && container.pockets[sourceData.pocketIndex]) {
                     const pocket = container.pockets[sourceData.pocketIndex];
                     pocket.contents.splice(sourceData.itemIndex, 1);
@@ -2671,16 +2741,7 @@ export class UIManager {
         // Check if item is in a sealed container
         if (sourceType === 'actions-container-item') {
             // Find the container
-            let container = player.inventory.find(i => i.id === sourceData.containerId);
-            if (!container && player.equipment.head?.id === sourceData.containerId) container = player.equipment.head;
-            if (!container && player.equipment.torso?.id === sourceData.containerId) container = player.equipment.torso;
-            if (!container && player.equipment.legs?.id === sourceData.containerId) container = player.equipment.legs;
-            if (!container && player.carrying.leftHand?.id === sourceData.containerId) container = player.carrying.leftHand;
-            if (!container && player.carrying.rightHand?.id === sourceData.containerId) container = player.carrying.rightHand;
-            if (!container) {
-                const groundItems = this.game.world.getItemsAt(player.x, player.y, player.z);
-                container = groundItems.find(i => i.id === sourceData.containerId);
-            }
+            let container = this.findContainerById(sourceData.containerId);
             
             // Check if container is sealed
             if (container && container.state && container.state.sealed) {
@@ -2776,10 +2837,7 @@ export class UIManager {
                 furniture.pockets[sourceData.pocketIndex].contents.splice(sourceData.itemIndex, 1);
             }
         } else if (sourceType === 'actions-pocket-item') {
-            const container = player.inventory.find(i => i.id === sourceData.containerId) || 
-                            player.equipment.head?.id === sourceData.containerId ? player.equipment.head :
-                            player.equipment.torso?.id === sourceData.containerId ? player.equipment.torso :
-                            player.equipment.legs?.id === sourceData.containerId ? player.equipment.legs : null;
+            const container = this.findContainerById(sourceData.containerId);
             if (container && container.pockets && container.pockets[sourceData.pocketIndex]) {
                 const pocket = container.pockets[sourceData.pocketIndex];
                 pocket.contents.splice(sourceData.itemIndex, 1);
@@ -2787,21 +2845,33 @@ export class UIManager {
             const invIndex = player.inventory.indexOf(item);
             if (invIndex !== -1) player.inventory.splice(invIndex, 1);
         } else if (sourceType === 'actions-container-item') {
-            let container = player.inventory.find(i => i.id === sourceData.containerId);
-            if (!container && player.equipment.head?.id === sourceData.containerId) container = player.equipment.head;
-            if (!container && player.equipment.torso?.id === sourceData.containerId) container = player.equipment.torso;
-            if (!container && player.equipment.legs?.id === sourceData.containerId) container = player.equipment.legs;
-            if (!container && player.carrying.leftHand?.id === sourceData.containerId) container = player.carrying.leftHand;
-            if (!container && player.carrying.rightHand?.id === sourceData.containerId) container = player.carrying.rightHand;
-            if (!container) {
-                const groundItems = this.game.world.getItemsAt(player.x, player.y, player.z);
-                container = groundItems.find(i => i.id === sourceData.containerId);
-            }
+            let container = this.findContainerById(sourceData.containerId);
             
             if (container && container.contents && container.contents[sourceData.itemIndex]) {
                 container.contents.splice(sourceData.itemIndex, 1);
             }
         }
+    }
+    
+    /**
+     * Find a container item by ID across all player locations
+     */
+    findContainerById(containerId) {
+        const player = this.game.player;
+        let container = player.inventory.find(i => i.id === containerId);
+        if (!container && player.equipment.head?.id === containerId) container = player.equipment.head;
+        if (!container && player.equipment.torso?.id === containerId) container = player.equipment.torso;
+        if (!container && player.equipment.legs?.id === containerId) container = player.equipment.legs;
+        if (!container && player.equipment.back?.id === containerId) container = player.equipment.back;
+        if (!container && player.equipment.rightHand?.id === containerId) container = player.equipment.rightHand;
+        if (!container && player.equipment.leftHand?.id === containerId) container = player.equipment.leftHand;
+        if (!container && player.carrying?.leftHand?.id === containerId) container = player.carrying.leftHand;
+        if (!container && player.carrying?.rightHand?.id === containerId) container = player.carrying.rightHand;
+        if (!container) {
+            const groundItems = this.game.world.getItemsAt(player.x, player.y, player.z);
+            container = groundItems.find(i => i.id === containerId);
+        }
+        return container;
     }
     
     showStaircaseInspection(stairTile) {

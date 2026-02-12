@@ -114,6 +114,7 @@ export class WorldObjectSystem {
     
     /**
      * Smash an object (door, furniture, etc.)
+     * Auto-completes: loops hits until destroyed or weapon breaks
      */
     smashObject(object, player, weapon) {
         // Get weapon from player's hands if not specified
@@ -137,39 +138,64 @@ export class WorldObjectSystem {
             isKicking = true;
         }
         
-        // Calculate damage
+        // Pre-calculate per-hit values
         const baseDamage = weapon.damage || 5;
         const materialMod = this.getMaterialModifier(object.material, weapon);
-        const damage = baseDamage * materialMod;
+        const damagePerHit = baseDamage * materialMod;
+        const timePerHit = Math.max(2, Math.ceil(5 - (weapon.damage || 0) / 10));
         
-        // Apply damage to object
-        const damageResult = object.takeDamage(damage);
+        let totalHits = 0;
+        let totalTime = 0;
+        let destroyed = false;
+        let weaponBroke = false;
+        let lockBroke = false;
         
-        // Apply durability damage to weapon (not for kicking)
-        if (!isKicking && weapon.durability !== undefined) {
-            weapon.durability = Math.max(0, weapon.durability - 2);
-            if (weapon.durability <= 0) {
-                this.game.ui.log(`Your ${weapon.name} broke!`, 'warning');
+        // Loop: keep hitting until destroyed or weapon breaks
+        while (!destroyed) {
+            // Apply damage to object
+            const damageResult = object.takeDamage(damagePerHit);
+            totalHits++;
+            totalTime += timePerHit;
+            
+            // Apply durability damage to weapon (not for kicking)
+            if (!isKicking && weapon.durability !== undefined) {
+                weapon.durability = Math.max(0, weapon.durability - 2);
+                if (weapon.durability <= 0) {
+                    weaponBroke = true;
+                }
+            }
+            
+            // Make noise each hit
+            this.makeNoise(object.x, object.y, object.z, {
+                volume: 30,
+                range: 20,
+                type: 'smash',
+                description: 'loud smashing'
+            });
+            
+            // Check if lock broke mid-smash
+            if (!lockBroke && object.state && object.state.locked && object.hp < object.maxHP * 0.3) {
+                object.state.locked = false;
+                lockBroke = true;
+            }
+            
+            if (damageResult.destroyed) {
+                destroyed = true;
+            } else if (weaponBroke) {
+                // Weapon broke before object was destroyed — stop
+                break;
             }
         }
         
-        // Calculate time based on object HP and weapon
-        const timeSpent = Math.max(2, Math.ceil(5 - (weapon.damage || 0) / 10));
+        // Build summary message
+        const actionVerb = isKicking ? 'kick' : 'smash';
+        let message = '';
         
-        let message = isKicking ? 
-            `You kick the ${object.name}!` : 
-            `You smash the ${object.name} with your ${weapon.name}.`;
-        
-        // Make loud noise
-        this.makeNoise(object.x, object.y, object.z, {
-            volume: 30,
-            range: 20,
-            type: 'smash',
-            description: 'loud smashing'
-        });
-        
-        if (damageResult.destroyed) {
-            message = `You destroy the ${object.name}!`;
+        if (destroyed) {
+            message = isKicking
+                ? `You kick apart the ${object.name} in ${totalHits} hit${totalHits > 1 ? 's' : ''} (${totalTime} turns).`
+                : `You smash the ${object.name} to pieces with your ${weapon.name} in ${totalHits} hit${totalHits > 1 ? 's' : ''} (${totalTime} turns).`;
+            
             object.updateVisuals();
             this.game.world.updateTileAt(object.x, object.y, object.z, object.getTile());
             
@@ -201,23 +227,31 @@ export class WorldObjectSystem {
                 }
             }
         } else {
-            // Check if lock broke
-            if (object.state && object.state.locked && object.hp < object.maxHP * 0.3) {
-                object.state.locked = false;
-                message += ` The lock breaks!`;
-            }
-            
+            // Weapon broke before finishing
+            message = isKicking
+                ? `You kick the ${object.name} ${totalHits} time${totalHits > 1 ? 's' : ''} (${totalTime} turns).`
+                : `You ${actionVerb} the ${object.name} ${totalHits} time${totalHits > 1 ? 's' : ''} but your ${weapon.name} broke!`;
             message += ` (${Math.floor(object.hp)}/${object.maxHP} HP remaining)`;
             object.updateVisuals();
             this.game.world.updateTileAt(object.x, object.y, object.z, object.getTile());
         }
         
-        this.game.advanceTurn(timeSpent);
+        if (lockBroke) {
+            this.game.ui.log(`The lock on the ${object.name} breaks!`, 'info');
+        }
+        
+        if (weaponBroke) {
+            this.game.ui.log(`Your ${weapon.name} broke!`, 'warning');
+        }
+        
+        this.game.advanceTurn(totalTime);
         
         return {
             success: true,
             message,
-            destroyed: damageResult.destroyed
+            destroyed,
+            hits: totalHits,
+            timeSpent: totalTime
         };
     }
     
@@ -245,7 +279,7 @@ export class WorldObjectSystem {
         
         // Doors must be open to disassemble
         if (object.type === 'door' && !object.state.open) {
-            return { success: false, message: 'You must open the door first.' };
+            return { success: false, message: `You must open the ${object.name} first.` };
         }
         
         // Time required based on object HP

@@ -55,6 +55,13 @@
 - G: Pickup
 - C: Character sheet
 - I: Inventory
+- V: Workshop (Craft/Disassemble)
+- E: Interact with world object
+- X: Inspect mode
+- M: Cycle movement mode
+- F: Toggle explore mode
+- < / >: Use stairs/manholes
+- Escape: Close all modals / Exit inspect mode
 - ?: Help
 
 **Expansion Points:**
@@ -355,14 +362,43 @@ content.createItem(familyId, materialId, modifierId)
 - Gender selection
 - Trait effects on gameplay
 
-**Planned: Crafting System**
-**Status:** Not Yet Implemented
+### 14. Crafting System (`src/systems/CraftingSystem.js`)
+**Responsibility:** Component-based crafting and disassembly with quality mechanics
 
-**Philosophy:**
-- Deterministic outputs (no random failure)
-- Substitution risk (inferior materials = drawbacks)
-- Role-based recipes (any conductive, any binder)
-- Disassembly of any item into components
+**Status:** ✅ Implemented
+
+**Features:**
+- Disassemble any item into components with quality loss
+- Component property system (cutting, grip, fastening, etc.)
+- Recipe system with property-based and specific component requirements
+- Tool-based quality modifiers (hand vs knife vs proper tool)
+- `canPlayerDisassemble()` free-hand validation
+- Quality degradation loop prevents infinite recycling
+
+### 15. Time System (`src/systems/TimeSystem.js`)
+**Responsibility:** Day/night cycle, time-of-day tracking
+
+**Status:** ✅ Implemented
+
+**Features:**
+- 24-hour clock (1 turn ≈ 2 minutes game time)
+- Ambient light levels based on time of day
+- Sunrise/sunset transitions
+- Time display in UI
+
+### 16. Lighting System (`src/systems/LightingSystem.js`)
+**Responsibility:** Light level calculations, point light sources, fuel consumption
+
+**Status:** ✅ Implemented
+
+**Features:**
+- Ambient light from time of day
+- Point light sources (player-held flashlight, lantern)
+- Cone-shaped light (flashlight, based on player facing direction)
+- Radial light (lantern)
+- Fuel/battery consumption per turn
+- Light affects effective vision radius
+- Yellow warm tint on light rendering
 
 ---
 
@@ -413,7 +449,8 @@ Fractured-City-Night-Run/
 │   │   ├── WorldObject.js # Base class for interactive objects
 │   │   ├── ExtractionPoint.js # Win condition
 │   │   └── objects/
-│   │       └── Door.js    # Interactive door WorldObject
+│   │       ├── Door.js    # Interactive door WorldObject
+│   │       └── Furniture.js # 16 furniture types, storage, loot population
 │   ├── entities/
 │   │   ├── Entity.js      # Base class
 │   │   ├── Player.js      # Player character
@@ -427,7 +464,9 @@ Fractured-City-Night-Run/
 │   │   ├── ContainerSystem.js # Weight/volume
 │   │   ├── CraftingSystem.js  # Crafting and disassembly
 │   │   ├── WorldObjectSystem.js # WorldObject interactions
-│   │   └── CharacterCreationSystem.js # Character gen
+│   │   ├── CharacterCreationSystem.js # Character gen
+│   │   ├── TimeSystem.js  # Day/night cycle, 24-hour clock
+│   │   └── LightingSystem.js # Ambient + point light, fuel consumption
 │   ├── content/
 │   │   ├── ContentManager.js    # Data-driven content
 │   │   ├── BuildingPrefabs.js   # 9 ASCII prefab layouts + biome door types

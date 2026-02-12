@@ -7,6 +7,24 @@ export function showDisassembleModal(uiManager, item, sourceType, sourceData) {
     const player = game.player;
     const content = document.getElementById('detailed-inventory-content');
     
+    // Check if player can disassemble (needs at least one free hand)
+    const canDisassemble = game.craftingSystem.canPlayerDisassemble(player);
+    if (!canDisassemble.canDisassemble) {
+        let warnHtml = '<div style="padding: 20px;">';
+        warnHtml += `<button id="close-disassemble-warn" class="small-btn" style="margin-bottom: 15px;">← Back</button>`;
+        warnHtml += `<h3 style="color: #ff8800; margin-bottom: 15px;">🔧 Disassemble: ${item.name}</h3>`;
+        warnHtml += `<div style="padding: 15px; background: #1a1a1a; border: 2px solid #ff4444; margin-bottom: 15px;">`;
+        warnHtml += `<div style="color: #ff4444; font-size: 18px; font-weight: bold; margin-bottom: 10px;">⚠️ Cannot Disassemble</div>`;
+        warnHtml += `<div style="color: #ffaa00; font-size: 15px;">${canDisassemble.reason}</div>`;
+        warnHtml += `</div>`;
+        warnHtml += '</div>';
+        content.innerHTML = warnHtml;
+        document.getElementById('close-disassemble-warn')?.addEventListener('click', () => {
+            uiManager.showActionsModal(item, sourceType, sourceData);
+        });
+        return;
+    }
+    
     // Get available tools
     const tools = game.craftingSystem.getAvailableDisassemblyTools(player, item);
     
@@ -151,8 +169,25 @@ function handleDisassembleConfirm(uiManager) {
         return;
     }
     
+    // Spill container contents before removing (batteries, fuel, food, etc.)
+    if (item.contents && item.contents.length > 0) {
+        for (const contentItem of item.contents) {
+            const addResult = player.addToInventory(contentItem);
+            if (addResult.success) {
+                game.ui.log(`Recovered ${contentItem.name} from ${item.name}.`, 'info');
+            } else {
+                contentItem.x = player.x;
+                contentItem.y = player.y;
+                contentItem.z = player.z;
+                game.world.addItem(contentItem);
+                game.ui.log(`${contentItem.name} dropped on ground (no storage space).`, 'warning');
+            }
+        }
+        item.contents = [];
+    }
+    
     // Remove original item from source
-    removeItemFromSource(player, item, sourceType, sourceData);
+    removeItemFromSource(uiManager, player, item, sourceType, sourceData);
     
     // Add components to player inventory using proper container system
     let componentsAdded = 0;
@@ -187,7 +222,7 @@ function handleDisassembleConfirm(uiManager) {
     uiManager.updatePanels();
 }
 
-function removeItemFromSource(player, item, sourceType, sourceData) {
+function removeItemFromSource(uiManager, player, item, sourceType, sourceData) {
     if (sourceType === 'actions-equipped') {
         player.equipment[sourceData.slot] = null;
         if (item.twoHandGrip) {
@@ -219,10 +254,7 @@ function removeItemFromSource(player, item, sourceType, sourceData) {
             player.game.world.removeItem(item);
         }
     } else if (sourceType === 'actions-pocket-item') {
-        const container = player.inventory.find(i => i.id === sourceData.containerId) || 
-                        player.equipment.head?.id === sourceData.containerId ? player.equipment.head :
-                        player.equipment.torso?.id === sourceData.containerId ? player.equipment.torso :
-                        player.equipment.legs?.id === sourceData.containerId ? player.equipment.legs : null;
+        const container = uiManager.findContainerById(sourceData.containerId);
         if (container && container.pockets && container.pockets[sourceData.pocketIndex]) {
             const pocket = container.pockets[sourceData.pocketIndex];
             pocket.contents.splice(sourceData.itemIndex, 1);
@@ -230,16 +262,7 @@ function removeItemFromSource(player, item, sourceType, sourceData) {
         const invIndex = player.inventory.indexOf(item);
         if (invIndex !== -1) player.inventory.splice(invIndex, 1);
     } else if (sourceType === 'actions-container-item') {
-        let container = player.inventory.find(i => i.id === sourceData.containerId);
-        if (!container && player.equipment.head?.id === sourceData.containerId) container = player.equipment.head;
-        if (!container && player.equipment.torso?.id === sourceData.containerId) container = player.equipment.torso;
-        if (!container && player.equipment.legs?.id === sourceData.containerId) container = player.equipment.legs;
-        if (!container && player.carrying.leftHand?.id === sourceData.containerId) container = player.carrying.leftHand;
-        if (!container && player.carrying.rightHand?.id === sourceData.containerId) container = player.carrying.rightHand;
-        if (!container) {
-            const groundItems = player.game.world.getItemsAt(player.x, player.y, player.z);
-            container = groundItems.find(i => i.id === sourceData.containerId);
-        }
+        const container = uiManager.findContainerById(sourceData.containerId);
         
         if (container && container.contents && container.contents[sourceData.itemIndex]) {
             container.contents.splice(sourceData.itemIndex, 1);

@@ -1,6 +1,6 @@
 # Fractured City - Game Design Philosophy
 
-**Last Updated:** February 6, 2026
+**Last Updated:** February 11, 2026
 
 ---
 
@@ -360,36 +360,46 @@ When starting a new session, remember:
 
 ---
 
-## Future Systems (Planned)
+## Development Phases
 
-### Phase 3: World Expansion ✅ (Partially Complete)
+### Phase 1: Light & Dark ✅ (Complete)
+- ✅ Day/night cycle with TimeSystem (24-hour clock, ambient light)
+- ✅ LightingSystem with ambient + point light sources
+- ✅ Flashlight (cone, radius 12) and Lantern (radial, radius 7)
+- ✅ Battery/fuel consumption per turn
+- ✅ Player facing direction for cone light
+- ✅ Starting loadout with light sources
+- ✅ Full item system audit and 12+ bug fixes
+- ✅ QoL: auto-complete smash, Escape closes modals, modal scroll fix
+
+### Phase 2: Combat & NPC AI (Next)
+- Melee/ranged combat system
+- NPC behavior loops, aggro, factions
+- Z-level pathfinding for NPCs
+- Biome-specific enemy types
+
+### Phase 3: Status Effects & Injuries
+- Bleeding, infection, broken limbs
+- Medical treatment using existing anatomy system
+- Body-part specific injuries and treatments
+
+### Phase 4: Cybernetics & Echo Effects
+- Details TBD
+
+### World Expansion ✅ (Complete)
 - ✅ Building interiors via prefab system (9 layouts with room-type tagging)
 - ✅ Context-aware loot spawning (16 room types with weighted item pools)
 - ✅ Interactive doors as WorldObjects (biome-based types, lock chance, HP)
+- ✅ Furniture as WorldObjects (16 types, storage, loot population)
 - ✅ Location UI panel (biome, floor, room/area display)
-- Furniture as WorldObjects (chairs, desks, shelves — planned)
-- Furniture disassembly (chairs → legs, screws, wood — planned)
-- Enhanced sewer generation (rooms, corridors — planned)
 
-### Phase 4: NPC Systems
-- Z-level pathfinding for NPCs
-- Biome-specific enemy types
-- Above/below ground enemy variants
-- Loot system for corpses
-
-### Phase 5: Social Systems
+### Future: Social Systems
 - NPC dialogue and trading
 - Faction reputation
 - Quest system
-- Bribery and negotiation
 
-### Phase 6: End-Game Content
-- Helicopter repair path
-- Boat repair path
-- Vault breach path
-- Corporate bribe path
-- Faction extraction path
-- Underground escape path
+### Future: End-Game Content
+- Multiple extraction paths (helicopter, boat, vault, faction, underground)
 
 ---
 

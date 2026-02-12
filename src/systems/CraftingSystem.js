@@ -187,15 +187,15 @@ export class CraftingSystem {
      * @returns {Object} - { canDisassemble, reason }
      */
     canPlayerDisassemble(player) {
-        // Check if hands are free or holding tools
-        const leftHand = player.equipment.leftHand;
-        const rightHand = player.equipment.rightHand;
+        // Check if hands are free (both equipment AND carrying)
+        const leftBusy = player.equipment.leftHand || player.carrying.leftHand;
+        const rightBusy = player.equipment.rightHand || player.carrying.rightHand;
         
         // At least one hand must be free
-        if (leftHand && rightHand) {
+        if (leftBusy && rightBusy) {
             return {
                 canDisassemble: false,
-                reason: 'You need at least one free hand to disassemble items.'
+                reason: 'You need at least one free hand to disassemble items. Unequip or drop something first.'
             };
         }
         

@@ -88,6 +88,11 @@ export class InputHandler {
         
         if (e.key === 'Escape') {
             e.preventDefault();
+            // Close any open modals first
+            if (this.game.ui.closeAllModals()) {
+                return;
+            }
+            // Then exit inspect mode if no modals were open
             if (this.game.inspectMode) {
                 this.game.toggleInspectMode();
             }

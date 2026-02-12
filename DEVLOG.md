@@ -3,7 +3,7 @@
 **Project:** Fractured City - Browser-based Cyberpunk Roguelike  
 **Engine:** Vanilla JavaScript + HTML5 Canvas 2D  
 **Status:** Active Development  
-**Last Updated:** February 6, 2026
+**Last Updated:** February 11, 2026
 
 ---
 
@@ -56,30 +56,77 @@ A traditional turn-based roguelike set in a cyberpunk dystopia. Features permade
 - [x] **Loot Table System** - 16 room-type weighted loot pools, building-aware item spawning, outdoor loot
 - [x] **Location UI** - Sidebar panel showing biome, floor level, and room/area type
 
+### Phase 1: Light & Dark (Complete)
+- [x] **Day/Night Cycle** - TimeSystem with 24-hour clock, ambient light levels, time-of-day display
+- [x] **Lighting System** - LightingSystem with ambient + point light sources, light level per tile
+- [x] **FoV Integration** - Effective vision radius modulated by ambient light and player light sources
+- [x] **Flashlight & Lantern** - Flashlight (cone, radius 12) and Lantern (radial, radius 7) as equippable items
+- [x] **Fuel/Battery System** - Batteries drain durability, lantern fuel drains quantity per turn
+- [x] **Player Facing Direction** - Tracked in Player.js for cone-shaped flashlight light
+- [x] **Starting Loadout** - Clothes, backpack, lantern w/ fuel, flashlight w/ batteries
+- [x] **Light Toggle** - On/off toggle in equipment panel and actions modal
+- [x] **Yellow Light Tint** - Light radius rendered with warm yellow tint in World.applyLight()
+
+### Item System Audit & Fixes (Complete)
+- [x] **Full Item System Health Check** - Comprehensive audit of all item, container, pocket, and UI systems
+- [x] **Pocket Container Lookup Fix** - Replaced 8 broken ternary chains with `findContainerById()` helper across UIManager.js
+- [x] **DisassembleModal Fix** - Updated to use `findContainerById()` for correct container resolution
+- [x] **Container Disassembly Safety** - Disassembling containers now spills contents (batteries, fuel) to inventory or ground
+- [x] **Equip+Carry Conflict Fix** - Prevented equipping and carrying items in the same hand simultaneously
+- [x] **Move Modal Drop Fix** - Added missing `item.z` when dropping items
+- [x] **Can Opener Item** - New `can_opener` item family with components and disassembly
+- [x] **Loot Table Expansion** - Added flashlight, lantern, lantern_fuel, can_opener to 9 loot tables
+- [x] **Disassembly Hand Check** - `canPlayerDisassemble()` validates free hands before allowing disassembly
+- [x] **Battery Charge Display** - Batteries show "Charge" instead of "Durability" across all 5 UI locations
+- [x] **Disassembly Warning UI** - Visible red warning panel when disassembly blocked by full hands
+- [x] **Dynamic WorldObject Text** - Replaced hardcoded "door" strings with `worldObject.name` in all modals/systems
+
+### QoL Improvements (Complete)
+- [x] **Auto-Complete Smash** - Smashing world objects loops until destroyed or weapon breaks, reports summary
+- [x] **Escape Key Closes Modals** - Escape key closes all open windows before exiting inspect mode
+- [x] **Modal Scroll Fix** - Fixed CSS overflow for PWA modal scrolling (touch-action, overflow-y, overscroll-behavior)
+
 ### Current Build Stats
-- **Files:** 28+ modular ES6 modules
-- **Systems:** 14 core systems (Renderer, World, Entities, Equipment, FoV, UI, Content, Input, Container, CharCreation, ItemSystem, Crafting, WorldObject, Sound)
-- **Item Types:** 15+ families (weapons, armor, materials, tools, food, drinks, containers)
+- **Files:** 30+ modular ES6 modules
+- **Systems:** 16 core systems (Renderer, World, Entities, Equipment, FoV, UI, Content, Input, Container, CharCreation, ItemSystem, Crafting, WorldObject, Sound, Lighting, Time)
+- **Item Types:** 18+ families (weapons, armor, materials, tools, food, drinks, containers, light sources, fuel)
 - **Building Prefabs:** 9 validated layouts (small, medium, large)
 - **Loot Room Types:** 16 (residential, commercial, office, medical, industrial)
 - **NPCs:** 2 types (Scavengers, Raiders)
 - **Biomes:** 7 (Urban Core, Suburbs, Industrial, Rich Neighborhood, Rural, Forest, Ruins)
 - **Z-Levels:** 3 levels (z=-1 sewers/basements, z=0 ground, z=1 second floors)
 - **Buildings:** Prefab and procedural structures with interactive doors and room-tagged loot
+- **Lighting:** Day/night cycle with ambient + point light sources (flashlight cone, lantern radial)
 
 ---
 
 ## 🚧 Current Sprint
 
-### Active: NPC & Content Expansion
+### Active: Phase 2 — Combat & NPC AI
 **Status:** Not Started  
 **Priority:** HIGH  
-**Estimated Time:** 3-4 hours
+**Estimated Time:** TBD
 
 #### Goals
-- NPC system improvements (Z-level pathfinding, new AI types)
-- Additional content (more items, more prefab variety)
-- Combat system enhancements
+- Melee/ranged combat system
+- NPC behavior loops, aggro, factions
+- Z-level pathfinding for NPCs
+
+#### Previous Sprint: Phase 1 — Light & Dark + Item Audit ✅
+**Status:** ✅ Complete  
+**Completed:** February 11, 2026
+
+**Delivered:**
+- [x] Day/night cycle with TimeSystem (24-hour clock, ambient light)
+- [x] LightingSystem with ambient + point light sources
+- [x] Flashlight (cone, radius 12) and Lantern (radial, radius 7)
+- [x] Battery/fuel consumption per turn
+- [x] Player facing direction for cone light
+- [x] Starting loadout with light sources
+- [x] On/off toggle for light items
+- [x] Full item system health check and 12+ bug fixes
+- [x] Can opener item, loot table expansion
+- [x] Auto-complete smash, Escape closes modals, modal scroll fix
 
 #### Previous Sprint: Prefab Buildings & Loot Tables ✅
 **Status:** ✅ Complete  
@@ -112,29 +159,11 @@ A traditional turn-based roguelike set in a cyberpunk dystopia. Features permade
 
 ## 📅 Development Roadmap
 
-### TIER 1: Foundation Systems (Next 3 Features)
+### TIER 1: Foundation Systems ✅ (Complete)
 
 #### 1. ✅ Movement Modes & Sound System
-**Status:** ✅ Complete  
-**Why:** Adds tactical depth, self-contained, doesn't block other features
-
 #### 2. ✅ Deep Character Creation
-**Status:** ✅ Complete  
-**Delivered:** 6 backgrounds, 10 traits, gender selection, validation system
-
 #### 3. ✅ Robust Inventory Management
-**Status:** ✅ Complete  
-**Delivered:** Container system, weight/volume, encumbrance, nested containers, pockets
-
-**Why Next:** Foundation for item interactions, crafting, and all future item-based systems
-- Pocket count and size limits per clothing item
-- Weight calculations and encumbrance penalties
-- Volume/space management
-- Nested container inspection (coat → pockets → wallet → contents)
-- Drag-and-drop item organization
-- Quick slots for fast access
-
-**Why Next:** Foundation for crafting, food, and all item interactions
 
 ---
 
@@ -349,6 +378,51 @@ A roguelike where every run feels different, player choices matter, and the worl
 
 ## 📝 Session Notes
 
+### Session: February 11, 2026
+**Completed:**
+- **Phase 1: Light & Dark** — Full day/night cycle and lighting system
+  - Created `TimeSystem.js` — 24-hour clock, ambient light levels, sunrise/sunset
+  - Created `LightingSystem.js` — ambient + point light sources, cone/radial shapes
+  - Integrated with FoV — effective vision radius modulated by light
+  - Flashlight (cone, radius 12, battery-powered) and Lantern (radial, radius 7, fuel-powered)
+  - Fuel consumption per turn (batteries drain durability, fuel drains quantity)
+  - Player facing direction tracked for cone-shaped flashlight light
+  - Starting loadout includes clothes, backpack, lantern w/ fuel, flashlight w/ batteries
+  - On/off toggle in equipment panel and actions modal
+  - Yellow warm tint on light radius rendering
+
+- **Full Item System Audit** — Comprehensive health check of all item systems
+  - Identified 5 critical bugs, 4 significant issues, and several minor improvements
+  - Fixed pocket container lookup bugs (8 broken ternary chains → `findContainerById()`)
+  - Fixed DisassembleModal stale container lookups
+  - Fixed container disassembly destroying contents (now spills to inventory/ground)
+  - Fixed equip+carry in same hand conflict
+  - Fixed missing `item.z` in move modal drop action
+  - Added `can_opener` item family definition
+  - Added flashlight, lantern, lantern_fuel, can_opener to 9 loot tables
+  - Added `canPlayerDisassemble()` free-hand check with visible warning UI
+  - Battery display now shows "Charge" instead of "Durability"
+  - Replaced hardcoded "door" strings with dynamic `worldObject.name`
+
+- **QoL Improvements**
+  - Auto-complete smash: loops hits until destroyed or weapon breaks, shows summary
+  - Escape key closes all open modals/windows
+  - Fixed modal scrolling in PWA (CSS touch-action, overflow-y, overscroll-behavior)
+
+- **Cache:** Bumped to v7
+
+**Impact:**
+- Game now has full day/night cycle with dynamic lighting
+- Light sources are functional equipment with fuel management
+- Item system is significantly more robust with 12+ bug fixes
+- Smashing objects is now a single-action experience
+- Escape key provides universal modal dismissal
+- PWA modals scroll correctly on mobile
+
+**Next Session Goals:**
+- Begin Phase 2: Combat & NPC AI
+- Melee/ranged combat, NPC behavior loops, aggro, factions
+
 ### Session: February 6, 2026
 **Completed:**
 - **Prefab Building System** - 9 validated ASCII layout prefabs
@@ -499,8 +573,11 @@ A roguelike where every run feels different, player choices matter, and the worl
 - [x] **Alpha 0.8:** Item interactions and food systems (Complete)
 - [x] **Beta 0.1:** World builder and structures (Complete)
 - [x] **Beta 0.2:** Z-levels and vertical exploration (Complete)
-- [ ] **Beta 0.3:** Crafting and disassembly system
-- [ ] **Beta 0.4:** NPC interactions and trading
+- [x] **Beta 0.3:** Crafting and disassembly system (Complete)
+- [x] **Beta 0.4:** Phase 1 — Light & Dark + Item System Audit (Complete)
+- [ ] **Beta 0.5:** Phase 2 — Combat & NPC AI
+- [ ] **Beta 0.6:** Phase 3 — Status Effects & Injuries
+- [ ] **Beta 0.7:** Phase 4 — Cybernetics & Echo Effects
 - [ ] **Release 1.0:** Full feature set, polished, balanced
 
 ---

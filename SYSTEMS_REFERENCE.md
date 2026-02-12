@@ -562,6 +562,77 @@ Route to specific handler
 
 ---
 
+## Time System
+**File:** `src/systems/TimeSystem.js`
+
+**Purpose:** Manages day/night cycle and time-of-day tracking.
+
+**Key Properties:**
+- `currentTick` - Current tick count
+- `ticksPerHour` - 30 ticks per game hour (1 turn ≈ 2 minutes)
+- `hour` / `minute` - Current time of day
+
+**Key Methods:**
+- `tick()` - Advances time by one turn
+- `getAmbientLight()` - Returns 0.0-1.0 light level based on time of day
+- `getTimeOfDay()` - Returns period name (dawn, morning, noon, afternoon, dusk, night)
+- `getFormattedTime()` - Returns "HH:MM" string
+
+**Light Levels by Time:**
+- Night (22:00-5:00): 0.05-0.1
+- Dawn (5:00-7:00): 0.1-0.6
+- Day (7:00-17:00): 0.8-1.0
+- Dusk (17:00-20:00): 0.6-0.1
+- Evening (20:00-22:00): 0.1-0.05
+
+---
+
+## Lighting System
+**File:** `src/systems/LightingSystem.js`
+
+**Purpose:** Calculates per-tile light levels from ambient and point sources, manages fuel consumption.
+
+**Key Methods:**
+- `calculate(px, py, pz, range)` - Calculates light levels for visible area
+- `getEffectiveVisionRadius(baseRange)` - Modulates vision by ambient light + player light
+- `isLightActive(item)` - Checks if light source is on and has fuel
+- `consumeFuel()` - Drains batteries/fuel from active light sources each turn
+- `getPlayerLightSources()` - Returns active light items in player's hands
+
+**Light Source Types:**
+- **Flashlight** - Cone-shaped, radius 12, uses batteries (durability drain), fuelPerTurn 0.02
+- **Lantern** - Radial, radius 7, uses lantern_fuel (quantity drain), fuelPerTurn 0.03
+
+**Fuel Consumption:**
+- Batteries: `fuel.durability -= item.fuelPerTurn` per turn (removed at 0)
+- Lantern fuel: `fuel.quantity -= item.fuelPerTurn * 10` per turn (removed at 0)
+
+**Integration:**
+- `Game.advanceTurn()` calls `lightingSystem.consumeFuel()` each turn
+- `Game.updateFoV()` calls `lightingSystem.getEffectiveVisionRadius()` and `lightingSystem.calculate()`
+- `TimeSystem.getAmbientLight()` provides base ambient level
+
+---
+
+## World Object System
+**File:** `src/systems/WorldObjectSystem.js`
+
+**Purpose:** Handles interactions with doors, furniture, and other world objects.
+
+**Key Methods:**
+- `performAction(worldObject, action, player)` - Routes to specific action handler
+- `smashObject(object, player, weapon)` - Auto-completes: loops hits until destroyed or weapon breaks
+- `disassembleObject(object, player, tool)` - Careful removal with full material yield
+- `searchFurniture(object, player)` - Opens furniture contents transfer UI
+
+**Smash Auto-Complete:**
+- Loops damage until object HP reaches 0 or weapon durability reaches 0
+- Reports summary: hit count, total turns, materials dropped, contents spilled
+- Lock breaks at <30% HP
+- All turns advance at once via `advanceTurn(totalTime)`
+
+---
+
 ## Future Systems (Planned)
 
 ### Sleep/Rest System
@@ -575,9 +646,10 @@ Route to specific handler
 - Outdoor loot at 2% per-tile chance
 - Future: `lucky` trait for better quality/rare drops
 
-### Combat System
+### Combat System (Phase 2 — Next)
+- Melee/ranged combat
+- NPC behavior loops, aggro, factions
 - Action cost modifiers from traits
-- Cybernetic enhancements
 - Weapon durability degradation
 
 ---

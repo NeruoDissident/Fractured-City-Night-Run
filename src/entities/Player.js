@@ -47,6 +47,10 @@ export class Player extends Entity {
         };
         this.contents = this.inventory;
         
+        // Facing direction for directional light (flashlight cone)
+        // Updated on every move: 'north', 'south', 'east', 'west', 'ne', 'nw', 'se', 'sw'
+        this.facing = 'south';
+        
         this.movementMode = 'walk';
         this.movementModes = {
             walk: { name: 'Walking', actionCost: 100, soundVolume: 3, color: '#00ffff' },
@@ -159,17 +163,21 @@ export class Player extends Entity {
         const weight = this.containerSystem.getItemWeight(item);
         const isTwoHanded = item.twoHanded || weight > 5000; // Heavy items need two hands
         
+        // Check both carrying AND equipment slots for hand availability
+        const leftFree = !this.carrying.leftHand && !this.equipment.leftHand;
+        const rightFree = !this.carrying.rightHand && !this.equipment.rightHand;
+        
         if (isTwoHanded) {
             return {
-                canCarry: !this.carrying.leftHand && !this.carrying.rightHand,
+                canCarry: leftFree && rightFree,
                 hands: 'both',
-                reason: this.carrying.leftHand || this.carrying.rightHand ? 'Need both hands free' : null
+                reason: !(leftFree && rightFree) ? 'Need both hands free' : null
             };
         } else {
             return {
-                canCarry: !this.carrying.leftHand || !this.carrying.rightHand,
+                canCarry: leftFree || rightFree,
                 hands: 'one',
-                reason: this.carrying.leftHand && this.carrying.rightHand ? 'Both hands full' : null
+                reason: !leftFree && !rightFree ? 'Both hands full' : null
             };
         }
     }
@@ -181,13 +189,17 @@ export class Player extends Entity {
             return { success: false, message: check.reason };
         }
         
+        // Check both carrying AND equipment slots for hand availability
+        const leftFree = !this.carrying.leftHand && !this.equipment.leftHand;
+        const rightFree = !this.carrying.rightHand && !this.equipment.rightHand;
+        
         if (check.hands === 'both') {
             this.carrying.leftHand = item;
             this.carrying.rightHand = item; // Same item reference in both hands
             item.carriedIn = 'both';
             return { success: true, message: `Carrying ${item.name} in both hands`, hands: 'both' };
         } else {
-            if (!this.carrying.leftHand) {
+            if (leftFree) {
                 this.carrying.leftHand = item;
                 item.carriedIn = 'left';
                 return { success: true, message: `Carrying ${item.name} in left hand`, hands: 'left' };
@@ -257,6 +269,9 @@ export class Player extends Entity {
     }
     
     tryMove(dx, dy) {
+        // Update facing direction regardless of whether move succeeds
+        this.facing = this.getFacingFromDelta(dx, dy);
+        
         const newX = this.x + dx;
         const newY = this.y + dy;
         
@@ -280,6 +295,18 @@ export class Player extends Entity {
         this.checkExtraction();
         
         return true;
+    }
+    
+    getFacingFromDelta(dx, dy) {
+        if (dx === 0 && dy === -1) return 'north';
+        if (dx === 0 && dy === 1) return 'south';
+        if (dx === 1 && dy === 0) return 'east';
+        if (dx === -1 && dy === 0) return 'west';
+        if (dx === 1 && dy === -1) return 'ne';
+        if (dx === -1 && dy === -1) return 'nw';
+        if (dx === 1 && dy === 1) return 'se';
+        if (dx === -1 && dy === 1) return 'sw';
+        return this.facing; // Keep current if no movement
     }
     
     checkExtraction() {

@@ -17,7 +17,9 @@ export const ROOM_LOOT_TABLES = {
             { familyId: 'pants',          weight: 5 },
             { familyId: 'backpack',       weight: 3 },
             { familyId: 'strap',          weight: 8 },
-            { familyId: 'pipe',           weight: 4 }
+            { familyId: 'pipe',           weight: 4 },
+            { familyId: 'flashlight',     weight: 2 },
+            { familyId: 'lantern',        weight: 1 }
         ]
     },
     
@@ -33,7 +35,8 @@ export const ROOM_LOOT_TABLES = {
             { familyId: 'medkit',         weight: 3 },
             { familyId: 'battery',        weight: 8 },
             { familyId: 'shiv',           weight: 4 },
-            { familyId: 'knife',          weight: 2 }
+            { familyId: 'knife',          weight: 2 },
+            { familyId: 'flashlight',     weight: 2 }
         ]
     },
     
@@ -46,7 +49,8 @@ export const ROOM_LOOT_TABLES = {
             { familyId: 'bottle_sealed',  weight: 15 },
             { familyId: 'knife',          weight: 8 },
             { familyId: 'canteen',        weight: 5 },
-            { familyId: 'pipe',           weight: 3 }
+            { familyId: 'pipe',           weight: 3 },
+            { familyId: 'can_opener',     weight: 4 }
         ]
     },
     
@@ -76,7 +80,10 @@ export const ROOM_LOOT_TABLES = {
             { familyId: 'coat',           weight: 5 },
             { familyId: 'pants',          weight: 5 },
             { familyId: 'backpack',       weight: 3 },
-            { familyId: 'canteen',        weight: 3 }
+            { familyId: 'canteen',        weight: 3 },
+            { familyId: 'flashlight',     weight: 3 },
+            { familyId: 'lantern',        weight: 2 },
+            { familyId: 'can_opener',     weight: 3 }
         ]
     },
     
@@ -91,7 +98,9 @@ export const ROOM_LOOT_TABLES = {
             { familyId: 'strap',          weight: 10 },
             { familyId: 'battery',        weight: 8 },
             { familyId: 'knife',          weight: 5 },
-            { familyId: 'medkit',         weight: 5 }
+            { familyId: 'medkit',         weight: 5 },
+            { familyId: 'lantern_fuel',   weight: 3 },
+            { familyId: 'can_opener',     weight: 3 }
         ]
     },
     
@@ -192,7 +201,9 @@ export const ROOM_LOOT_TABLES = {
             { familyId: 'strap',          weight: 12 },
             { familyId: 'battery',        weight: 10 },
             { familyId: 'can_sealed',     weight: 5 },
-            { familyId: 'bottle_sealed',  weight: 5 }
+            { familyId: 'bottle_sealed',  weight: 5 },
+            { familyId: 'flashlight',     weight: 3 },
+            { familyId: 'lantern_fuel',   weight: 4 }
         ]
     },
     
@@ -205,7 +216,11 @@ export const ROOM_LOOT_TABLES = {
             { familyId: 'knife',          weight: 10 },
             { familyId: 'shiv',           weight: 8 },
             { familyId: 'strap',          weight: 15 },
-            { familyId: 'battery',        weight: 12 }
+            { familyId: 'battery',        weight: 12 },
+            { familyId: 'flashlight',     weight: 4 },
+            { familyId: 'lantern',        weight: 2 },
+            { familyId: 'lantern_fuel',   weight: 3 },
+            { familyId: 'can_opener',     weight: 3 }
         ]
     },
     
@@ -238,7 +253,10 @@ export const ROOM_LOOT_TABLES = {
             { familyId: 'battery',        weight: 10 },
             { familyId: 'medkit',         weight: 5 },
             { familyId: 'backpack',       weight: 5 },
-            { familyId: 'canteen',        weight: 3 }
+            { familyId: 'canteen',        weight: 3 },
+            { familyId: 'flashlight',     weight: 2 },
+            { familyId: 'lantern',        weight: 2 },
+            { familyId: 'lantern_fuel',   weight: 3 }
         ]
     }
 };
