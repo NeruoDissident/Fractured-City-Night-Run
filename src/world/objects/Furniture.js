@@ -138,6 +138,33 @@ export class Furniture extends WorldObject {
 }
 
 /**
+ * Sprite index mapping for the objects spritesheet (8 columns, 32px tiles)
+ * Indices 0-15: furniture, 16-20: doors
+ */
+export const OBJECT_SPRITE_INDEX = {
+    cabinet: 0,
+    dresser: 1,
+    shelf: 2,
+    locker: 3,
+    crate: 4,
+    filing_cabinet: 5,
+    table: 6,
+    chair: 7,
+    couch: 8,
+    bed: 9,
+    sink: 10,
+    counter: 11,
+    stove: 12,
+    toilet: 13,
+    shower: 14,
+    workbench: 15,
+    door_closed: 16,
+    door_open: 17,
+    door_broken: 18,
+    door_barricaded: 19
+};
+
+/**
  * Furniture type definitions
  * Storage furniture has pockets[] matching ContainerSystem format
  */

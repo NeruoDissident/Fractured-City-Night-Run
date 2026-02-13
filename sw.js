@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fractured-city-v7';
+const CACHE_NAME = 'fractured-city-v8';
 const ASSETS = [
     '/',
     '/index.html',
@@ -7,6 +7,11 @@ const ASSETS = [
     '/src/main.js',
     '/src/core/Game.js',
     '/src/core/Renderer.js',
+    '/src/core/SpriteManager.js',
+    '/assets/walls/walls.png',
+    '/assets/objects/objects.png',
+    '/assets/entites/player_characters/player_characers.png',
+    '/assets/entites/npcs/npc.png',
     '/src/core/InputHandler.js',
     '/src/world/World.js',
     '/src/world/Chunk.js',

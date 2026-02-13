@@ -1,4 +1,5 @@
 import { Renderer } from './Renderer.js';
+import { SpriteManager } from './SpriteManager.js';
 import { InputHandler } from './InputHandler.js';
 import { World } from '../world/World.js';
 import { ContentManager } from '../content/ContentManager.js';
@@ -36,14 +37,22 @@ export class Game {
         this.inspectCursor = { x: 0, y: 0 };
     }
     
-    init() {
+    async init() {
         this.content = new ContentManager();
         this.content.loadContent();
         
         this.charCreationSystem = new CharacterCreationSystem();
         
+        // Load spritesheets before renderer needs them
+        this.spriteManager = new SpriteManager();
+        await this.spriteManager.loadSheet('walls', 'assets/walls/walls.png', 4, 32);
+        await this.spriteManager.loadSheet('objects', 'assets/objects/objects.png', 8, 32);
+        await this.spriteManager.loadSheet('player', 'assets/entites/player_characters/player_characers.png', 1, 32);
+        await this.spriteManager.loadSheet('npcs', 'assets/entites/npcs/npc.png', 2, 32);
+        
         this.renderer = new Renderer();
         this.renderer.init();
+        this.renderer.setSpriteManager(this.spriteManager);
         
         this.ui = new UIManager(this);
         this.ui.init();

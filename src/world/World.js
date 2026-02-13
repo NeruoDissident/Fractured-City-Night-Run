@@ -2,6 +2,17 @@ import { Chunk } from './Chunk.js';
 import { NPC } from '../entities/NPC.js';
 import { ExtractionPoint } from './ExtractionPoint.js';
 
+// Biome tint colors for wall sprites (applied over neutral gray spritesheet)
+const BIOME_WALL_TINTS = {
+    urban_core:        '#cccccc',
+    suburbs:           '#d2b48c',
+    industrial:        '#aaaaaa',
+    rich_neighborhood: '#f5f5dc',
+    rural:             '#8b7355',
+    forest:            '#654321',
+    ruins:             '#888888'
+};
+
 export class World {
     constructor(game) {
         this.game = game;
@@ -303,6 +314,59 @@ export class World {
         }
     }
     
+    /**
+     * Calculate 4-bit bitmask for wall autotiling.
+     * Checks N/E/S/W neighbors for wall tiles.
+     * Bit layout matches spritesheet where index = direction wall faces:
+     *   bit 1 = neighbor to SOUTH  (wall faces N)
+     *   bit 2 = neighbor to WEST   (wall faces E)
+     *   bit 4 = neighbor to NORTH  (wall faces S)
+     *   bit 8 = neighbor to EAST   (wall faces W)
+     */
+    getWallBitmask(x, y, z) {
+        const n = this.getTile(x, y - 1, z);
+        const e = this.getTile(x + 1, y, z);
+        const s = this.getTile(x, y + 1, z);
+        const w = this.getTile(x - 1, y, z);
+        
+        let mask = 0;
+        if (n && n.isWall) mask |= 1;
+        if (w && w.isWall) mask |= 2;
+        if (s && s.isWall) mask |= 4;
+        if (e && e.isWall) mask |= 8;
+        return mask;
+    }
+    
+    /**
+     * Build sprite data for a wall tile if sprites are available.
+     * Returns { sheet, index, tint } or null for ASCII fallback.
+     */
+    getWallSpriteData(worldX, worldY, z) {
+        const biome = this.getBiomeAt(worldX, worldY);
+        const tint = BIOME_WALL_TINTS[biome] || BIOME_WALL_TINTS.suburbs;
+        const bitmask = this.getWallBitmask(worldX, worldY, z);
+        return { sheet: 'walls', index: bitmask, tint: tint };
+    }
+    
+    /**
+     * Get sprite data for an entity (player or NPC).
+     * Returns { sheet, index } or null for ASCII fallback.
+     */
+    getEntitySpriteData(entity) {
+        // Player character
+        if (entity.glyph === '@') {
+            return { sheet: 'player', index: 0 };
+        }
+        // NPCs by type
+        if (entity.type === 'raider') {
+            return { sheet: 'npcs', index: 0 };
+        }
+        if (entity.type === 'scavenger') {
+            return { sheet: 'npcs', index: 1 };
+        }
+        return null;
+    }
+    
     render(renderer, cameraX, cameraY, viewWidth, viewHeight, fov, z = 0, lighting = null) {
         for (let y = 0; y < viewHeight; y++) {
             for (let x = 0; x < viewWidth; x++) {
@@ -311,23 +375,36 @@ export class World {
                 
                 const tile = this.getTile(worldX, worldY, z);
                 
+                // Get sprite data: walls use autotile bitmask, furniture/doors use tile.spriteData
+                const spriteData = tile.isWall
+                    ? this.getWallSpriteData(worldX, worldY, z)
+                    : (tile.spriteData || null);
+                
                 if (!fov) {
-                    renderer.drawTile(x, y, tile.glyph, tile.fgColor, tile.bgColor);
+                    renderer.drawTileSprite(x, y, tile.glyph, tile.fgColor, tile.bgColor, spriteData);
                 } else {
                     const isVisible = fov.isVisible(worldX, worldY, z);
                     const isExplored = fov.isExplored(worldX, worldY, z);
                     
                     if (isVisible) {
-                        // Apply lighting to visible tiles
                         const light = lighting ? lighting.getLightLevel(worldX, worldY, z) : 1.0;
                         const tint = lighting ? lighting.getLightTint(worldX, worldY, z) : null;
-                        const litFg = this.applyLight(tile.fgColor, light, tint);
-                        const litBg = this.applyLight(tile.bgColor, light, tint);
-                        renderer.drawTile(x, y, tile.glyph, litFg, litBg);
+                        if (spriteData) {
+                            renderer.drawTileSprite(x, y, tile.glyph, tile.fgColor, tile.bgColor, spriteData, light, tint);
+                        } else {
+                            // ASCII path with color-based lighting
+                            const litFg = this.applyLight(tile.fgColor, light, tint);
+                            const litBg = this.applyLight(tile.bgColor, light, tint);
+                            renderer.drawTile(x, y, tile.glyph, litFg, litBg);
+                        }
                     } else if (isExplored) {
-                        const dimFg = this.dimColor(tile.fgColor);
-                        const dimBg = this.dimColor(tile.bgColor);
-                        renderer.drawTile(x, y, tile.glyph, dimFg, dimBg);
+                        if (spriteData) {
+                            renderer.drawTileSpriteDimmed(x, y, tile.glyph, tile.fgColor, tile.bgColor, spriteData);
+                        } else {
+                            const dimFg = this.dimColor(tile.fgColor);
+                            const dimBg = this.dimColor(tile.bgColor);
+                            renderer.drawTile(x, y, tile.glyph, dimFg, dimBg);
+                        }
                     }
                 }
             }
@@ -360,7 +437,14 @@ export class World {
                 if (!fov || fov.isVisible(entity.x, entity.y, z)) {
                     const light = lighting ? lighting.getLightLevel(entity.x, entity.y, z) : 1.0;
                     const tint = lighting ? lighting.getLightTint(entity.x, entity.y, z) : null;
-                    renderer.drawTile(screenX, screenY, entity.glyph, this.applyLight(entity.color, light, tint));
+                    
+                    // Determine sprite data for entity
+                    const entitySprite = this.getEntitySpriteData(entity);
+                    if (entitySprite) {
+                        renderer.drawTileSprite(screenX, screenY, entity.glyph, entity.color, null, entitySprite, light, tint);
+                    } else {
+                        renderer.drawTile(screenX, screenY, entity.glyph, this.applyLight(entity.color, light, tint));
+                    }
                 }
             }
         }

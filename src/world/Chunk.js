@@ -1,5 +1,5 @@
 import { createDoor } from './objects/Door.js';
-import { createFurniture, populateFurniture } from './objects/Furniture.js';
+import { createFurniture, populateFurniture, OBJECT_SPRITE_INDEX } from './objects/Furniture.js';
 import { findMatchingPrefab, BIOME_DOOR_TYPES } from '../content/BuildingPrefabs.js';
 import { ROOM_LOOT_TABLES, OUTDOOR_LOOT, rollLootPool, generateRoomLoot } from '../content/LootTables.js';
 
@@ -229,7 +229,7 @@ export class Chunk {
                     case 'industrial':
                         if (rand < 5) {
                             // 5% chance of metal wall
-                            this.setTile(x, y, { glyph: '█', fgColor: '#333333', bgColor: '#0f0f0f', blocked: true, name: 'Metal Wall' }, 0);
+                            this.setTile(x, y, { glyph: '█', fgColor: '#333333', bgColor: '#0f0f0f', blocked: true, isWall: true, name: 'Metal Wall' }, 0);
                             obstaclesPlaced++;
                         } else if (rand < 10) {
                             // 5% chance of grating
@@ -241,7 +241,7 @@ export class Chunk {
                     case 'rich_neighborhood':
                         if (rand < 1) {
                             // 1% chance of decorative wall
-                            this.setTile(x, y, { glyph: '▓', fgColor: '#d4af37', bgColor: '#1a1a0a', blocked: true, name: 'Decorative Wall' }, 0);
+                            this.setTile(x, y, { glyph: '▓', fgColor: '#d4af37', bgColor: '#1a1a0a', blocked: true, isWall: true, name: 'Decorative Wall' }, 0);
                             obstaclesPlaced++;
                         } else if (rand < 3) {
                             // 2% chance of garden features
@@ -277,7 +277,7 @@ export class Chunk {
                     case 'ruins':
                         if (rand < 3) {
                             // 3% chance of rubble wall
-                            this.setTile(x, y, { glyph: '#', fgColor: '#555555', bgColor: '#1a1a1a', blocked: true, name: 'Rubble Wall' }, 0);
+                            this.setTile(x, y, { glyph: '#', fgColor: '#555555', bgColor: '#1a1a1a', blocked: true, isWall: true, name: 'Rubble Wall' }, 0);
                             obstaclesPlaced++;
                         } else if (rand < 8) {
                             // 5% chance of debris
@@ -530,7 +530,7 @@ export class Chunk {
         
         // Sewer tile configuration
         const sewerFloorTile = { glyph: '=', fgColor: '#444444', bgColor: '#0a0a0a', blocked: false, name: 'Sewer Floor' };
-        const sewerWallTile = { glyph: '#', fgColor: '#333333', bgColor: '#0a0a0a', blocked: true, name: 'Sewer Wall' };
+        const sewerWallTile = { glyph: '#', fgColor: '#333333', bgColor: '#0a0a0a', blocked: true, isWall: true, name: 'Sewer Wall' };
         const manholeTile = { glyph: 'O', fgColor: '#ffff00', bgColor: '#0a2a2a', blocked: false, name: 'Manhole Cover', isManhole: true, canDescend: true };
         const ladderTile = { glyph: 'H', fgColor: '#888888', bgColor: '#0a0a0a', blocked: false, name: 'Ladder', isLadder: true, canAscend: true };
         
@@ -864,28 +864,28 @@ export class Chunk {
         let wallTile;
         switch(biome) {
             case 'urban_core':
-                wallTile = { glyph: '▓', fgColor: '#cccccc', bgColor: '#3a3a3a', blocked: true, name: 'Glass & Steel Wall' };
+                wallTile = { glyph: '▓', fgColor: '#cccccc', bgColor: '#3a3a3a', blocked: true, isWall: true, name: 'Glass & Steel Wall' };
                 break;
             case 'suburbs':
-                wallTile = { glyph: '▓', fgColor: '#d2b48c', bgColor: '#3a3a3a', blocked: true, name: 'Brick Wall' };
+                wallTile = { glyph: '▓', fgColor: '#d2b48c', bgColor: '#3a3a3a', blocked: true, isWall: true, name: 'Brick Wall' };
                 break;
             case 'industrial':
-                wallTile = { glyph: '▓', fgColor: '#aaaaaa', bgColor: '#3a3a3a', blocked: true, name: 'Concrete Wall' };
+                wallTile = { glyph: '▓', fgColor: '#aaaaaa', bgColor: '#3a3a3a', blocked: true, isWall: true, name: 'Concrete Wall' };
                 break;
             case 'rich_neighborhood':
-                wallTile = { glyph: '▓', fgColor: '#f5f5dc', bgColor: '#3a3a3a', blocked: true, name: 'Marble Wall' };
+                wallTile = { glyph: '▓', fgColor: '#f5f5dc', bgColor: '#3a3a3a', blocked: true, isWall: true, name: 'Marble Wall' };
                 break;
             case 'rural':
-                wallTile = { glyph: '▓', fgColor: '#8b7355', bgColor: '#3a3a3a', blocked: true, name: 'Wood Wall' };
+                wallTile = { glyph: '▓', fgColor: '#8b7355', bgColor: '#3a3a3a', blocked: true, isWall: true, name: 'Wood Wall' };
                 break;
             case 'forest':
-                wallTile = { glyph: '▓', fgColor: '#654321', bgColor: '#2a2a2a', blocked: true, name: 'Log Wall' };
+                wallTile = { glyph: '▓', fgColor: '#654321', bgColor: '#2a2a2a', blocked: true, isWall: true, name: 'Log Wall' };
                 break;
             case 'ruins':
-                wallTile = { glyph: '▓', fgColor: '#888888', bgColor: '#3a3a3a', blocked: true, name: 'Crumbling Wall' };
+                wallTile = { glyph: '▓', fgColor: '#888888', bgColor: '#3a3a3a', blocked: true, isWall: true, name: 'Crumbling Wall' };
                 break;
             default:
-                wallTile = { glyph: '▓', fgColor: '#aaaaaa', bgColor: '#3a3a3a', blocked: true, name: 'Wall' };
+                wallTile = { glyph: '▓', fgColor: '#aaaaaa', bgColor: '#3a3a3a', blocked: true, isWall: true, name: 'Wall' };
         }
         
         const floorTile = { glyph: '.', fgColor: '#aaaaaa', bgColor: '#2a2a2a', blocked: false, name: 'Floor' };
@@ -1013,7 +1013,7 @@ export class Chunk {
             if (this.world && this.world.addWorldObject) {
                 this.world.addWorldObject(door);
                 // Set the door tile in this chunk
-                this.setTile(doorX, doorY, { glyph: door.glyph, fgColor: door.fgColor, bgColor: '#3a3a3a', blocked: door.blocked, blocksVision: door.blocksVision, name: door.name, worldObjectId: door.id }, 0);
+                this.setTile(doorX, doorY, { glyph: door.glyph, fgColor: door.fgColor, bgColor: '#3a3a3a', blocked: door.blocked, blocksVision: door.blocksVision, name: door.name, worldObjectId: door.id, spriteData: { sheet: 'objects', index: OBJECT_SPRITE_INDEX.door_closed } }, 0);
             } else {
                 console.warn('World.addWorldObject not available, placing simple door tile instead');
                 const doorTile = { glyph: '+', fgColor: '#ff8800', bgColor: '#3a3a3a', blocked: false, name: 'Door' };
@@ -1204,28 +1204,28 @@ export class Chunk {
         let wallTile;
         switch(biome) {
             case 'urban_core':
-                wallTile = { glyph: '▓', fgColor: '#cccccc', bgColor: '#3a3a3a', blocked: true, name: 'Glass & Steel Wall' };
+                wallTile = { glyph: '▓', fgColor: '#cccccc', bgColor: '#3a3a3a', blocked: true, isWall: true, name: 'Glass & Steel Wall' };
                 break;
             case 'suburbs':
-                wallTile = { glyph: '▓', fgColor: '#d2b48c', bgColor: '#3a3a3a', blocked: true, name: 'Brick Wall' };
+                wallTile = { glyph: '▓', fgColor: '#d2b48c', bgColor: '#3a3a3a', blocked: true, isWall: true, name: 'Brick Wall' };
                 break;
             case 'industrial':
-                wallTile = { glyph: '▓', fgColor: '#aaaaaa', bgColor: '#3a3a3a', blocked: true, name: 'Concrete Wall' };
+                wallTile = { glyph: '▓', fgColor: '#aaaaaa', bgColor: '#3a3a3a', blocked: true, isWall: true, name: 'Concrete Wall' };
                 break;
             case 'rich_neighborhood':
-                wallTile = { glyph: '▓', fgColor: '#f5f5dc', bgColor: '#3a3a3a', blocked: true, name: 'Marble Wall' };
+                wallTile = { glyph: '▓', fgColor: '#f5f5dc', bgColor: '#3a3a3a', blocked: true, isWall: true, name: 'Marble Wall' };
                 break;
             case 'rural':
-                wallTile = { glyph: '▓', fgColor: '#8b7355', bgColor: '#3a3a3a', blocked: true, name: 'Wood Wall' };
+                wallTile = { glyph: '▓', fgColor: '#8b7355', bgColor: '#3a3a3a', blocked: true, isWall: true, name: 'Wood Wall' };
                 break;
             case 'forest':
-                wallTile = { glyph: '▓', fgColor: '#654321', bgColor: '#2a2a2a', blocked: true, name: 'Log Wall' };
+                wallTile = { glyph: '▓', fgColor: '#654321', bgColor: '#2a2a2a', blocked: true, isWall: true, name: 'Log Wall' };
                 break;
             case 'ruins':
-                wallTile = { glyph: '▓', fgColor: '#888888', bgColor: '#3a3a3a', blocked: true, name: 'Crumbling Wall' };
+                wallTile = { glyph: '▓', fgColor: '#888888', bgColor: '#3a3a3a', blocked: true, isWall: true, name: 'Crumbling Wall' };
                 break;
             default:
-                wallTile = { glyph: '▓', fgColor: '#aaaaaa', bgColor: '#3a3a3a', blocked: true, name: 'Wall' };
+                wallTile = { glyph: '▓', fgColor: '#aaaaaa', bgColor: '#3a3a3a', blocked: true, isWall: true, name: 'Wall' };
         }
         
         const floorTile = { glyph: '.', fgColor: '#aaaaaa', bgColor: '#2a2a2a', blocked: false, name: 'Floor' };
@@ -1305,7 +1305,7 @@ export class Chunk {
                             const door = createDoor(doorTypes.exterior, worldX, worldY, 0, isLocked, false);
                             if (this.world && this.world.addWorldObject) {
                                 this.world.addWorldObject(door);
-                                this.setTile(tileX, tileY, { glyph: door.glyph, fgColor: door.fgColor, bgColor: '#3a3a3a', blocked: door.blocked, blocksVision: door.blocksVision, name: door.name, worldObjectId: door.id }, 0);
+                                this.setTile(tileX, tileY, { glyph: door.glyph, fgColor: door.fgColor, bgColor: '#3a3a3a', blocked: door.blocked, blocksVision: door.blocksVision, name: door.name, worldObjectId: door.id, spriteData: { sheet: 'objects', index: OBJECT_SPRITE_INDEX.door_closed } }, 0);
                             } else {
                                 this.setTile(tileX, tileY, { ...floorTile, name: 'Doorway' }, 0);
                             }
@@ -1324,7 +1324,7 @@ export class Chunk {
                             const door = createDoor(doorTypes.interior, worldX, worldY, 0, false, false);
                             if (this.world && this.world.addWorldObject) {
                                 this.world.addWorldObject(door);
-                                this.setTile(tileX, tileY, { glyph: door.glyph, fgColor: door.fgColor, bgColor: '#3a3a3a', blocked: door.blocked, blocksVision: door.blocksVision, name: door.name, worldObjectId: door.id }, 0);
+                                this.setTile(tileX, tileY, { glyph: door.glyph, fgColor: door.fgColor, bgColor: '#3a3a3a', blocked: door.blocked, blocksVision: door.blocksVision, name: door.name, worldObjectId: door.id, spriteData: { sheet: 'objects', index: OBJECT_SPRITE_INDEX.door_closed } }, 0);
                             } else {
                                 this.setTile(tileX, tileY, { ...floorTile, name: 'Doorway' }, 0);
                             }
@@ -1416,6 +1416,7 @@ export class Chunk {
                     }
                     
                     this.world.addWorldObject(furniture);
+                    const spriteIdx = OBJECT_SPRITE_INDEX[spawn.type];
                     this.setTile(tileX, tileY, {
                         glyph: furniture.glyph,
                         fgColor: furniture.fgColor,
@@ -1424,7 +1425,8 @@ export class Chunk {
                         blocksVision: furniture.blocksVision,
                         name: furniture.name,
                         worldObjectId: furniture.id,
-                        roomType: tile.roomType
+                        roomType: tile.roomType,
+                        spriteData: spriteIdx !== undefined ? { sheet: 'objects', index: spriteIdx } : null
                     }, 0);
                     furnitureCount++;
                 } catch (error) {

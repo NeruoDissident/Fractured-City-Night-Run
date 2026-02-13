@@ -6,6 +6,11 @@ export class Renderer {
         this.tilesX = 30;
         this.tilesY = 20;
         this.scale = 1.0;
+        this.spriteManager = null;
+    }
+    
+    setSpriteManager(spriteManager) {
+        this.spriteManager = spriteManager;
     }
     
     init() {
@@ -87,6 +92,61 @@ export class Renderer {
         this.ctx.textAlign = 'center';
         this.ctx.textBaseline = 'middle';
         this.ctx.fillText(glyph, screenX + this.tileSize / 2, screenY + this.tileSize / 2);
+    }
+    
+    /**
+     * Draw a tile with sprite support. Falls back to ASCII if no sprite available.
+     * @param {number} x - Screen tile X
+     * @param {number} y - Screen tile Y
+     * @param {string} glyph - ASCII fallback character
+     * @param {string} fgColor - Foreground color (used for ASCII fallback)
+     * @param {string} bgColor - Background color (used for ASCII fallback)
+     * @param {object|null} spriteData - { sheet, index, tint } or null for ASCII
+     * @param {number} lightLevel - 0.0 to 1.0
+     * @param {string|null} lightTint - Light source tint color
+     */
+    drawTileSprite(x, y, glyph, fgColor, bgColor, spriteData, lightLevel = 1.0, lightTint = null) {
+        if (spriteData && this.spriteManager) {
+            const screenX = x * this.tileSize;
+            const screenY = y * this.tileSize;
+            const drawn = this.spriteManager.drawSprite(
+                this.ctx, spriteData.sheet, spriteData.index,
+                screenX, screenY, this.tileSize,
+                spriteData.tint || null, lightLevel, lightTint
+            );
+            if (drawn) return;
+        }
+        // ASCII fallback
+        this.drawTile(x, y, glyph, fgColor, bgColor);
+    }
+    
+    /**
+     * Draw a dimmed (explored but not visible) tile with sprite support.
+     */
+    drawTileSpriteDimmed(x, y, glyph, fgColor, bgColor, spriteData) {
+        if (spriteData && this.spriteManager) {
+            const screenX = x * this.tileSize;
+            const screenY = y * this.tileSize;
+            const drawn = this.spriteManager.drawSpriteDimmed(
+                this.ctx, spriteData.sheet, spriteData.index,
+                screenX, screenY, this.tileSize,
+                spriteData.tint || null
+            );
+            if (drawn) return;
+        }
+        // ASCII fallback
+        const dimFg = this.dimColorFallback(fgColor);
+        const dimBg = this.dimColorFallback(bgColor);
+        this.drawTile(x, y, glyph, dimFg, dimBg);
+    }
+    
+    dimColorFallback(color) {
+        if (!color) return null;
+        const hex = color.replace('#', '');
+        const r = Math.floor(parseInt(hex.substr(0, 2), 16) * 0.3);
+        const g = Math.floor(parseInt(hex.substr(2, 2), 16) * 0.3);
+        const b = Math.floor(parseInt(hex.substr(4, 2), 16) * 0.3);
+        return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
     }
     
     drawRect(x, y, width, height, color) {
