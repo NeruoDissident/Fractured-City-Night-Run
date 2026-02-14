@@ -33,8 +33,9 @@ export class Player extends Entity {
             game.charCreationSystem.applyTraitsToCharacter(this, characterData.traits);
         }
         
-        this.hp = this.getMaxHP();
-        this.maxHP = this.hp;
+        // Legacy HP kept for compatibility but no longer used for death
+        this.hp = 999;
+        this.maxHP = 999;
         
         this.inventory = [];
         this.isContainer = true;
@@ -86,14 +87,8 @@ export class Player extends Entity {
     }
     
     getMaxHP() {
-        let maxHP = 50 + (this.stats.endurance * 5);
-        
-        // Apply weakConstitution trait modifier
-        if (this.traitEffects && this.traitEffects.maxHPMod) {
-            maxHP += this.traitEffects.maxHPMod;
-        }
-        
-        return Math.max(1, maxHP);
+        // Legacy — no longer drives death. Kept for any UI that still references it.
+        return 999;
     }
     
     getMaxCarryWeight() {
@@ -390,6 +385,48 @@ export class Player extends Entity {
         return false;
     }
     
+    grabAll() {
+        const items = this.game.world.getItemsAt(this.x, this.y, this.z);
+        if (items.length === 0) {
+            this.game.ui.log('Nothing to pick up here.', 'info');
+            return false;
+        }
+        
+        let picked = 0;
+        let failed = 0;
+        // Iterate backwards since removeItem mutates the array
+        const toGrab = [...items];
+        for (const item of toGrab) {
+            const canFit = this.canPickupItem(item);
+            if (!canFit.canFit) {
+                failed++;
+                continue;
+            }
+            const result = this.addToInventory(item);
+            if (result.success) {
+                this.game.world.removeItem(item);
+                picked++;
+            } else {
+                failed++;
+            }
+        }
+        
+        if (picked > 0) {
+            this.game.ui.log(`Grabbed ${picked} item(s).`, 'info');
+            const encumbrance = this.getEncumbranceLevel();
+            if (encumbrance === 'heavy') {
+                this.game.ui.log('You are heavily encumbered!', 'warning');
+            } else if (encumbrance === 'overencumbered') {
+                this.game.ui.log('You are overencumbered! Movement is severely impaired!', 'warning');
+            }
+        }
+        if (failed > 0) {
+            this.game.ui.log(`${failed} item(s) left — no storage space.`, 'warning');
+        }
+        
+        return picked > 0;
+    }
+    
     dropItem(item) {
         const result = this.removeFromInventory(item);
         if (result.success) {
@@ -404,37 +441,28 @@ export class Player extends Entity {
     }
     
     attack(target) {
-        const weaponDamage = this.equipmentSystem.getEquippedDamage();
-        const strBonus = Math.floor(this.stats.strength / 2);
-        const damage = weaponDamage + strBonus;
+        const weapon = this.equipmentSystem.getActiveWeapon();
+        const result = this.game.combatSystem.resolveAttack(this, target, weapon);
         
-        target.takeDamage(damage);
-        
-        const weaponText = this.equipmentSystem.getWeaponGripText();
-        const actionCost = this.equipmentSystem.getWeaponActionCost();
-        
-        this.game.ui.log(`You attack ${target.name} with ${weaponText} for ${damage} damage.`, 'combat');
+        if (result.killed && target.die) {
+            target.die();
+        }
     }
     
     takeDamage(amount) {
-        const defense = this.equipmentSystem.getEquippedDefense();
-        const actualDamage = Math.max(1, amount - defense);
-        
-        this.hp -= actualDamage;
-        
-        if (defense > 0) {
-            this.game.ui.log(`You take ${actualDamage} damage (${defense} blocked by armor)!`, 'combat');
-        } else {
-            this.game.ui.log(`You take ${actualDamage} damage!`, 'combat');
-        }
-        
-        if (this.hp <= 0) {
-            this.hp = 0;
+        // Legacy fallback — route through anatomy if available
+        if (this.anatomy) {
+            // Distribute damage to a random torso part
+            const torsoPath = 'torso.stomach';
+            this.anatomy.damagePart(torsoPath, amount);
         }
     }
     
     isDead() {
-        return this.hp <= 0;
+        if (this.anatomy) {
+            return this.anatomy.isDead();
+        }
+        return false;
     }
     
     addStatusEffect(effect) {
@@ -453,28 +481,67 @@ export class Player extends Entity {
             this.thirst = Math.max(0, this.thirst - this.thirstRate);
         }
         
-        // Starvation effects
+        // Starvation → damages stomach, then organs
         if (this.hunger <= 0) {
-            this.hp = Math.max(0, this.hp - 2);
-            if (this.hp > 0) {
-                this.game.ui.log('You are starving! -2 HP', 'warning');
+            const stomach = this.anatomy.parts.torso.stomach;
+            if (stomach.functional) {
+                stomach.hp = Math.max(0, stomach.hp - 1);
+                if (stomach.hp <= 0) stomach.functional = false;
+                this.game.ui.log('Your stomach cramps violently from starvation.', 'warning');
+            } else {
+                // Stomach already destroyed — damage liver
+                this.anatomy.damagePart('torso.liver', 1);
+                if (Math.random() < 0.3) {
+                    this.game.ui.log('Starvation is destroying your organs...', 'warning');
+                }
             }
-        } else if (this.hunger < 20) {
-            if (Math.random() < 0.1) {
+            if (!this.anatomy.causeOfDeath) {
+                this.anatomy.causeOfDeath = 'starvation';
+            }
+        } else {
+            // Clear starvation cause if hunger recovered
+            if (this.anatomy.causeOfDeath === 'starvation') {
+                this.anatomy.causeOfDeath = null;
+            }
+            if (this.hunger < 20 && Math.random() < 0.1) {
                 this.game.ui.log('Your stomach growls with hunger...', 'warning');
             }
         }
         
-        // Dehydration effects
+        // Dehydration → damages kidneys, then brain
         if (this.thirst <= 0) {
-            this.hp = Math.max(0, this.hp - 3);
-            if (this.hp > 0) {
-                this.game.ui.log('You are severely dehydrated! -3 HP', 'warning');
+            const kidneys = this.anatomy.parts.torso.kidneys;
+            const activeKidney = kidneys.find(k => k.functional);
+            if (activeKidney) {
+                activeKidney.hp = Math.max(0, activeKidney.hp - 1);
+                if (activeKidney.hp <= 0) activeKidney.functional = false;
+                this.game.ui.log('Dehydration is shutting down your kidneys.', 'warning');
+            } else {
+                // Both kidneys gone — damage brain directly
+                this.anatomy.damagePart('head.brain', 1);
+                if (Math.random() < 0.3) {
+                    this.game.ui.log('Severe dehydration is causing brain damage...', 'warning');
+                }
             }
-        } else if (this.thirst < 20) {
-            if (Math.random() < 0.1) {
+            if (!this.anatomy.causeOfDeath) {
+                this.anatomy.causeOfDeath = 'dehydration';
+            }
+        } else {
+            // Clear dehydration cause if thirst recovered
+            if (this.anatomy.causeOfDeath === 'dehydration') {
+                this.anatomy.causeOfDeath = null;
+            }
+            if (this.thirst < 20 && Math.random() < 0.1) {
                 this.game.ui.log('Your throat is parched...', 'warning');
             }
+        }
+        
+        // Process anatomy turn (bleeding, organ effects, suffocation, shock)
+        const currentTurn = this.game.turnCount || 0;
+        const anatomyResult = this.anatomy.processTurn(currentTurn);
+        for (const effect of anatomyResult.effects) {
+            const logType = effect.type === 'death' ? 'combat' : 'warning';
+            this.game.ui.log(effect.msg, logType);
         }
         
         // Process other status effects
@@ -482,11 +549,25 @@ export class Player extends Entity {
             const effect = this.statusEffects[i];
             
             if (effect.type === 'heal') {
-                this.hp = Math.min(this.hp + effect.value, this.maxHP);
-                this.game.ui.log(`+${effect.value} HP from ${effect.name}`, 'info');
+                // Healing primarily patches wounds (reduces bleed severity)
+                if (this.anatomy.wounds.length > 0) {
+                    for (const wound of this.anatomy.wounds) {
+                        wound.severity = Math.max(0, wound.severity - effect.value * 0.15);
+                    }
+                    // Remove fully patched wounds
+                    this.anatomy.wounds = this.anatomy.wounds.filter(w => w.severity > 0.01);
+                    this.game.ui.log(`${effect.name} helps close your wounds.`, 'info');
+                } else {
+                    // No wounds — healing restores blood slowly
+                    const bloodGain = effect.value * 0.3;
+                    this.anatomy.blood = Math.min(this.anatomy.maxBlood, this.anatomy.blood + bloodGain);
+                    this.anatomy.regenCooldown = 0; // healing bypasses regen cooldown
+                    this.game.ui.log(`+${bloodGain.toFixed(1)} blood restored by ${effect.name}`, 'info');
+                }
             } else if (effect.type === 'sickness') {
-                this.hp = Math.max(0, this.hp + effect.value);
-                this.game.ui.log(`${effect.value} HP from ${effect.name}`, 'warning');
+                // Sickness damages stomach
+                this.anatomy.damagePart('torso.stomach', Math.abs(effect.value));
+                this.game.ui.log(`Sickness from ${effect.name} wracks your body.`, 'warning');
             }
             
             effect.duration--;

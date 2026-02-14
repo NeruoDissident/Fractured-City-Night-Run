@@ -16,7 +16,7 @@ export class InputHandler {
             'D': { type: 'move', dx: 1, dy: 0 },
             ' ': { type: 'wait' },
             'g': { type: 'pickup' },
-            'G': { type: 'pickup' },
+            'G': { type: 'grabAll' },
             '<': { type: 'ascend' },
             '>': { type: 'descend' }
         };
@@ -61,8 +61,8 @@ export class InputHandler {
         
         if (e.key === 'e' || e.key === 'E') {
             e.preventDefault();
-            if (this.game.gameState === 'playing' && !this.game.inspectMode) {
-                this.game.interactWithWorldObject();
+            if (this.game.gameState === 'playing' && !this.game.inspectMode && !this.game.interactMode) {
+                this.game.enterInteractMode();
             }
             return;
         }
@@ -92,6 +92,11 @@ export class InputHandler {
             if (this.game.ui.closeAllModals()) {
                 return;
             }
+            // Cancel interact mode
+            if (this.game.interactMode) {
+                this.game.cancelInteractMode();
+                return;
+            }
             // Then exit inspect mode if no modals were open
             if (this.game.inspectMode) {
                 this.game.toggleInspectMode();
@@ -113,6 +118,16 @@ export class InputHandler {
         }
         
         if (this.game.gameState !== 'playing') return;
+        
+        // Interact mode: direction keys select a target
+        if (this.game.interactMode) {
+            const action = this.keyMap[e.key];
+            if (action && action.type === 'move') {
+                e.preventDefault();
+                this.game.interactInDirection(action.dx, action.dy);
+            }
+            return;
+        }
         
         if (this.game.inspectMode) {
             const action = this.keyMap[e.key];

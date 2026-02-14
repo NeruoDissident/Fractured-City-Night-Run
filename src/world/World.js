@@ -222,9 +222,13 @@ export class World {
         this.processFoodSpoilage(player);
         this.processLiquidSpillage(player);
         
-        for (const entity of this.entities) {
+        // Copy array — entities may die (and be removed) during their turn
+        const activeEntities = [...this.entities];
+        for (const entity of activeEntities) {
             if (entity === player) continue;
             if (!entity.takeTurn) continue;
+            // Skip entities that died earlier this turn
+            if (entity.anatomy && entity.anatomy.isDead()) continue;
             
             const dist = Math.abs(entity.x - player.x) + Math.abs(entity.y - player.y);
             if (dist < 20) {

@@ -171,4 +171,14 @@ export class Renderer {
         this.ctx.lineWidth = 3;
         this.ctx.strokeRect(screenX + 2, screenY + 2, this.tileSize - 4, this.tileSize - 4);
     }
+    
+    drawInteractHighlight(x, y) {
+        const screenX = x * this.tileSize;
+        const screenY = y * this.tileSize;
+        this.ctx.fillStyle = 'rgba(0, 255, 128, 0.2)';
+        this.ctx.fillRect(screenX, screenY, this.tileSize, this.tileSize);
+        this.ctx.strokeStyle = '#00ff80';
+        this.ctx.lineWidth = 2;
+        this.ctx.strokeRect(screenX + 1, screenY + 1, this.tileSize - 2, this.tileSize - 2);
+    }
 }

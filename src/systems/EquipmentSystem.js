@@ -189,6 +189,20 @@ export class EquipmentSystem {
     }
     
     /**
+     * Returns the primary weapon item the player is attacking with, or null if unarmed.
+     * For two-handed grip, returns that weapon. Otherwise prefers right hand.
+     */
+    getActiveWeapon() {
+        const left = this.player.equipment.leftHand;
+        const right = this.player.equipment.rightHand;
+        
+        if (left && left.type === 'weapon' && left.twoHandGrip) return left;
+        if (right && right.type === 'weapon') return right;
+        if (left && left.type === 'weapon') return left;
+        return null;
+    }
+    
+    /**
      * Calculates total damage from equipped weapons
      * EXPANSION POINT: Add damage types, critical multipliers, status effects
      */

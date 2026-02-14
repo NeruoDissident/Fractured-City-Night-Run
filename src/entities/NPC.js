@@ -1,4 +1,5 @@
 import { Entity } from './Entity.js';
+import { Anatomy } from './Anatomy.js';
 
 export class NPC extends Entity {
     constructor(game, type, x, y) {
@@ -12,26 +13,57 @@ export class NPC extends Entity {
         this.investigateTarget = null;
         this.investigateTurns = 0;
         
+        // All NPCs get anatomy
+        this.anatomy = new Anatomy(this);
+        this.anatomy.init();
+        
+        // Equipment slots (for armor coverage)
+        this.equipment = {};
+        
+        // Weapon item (null = unarmed)
+        this.weapon = null;
+        
         if (type === 'scavenger') {
             this.name = 'Scavenger';
             this.glyph = 's';
             this.color = '#888888';
-            this.hp = 30;
-            this.maxHP = 30;
             this.hostile = false;
             this.ai = 'wander';
+            this.weapon = null; // Unarmed
         } else if (type === 'raider') {
             this.name = 'Raider';
             this.glyph = 'R';
             this.color = '#ff4444';
-            this.hp = 50;
-            this.maxHP = 50;
             this.hostile = true;
             this.ai = 'chase';
+            // Raiders spawn with a random weapon
+            this.weapon = this.rollRaiderWeapon();
         }
     }
     
+    rollRaiderWeapon() {
+        const roll = Math.random();
+        if (roll < 0.3) {
+            return { name: 'Shiv', type: 'weapon', baseDamage: '1d4', weaponStats: { attackType: 'sharp', bleedChance: 0.10 } };
+        } else if (roll < 0.6) {
+            return { name: 'Pipe', type: 'weapon', baseDamage: '1d8', weaponStats: { attackType: 'blunt', stunChance: 0.10 } };
+        } else if (roll < 0.8) {
+            return { name: 'Knife', type: 'weapon', baseDamage: '1d6', weaponStats: { attackType: 'sharp', bleedChance: 0.15 } };
+        }
+        return null; // 20% chance unarmed
+    }
+    
     takeTurn() {
+        // Process anatomy (bleeding, organ effects) each turn
+        if (this.anatomy) {
+            const currentTurn = this.game.turnCount || 0;
+            const result = this.anatomy.processTurn(currentTurn);
+            if (!result.alive) {
+                this.die();
+                return;
+            }
+        }
+        
         if (this.ai === 'wander') {
             this.wanderAI();
         } else if (this.ai === 'chase') {
@@ -178,21 +210,25 @@ export class NPC extends Entity {
     }
     
     attack(target) {
-        const damage = Math.floor(Math.random() * 8) + 2;
-        target.takeDamage(damage);
-        this.game.ui.log(`${this.name} attacks you for ${damage} damage!`, 'combat');
+        const result = this.game.combatSystem.resolveAttack(this, target, this.weapon);
+        
+        if (result.killed && target === this.game.player) {
+            // Player death handled by Game.checkGameOver()
+        }
     }
     
     takeDamage(amount) {
-        this.hp -= amount;
-        
-        if (this.isDead()) {
-            this.die();
+        // Legacy fallback — route through anatomy
+        if (this.anatomy) {
+            this.anatomy.damagePart('torso.stomach', amount);
         }
     }
     
     isDead() {
-        return this.hp <= 0;
+        if (this.anatomy) {
+            return this.anatomy.isDead();
+        }
+        return false;
     }
     
     hearSound(sound) {
@@ -205,7 +241,10 @@ export class NPC extends Entity {
     }
     
     die() {
-        this.game.ui.log(`${this.name} dies.`, 'combat');
+        if (this.anatomy && this.anatomy.causeOfDeath) {
+            const cause = this.anatomy.getDeathCause();
+            this.game.ui.log(`${this.name} ${cause}.`, 'combat');
+        }
         this.game.world.removeEntity(this);
     }
 }

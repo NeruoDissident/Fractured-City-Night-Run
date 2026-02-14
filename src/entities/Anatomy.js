@@ -1,7 +1,64 @@
+/**
+ * Anatomy - Full body simulation replacing the HP bar.
+ * 
+ * Every entity has blood, organs, limbs. Death comes from:
+ * - Blood loss (bleeding out from wounds)
+ * - Brain destruction (instant death)
+ * - Heart destruction (massive internal bleed → rapid death)
+ * - Both lungs destroyed (suffocation over turns)
+ * - Organ failure cascade (liver + kidneys → toxin buildup)
+ * - Shock (too much pain/trauma at once)
+ * 
+ * EXPANSION POINTS:
+ * - Infection from untreated wounds
+ * - Fractures and splinting
+ * - Tourniquet system
+ * - Cybernetic organ replacements
+ * - Blood type / transfusion
+ */
+
+// Blood loss thresholds (percentage of max blood remaining)
+const BLOOD_THRESHOLDS = {
+    healthy:      80,  // 80-100% — no effects
+    lightheaded:  60,  // 60-80% — minor penalties
+    woozy:        40,  // 40-60% — significant penalties, vision dims
+    critical:     20,  // 20-40% — near unconscious, severe penalties
+    unconscious:  10,  // 10-20% — passed out, helpless
+    dead:          0   // 0-10% — death from exsanguination
+};
+
+// Suffocation: turns until death when both lungs are destroyed
+const SUFFOCATION_TURNS = 8;
+
+// Shock threshold: total pain accumulated in a short window
+const SHOCK_THRESHOLD = 80;
+const SHOCK_WINDOW = 5; // turns
+
 export class Anatomy {
     constructor(entity) {
         this.entity = entity;
         this.parts = {};
+        
+        // Blood system
+        this.blood = 100;
+        this.maxBlood = 100;
+        this.wounds = [];       // Active bleeding wounds
+        
+        // Suffocation tracking
+        this.suffocating = false;
+        this.suffocationTurns = 0;
+        
+        // Pain/shock tracking
+        this.painHistory = [];  // { amount, turn } entries
+        this.inShock = false;
+        
+        // Death state
+        this.alive = true;
+        this.causeOfDeath = null;
+        
+        // Natural blood recovery (very slow, only after wounds fully closed + cooldown)
+        this.clotRate = 0.15;
+        this.regenCooldown = 0;  // turns remaining before blood can regenerate
     }
     
     init() {
@@ -69,6 +126,360 @@ export class Anatomy {
         }
     }
     
+    // ── Blood & Wound System ───────────────────────────────────────────
+    
+    /**
+     * Add a bleeding wound. Called by CombatSystem on sharp/piercing hits.
+     * @param {string} partName - Display name of the wounded body part
+     * @param {number} severity - Bleed rate per turn (blood lost)
+     * @param {string} type - 'cut', 'stab', 'laceration', 'arterial'
+     */
+    addWound(partName, severity, type = 'cut') {
+        this.wounds.push({
+            part: partName,
+            severity,
+            type,
+            turnsActive: 0,
+            clotting: false
+        });
+    }
+    
+    /**
+     * Process all bleeding wounds for one turn.
+     * Wounds slowly clot over time (severity decreases).
+     * Returns total blood lost this turn.
+     */
+    processWounds() {
+        let totalBloodLoss = 0;
+        
+        for (let i = this.wounds.length - 1; i >= 0; i--) {
+            const wound = this.wounds[i];
+            wound.turnsActive++;
+            
+            // Blood loss this turn from this wound
+            totalBloodLoss += wound.severity;
+            
+            // Natural clotting: wounds slowly reduce in severity
+            // Clotting doesn't start until the wound has been open a few turns
+            const clotDelay = wound.type === 'arterial' ? 8 : 3;
+            if (wound.turnsActive > clotDelay) {
+                const clotSpeed = wound.type === 'arterial' ? 0.02 : 0.08;
+                wound.severity = Math.max(0, wound.severity - clotSpeed);
+            }
+            
+            // Remove fully clotted wounds
+            if (wound.severity <= 0.01) {
+                this.wounds.splice(i, 1);
+                // Set regen cooldown — blood doesn't recover immediately after wounds close
+                this.regenCooldown = Math.max(this.regenCooldown, 10);
+            }
+        }
+        
+        return totalBloodLoss;
+    }
+    
+    /**
+     * Process one turn of anatomy effects.
+     * Called each turn from Player.processStatusEffects() or NPC turn processing.
+     * Returns { alive, effects[] } where effects are log-worthy events.
+     */
+    processTurn(currentTurn) {
+        if (!this.alive) return { alive: false, effects: [] };
+        
+        const effects = [];
+        
+        // ── Process bleeding ──
+        const bloodLost = this.processWounds();
+        if (bloodLost > 0) {
+            this.blood = Math.max(0, this.blood - bloodLost);
+        }
+        
+        // Natural blood recovery — only when no wounds AND cooldown expired
+        if (this.wounds.length === 0 && this.blood < this.maxBlood) {
+            if (this.regenCooldown > 0) {
+                this.regenCooldown--;
+            } else {
+                this.blood = Math.min(this.maxBlood, this.blood + this.clotRate);
+            }
+        } else {
+            // Reset cooldown while actively bleeding
+            this.regenCooldown = 0;
+        }
+        
+        // ── Heart destroyed → massive internal bleed ──
+        const heart = this.parts.torso.heart;
+        if (!heart.functional) {
+            this.blood = Math.max(0, this.blood - 8);
+            if (this.blood > 0) {
+                effects.push({ type: 'organ', msg: 'Blood pours from catastrophic cardiac damage!' });
+            }
+        }
+        
+        // ── Suffocation (both lungs destroyed) ──
+        const leftLung = this.parts.torso.lungs[0];
+        const rightLung = this.parts.torso.lungs[1];
+        if (!leftLung.functional && !rightLung.functional) {
+            if (!this.suffocating) {
+                this.suffocating = true;
+                this.suffocationTurns = 0;
+                effects.push({ type: 'organ', msg: 'Both lungs have collapsed — suffocating!' });
+            }
+            this.suffocationTurns++;
+            if (this.suffocationTurns >= SUFFOCATION_TURNS) {
+                this.alive = false;
+                this.causeOfDeath = 'suffocation';
+                effects.push({ type: 'death', msg: 'suffocated from collapsed lungs' });
+                return { alive: false, effects };
+            } else if (this.suffocationTurns > SUFFOCATION_TURNS / 2) {
+                effects.push({ type: 'organ', msg: 'Gasping desperately for air...' });
+            }
+        } else {
+            if (this.suffocating) {
+                this.suffocating = false;
+                this.suffocationTurns = 0;
+            }
+        }
+        
+        // ── Liver/kidney failure → slow toxin buildup ──
+        const liver = this.parts.torso.liver;
+        const leftKidney = this.parts.torso.kidneys[0];
+        const rightKidney = this.parts.torso.kidneys[1];
+        const organFailures = (!liver.functional ? 1 : 0) + (!leftKidney.functional ? 1 : 0) + (!rightKidney.functional ? 1 : 0);
+        if (organFailures >= 2) {
+            // Toxin buildup damages brain slowly
+            const toxinDamage = organFailures >= 3 ? 2 : 1;
+            const brain = this.parts.head.brain;
+            if (brain.functional) {
+                brain.hp = Math.max(0, brain.hp - toxinDamage);
+                if (brain.hp <= 0) {
+                    brain.functional = false;
+                }
+                if (Math.random() < 0.3) {
+                    effects.push({ type: 'organ', msg: 'Toxins cloud your mind — organ failure is setting in...' });
+                }
+            }
+        }
+        
+        // ── Shock check ──
+        this.painHistory = this.painHistory.filter(p => currentTurn - p.turn < SHOCK_WINDOW);
+        const recentPain = this.painHistory.reduce((sum, p) => sum + p.amount, 0);
+        if (recentPain >= SHOCK_THRESHOLD && !this.inShock) {
+            this.inShock = true;
+            effects.push({ type: 'shock', msg: 'The pain is overwhelming — going into shock!' });
+        } else if (recentPain < SHOCK_THRESHOLD * 0.5) {
+            this.inShock = false;
+        }
+        
+        // ── Blood loss status effects ──
+        const bloodPercent = this.getBloodPercent();
+        if (bloodPercent <= BLOOD_THRESHOLDS.dead) {
+            this.alive = false;
+            this.causeOfDeath = 'blood loss';
+            effects.push({ type: 'death', msg: 'bled out' });
+            return { alive: false, effects };
+        } else if (bloodPercent <= BLOOD_THRESHOLDS.unconscious) {
+            effects.push({ type: 'blood', msg: 'Consciousness fading... too much blood lost.' });
+        } else if (bloodPercent <= BLOOD_THRESHOLDS.critical) {
+            if (Math.random() < 0.4) {
+                effects.push({ type: 'blood', msg: 'Vision blurs. Blood soaks everything.' });
+            }
+        } else if (bloodPercent <= BLOOD_THRESHOLDS.woozy) {
+            if (Math.random() < 0.2) {
+                effects.push({ type: 'blood', msg: 'Feeling lightheaded from blood loss...' });
+            }
+        }
+        
+        // ── Brain check (instant death) ──
+        const brain = this.parts.head.brain;
+        if (!brain.functional) {
+            this.alive = false;
+            this.causeOfDeath = 'brain destruction';
+            effects.push({ type: 'death', msg: 'brain destroyed' });
+            return { alive: false, effects };
+        }
+        
+        return { alive: true, effects };
+    }
+    
+    /**
+     * Record pain for shock tracking.
+     */
+    addPain(amount, currentTurn) {
+        this.painHistory.push({ amount, turn: currentTurn });
+    }
+    
+    // ── Death Detection ────────────────────────────────────────────────
+    
+    /**
+     * Check if this entity is dead. Used by CombatSystem and Game.
+     * Can detect instant-death conditions without waiting for processTurn.
+     */
+    isDead() {
+        if (!this.alive) return true;
+        
+        // Brain destroyed = instant death
+        const brain = this.parts.head.brain;
+        if (brain && !brain.functional) {
+            this.alive = false;
+            this.causeOfDeath = this.causeOfDeath || 'brain destruction';
+            return true;
+        }
+        
+        // Complete blood loss
+        if (this.blood <= 0) {
+            this.alive = false;
+            this.causeOfDeath = this.causeOfDeath || 'blood loss';
+            return true;
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Get a human-readable cause of death string.
+     */
+    getDeathCause() {
+        if (!this.causeOfDeath) return 'unknown causes';
+        
+        const causes = {
+            'blood loss': [
+                'bled out from their wounds',
+                'exsanguinated',
+                'bled to death',
+                'lost too much blood'
+            ],
+            'brain destruction': [
+                'suffered fatal brain trauma',
+                'died from massive head trauma',
+                'brain was destroyed'
+            ],
+            'suffocation': [
+                'suffocated from collapsed lungs',
+                'asphyxiated',
+                'couldn\'t breathe and died'
+            ],
+            'cardiac arrest': [
+                'died of cardiac arrest',
+                'heart gave out',
+                'suffered fatal cardiac damage'
+            ],
+            'shock': [
+                'died from traumatic shock',
+                'body shut down from shock',
+                'went into fatal shock'
+            ],
+            'starvation': [
+                'starved to death',
+                'wasted away from hunger'
+            ],
+            'dehydration': [
+                'died of dehydration',
+                'perished from thirst'
+            ]
+        };
+        
+        const options = causes[this.causeOfDeath];
+        if (options) {
+            return options[Math.floor(Math.random() * options.length)];
+        }
+        return this.causeOfDeath;
+    }
+    
+    // ── Status Queries ─────────────────────────────────────────────────
+    
+    getBloodPercent() {
+        return (this.blood / this.maxBlood) * 100;
+    }
+    
+    getBloodStatus() {
+        const pct = this.getBloodPercent();
+        if (pct > BLOOD_THRESHOLDS.healthy) return { label: 'Healthy', color: '#00ff00' };
+        if (pct > BLOOD_THRESHOLDS.lightheaded) return { label: 'Lightheaded', color: '#aaff00' };
+        if (pct > BLOOD_THRESHOLDS.woozy) return { label: 'Woozy', color: '#ffaa00' };
+        if (pct > BLOOD_THRESHOLDS.critical) return { label: 'Critical', color: '#ff4444' };
+        if (pct > BLOOD_THRESHOLDS.unconscious) return { label: 'Fading', color: '#aa0000' };
+        return { label: 'Dead', color: '#660000' };
+    }
+    
+    /**
+     * Get overall body condition for the side panel (replaces HP bar).
+     * Returns { label, color, details }
+     */
+    getBodyCondition() {
+        if (!this.alive) return { label: 'DEAD', color: '#660000', details: this.getDeathCause() };
+        
+        const bloodStatus = this.getBloodStatus();
+        const activeWounds = this.wounds.length;
+        const destroyedParts = this.getDestroyedParts();
+        
+        // Worst condition wins
+        if (this.inShock) return { label: 'SHOCK', color: '#ff00ff', details: 'In traumatic shock' };
+        if (this.suffocating) return { label: 'SUFFOCATING', color: '#8800ff', details: `${SUFFOCATION_TURNS - this.suffocationTurns} turns of air left` };
+        if (bloodStatus.label === 'Critical' || bloodStatus.label === 'Fading') {
+            return { label: bloodStatus.label, color: bloodStatus.color, details: `Blood: ${Math.floor(this.blood)}%` };
+        }
+        
+        if (destroyedParts.length > 0) {
+            return { label: 'Injured', color: '#ff8800', details: `${destroyedParts.length} part(s) ruined` };
+        }
+        
+        if (activeWounds > 0) {
+            const totalBleed = this.wounds.reduce((s, w) => s + w.severity, 0);
+            return { label: 'Bleeding', color: '#ff4444', details: `${activeWounds} wound(s), ${totalBleed.toFixed(1)}/turn` };
+        }
+        
+        if (bloodStatus.label !== 'Healthy') {
+            return { label: bloodStatus.label, color: bloodStatus.color, details: `Blood: ${Math.floor(this.blood)}%` };
+        }
+        
+        return { label: 'Healthy', color: '#00ff00', details: '' };
+    }
+    
+    /**
+     * Get list of destroyed/non-functional body parts.
+     */
+    getDestroyedParts() {
+        const destroyed = [];
+        this.forEachPart((part) => {
+            if (!part.functional && part.hp <= 0) {
+                destroyed.push(part.name);
+            }
+        });
+        return destroyed;
+    }
+    
+    /**
+     * Iterate over every body part (flat).
+     */
+    forEachPart(callback) {
+        for (const region of Object.values(this.parts)) {
+            for (const value of Object.values(region)) {
+                if (Array.isArray(value)) {
+                    for (const part of value) {
+                        callback(part);
+                    }
+                } else if (value && value.hp !== undefined) {
+                    callback(value);
+                }
+            }
+        }
+    }
+    
+    /**
+     * Get total damage across all parts as a rough "how hurt" metric.
+     */
+    getTotalDamagePercent() {
+        let totalHP = 0;
+        let totalMaxHP = 0;
+        this.forEachPart((part) => {
+            totalHP += part.hp;
+            totalMaxHP += part.maxHP;
+        });
+        return totalMaxHP > 0 ? (totalHP / totalMaxHP) * 100 : 0;
+    }
+    
+    // ── Existing Methods (preserved) ───────────────────────────────────
+    
     getVisionRange() {
         const leftEye = this.parts.head.eyes[0];
         const rightEye = this.parts.head.eyes[1];
@@ -76,6 +487,12 @@ export class Anatomy {
         let range = 0;
         if (leftEye.functional) range += 5;
         if (rightEye.functional) range += 5;
+        
+        // Blood loss vision penalty
+        const bloodPct = this.getBloodPercent();
+        if (bloodPct <= BLOOD_THRESHOLDS.critical) range -= 4;
+        else if (bloodPct <= BLOOD_THRESHOLDS.woozy) range -= 2;
+        else if (bloodPct <= BLOOD_THRESHOLDS.lightheaded) range -= 1;
         
         // Apply nightVision trait bonus
         if (this.entity.traitEffects && this.entity.traitEffects.visionBonus) {
@@ -109,7 +526,18 @@ export class Anatomy {
         let penalty = 0;
         if (!this.parts.leftLeg.leg.functional) penalty += 0.5;
         if (!this.parts.rightLeg.leg.functional) penalty += 0.5;
-        return penalty;
+        if (!this.parts.leftLeg.foot.functional) penalty += 0.25;
+        if (!this.parts.rightLeg.foot.functional) penalty += 0.25;
+        
+        // Blood loss movement penalty
+        const bloodPct = this.getBloodPercent();
+        if (bloodPct <= BLOOD_THRESHOLDS.critical) penalty += 0.5;
+        else if (bloodPct <= BLOOD_THRESHOLDS.woozy) penalty += 0.25;
+        
+        // Shock penalty
+        if (this.inShock) penalty += 0.5;
+        
+        return Math.min(1.0, penalty);
     }
     
     installCybernetic(cyberneticData, slot) {
@@ -117,5 +545,24 @@ export class Anatomy {
     }
     
     damagePart(partPath, damage) {
+        // Navigate the anatomy path (e.g., "head.brain", "torso.lungs.0")
+        const pathParts = partPath.split('.');
+        let part = this.parts;
+        for (const p of pathParts) {
+            if (part === undefined || part === null) return null;
+            const idx = parseInt(p);
+            part = isNaN(idx) ? part[p] : part[idx];
+        }
+        
+        if (!part || part.hp === undefined) return null;
+        
+        const wasFunctional = part.functional;
+        part.hp = Math.max(0, part.hp - damage);
+        
+        if (part.hp <= 0 && wasFunctional) {
+            part.functional = false;
+        }
+        
+        return { part, destroyed: part.hp <= 0 && wasFunctional };
     }
 }

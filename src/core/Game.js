@@ -10,6 +10,7 @@ import { SoundSystem } from '../systems/SoundSystem.js';
 import { CharacterCreationSystem } from '../systems/CharacterCreationSystem.js';
 import { ItemSystem } from '../systems/ItemSystem.js';
 import { CraftingSystem } from '../systems/CraftingSystem.js';
+import { CombatSystem } from '../systems/CombatSystem.js';
 import { WorldObjectSystem } from '../systems/WorldObjectSystem.js';
 import { TimeSystem } from '../systems/TimeSystem.js';
 import { LightingSystem } from '../systems/LightingSystem.js';
@@ -35,6 +36,9 @@ export class Game {
         
         this.inspectMode = false;
         this.inspectCursor = { x: 0, y: 0 };
+        
+        this.interactMode = false;
+        this.interactCandidates = null;
     }
     
     async init() {
@@ -81,6 +85,7 @@ export class Game {
         this.lightingSystem = new LightingSystem(this);
         this.itemSystem = new ItemSystem(this);
         this.craftingSystem = new CraftingSystem(this);
+        this.combatSystem = new CombatSystem(this);
         this.worldObjectSystem = new WorldObjectSystem(this);
         
         this.player = new Player(this, characterData);
@@ -118,6 +123,8 @@ export class Game {
             playerActed = true;
         } else if (action.type === 'pickup') {
             playerActed = this.player.tryPickup();
+        } else if (action.type === 'grabAll') {
+            playerActed = this.player.grabAll();
         } else if (action.type === 'cycle_movement') {
             playerActed = this.player.cycleMovementMode();
         } else if (action.type === 'ascend') {
@@ -234,49 +241,91 @@ export class Game {
         });
     }
     
-    interactWithWorldObject() {
-        // Check adjacent tiles (including current position) for world objects
-        const range = 1;
-        const candidates = [];
+    enterInteractMode() {
+        // Scan cardinal + center for interactable tiles
+        const dirs = [
+            { dx: 0, dy: 0, label: 'here' },
+            { dx: 0, dy: -1, label: 'north' },
+            { dx: 0, dy: 1, label: 'south' },
+            { dx: -1, dy: 0, label: 'west' },
+            { dx: 1, dy: 0, label: 'east' }
+        ];
         
-        for (let dy = -range; dy <= range; dy++) {
-            for (let dx = -range; dx <= range; dx++) {
-                const checkX = this.player.x + dx;
-                const checkY = this.player.y + dy;
-                const worldObject = this.world.getWorldObjectAt(checkX, checkY, this.player.z);
-                
-                if (worldObject) {
-                    const distance = Math.abs(dx) + Math.abs(dy); // Manhattan distance
-                    candidates.push({ object: worldObject, distance, dx, dy });
-                }
+        const candidates = [];
+        for (const dir of dirs) {
+            const cx = this.player.x + dir.dx;
+            const cy = this.player.y + dir.dy;
+            const worldObj = this.world.getWorldObjectAt(cx, cy, this.player.z);
+            const groundItems = (dir.dx === 0 && dir.dy === 0) ? this.world.getItemsAt(cx, cy, this.player.z) : [];
+            const tile = this.world.getTile(cx, cy, this.player.z);
+            const hasStairs = tile && (tile.isStaircase || tile.isManhole || tile.isLadder);
+            
+            if (worldObj || groundItems.length > 0 || (hasStairs && dir.dx === 0 && dir.dy === 0)) {
+                candidates.push({ x: cx, y: cy, dx: dir.dx, dy: dir.dy, worldObj, groundItems, hasStairs });
             }
         }
         
         if (candidates.length === 0) {
-            // No world objects nearby - check for ground items at player position
-            const groundItems = this.world.getItemsAt(this.player.x, this.player.y, this.player.z);
-            if (groundItems.length > 0) {
-                this.ui.showGroundItemsModal();
-                return;
-            }
             this.ui.log('Nothing to interact with nearby.', 'info');
             return;
         }
         
-        // Sort by distance, prefer closest
-        candidates.sort((a, b) => a.distance - b.distance);
+        // If only one candidate, interact immediately
+        if (candidates.length === 1) {
+            this.resolveInteraction(candidates[0]);
+            return;
+        }
         
-        // If multiple at same distance, could show selection UI, but for now just take first
-        const closest = candidates[0];
-        this.ui.showWorldObjectModal(closest.object);
+        // Multiple candidates — enter interact mode
+        this.interactMode = true;
+        this.interactCandidates = candidates;
+        this.ui.log('Interact: press a direction to choose, [Esc] to cancel.', 'info');
+        this.render();
+    }
+    
+    interactInDirection(dx, dy) {
+        if (!this.interactMode) return;
+        
+        const match = this.interactCandidates.find(c => c.dx === dx && c.dy === dy);
+        if (!match) {
+            this.ui.log('Nothing to interact with in that direction.', 'info');
+            return;
+        }
+        
+        this.interactMode = false;
+        this.interactCandidates = null;
+        this.resolveInteraction(match);
+    }
+    
+    cancelInteractMode() {
+        this.interactMode = false;
+        this.interactCandidates = null;
+        this.ui.log('Cancelled.', 'info');
+        this.render();
+    }
+    
+    resolveInteraction(candidate) {
+        if (candidate.worldObj) {
+            this.ui.showWorldObjectModal(candidate.worldObj);
+        } else if (candidate.groundItems && candidate.groundItems.length > 0) {
+            this.ui.showGroundItemsModal();
+        } else if (candidate.hasStairs) {
+            // Let the stair interaction handle it
+            const tile = this.world.getTile(candidate.x, candidate.y, this.player.z);
+            if (tile.isStaircase || tile.isManhole || tile.isLadder) {
+                this.ui.log('Use < or > to go up/down stairs.', 'info');
+            }
+        }
+        this.render();
     }
     
     checkGameOver() {
         if (this.player.isDead()) {
             this.gameState = 'game_over';
             this.isRunning = false;
-            this.ui.log('You have died. Run ended.', 'combat');
-            this.ui.showGameOver(false);
+            const cause = this.player.anatomy.getDeathCause();
+            this.ui.log(`You have died. Cause: ${cause}.`, 'combat');
+            this.ui.showGameOver(false, cause);
         }
     }
     
@@ -296,6 +345,16 @@ export class Game {
         const cameraY = this.player.y - Math.floor(viewHeight / 2);
         
         this.world.render(this.renderer, cameraX, cameraY, viewWidth, viewHeight, this.fov, this.player.z, this.lightingSystem);
+        
+        if (this.interactMode && this.interactCandidates) {
+            for (const c of this.interactCandidates) {
+                const sx = c.x - cameraX;
+                const sy = c.y - cameraY;
+                if (sx >= 0 && sx < viewWidth && sy >= 0 && sy < viewHeight) {
+                    this.renderer.drawInteractHighlight(sx, sy);
+                }
+            }
+        }
         
         if (this.inspectMode) {
             const cursorScreenX = this.inspectCursor.x - cameraX;

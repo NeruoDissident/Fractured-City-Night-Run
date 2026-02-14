@@ -266,14 +266,12 @@ export class MobileControls {
 
         const player = this.game.player;
 
-        // HP display
+        // Body condition display (replaces HP)
         const hpEl = document.getElementById('mobile-hp');
-        if (hpEl) {
-            const hpPct = Math.round((player.hp / player.maxHP) * 100);
-            hpEl.textContent = `HP: ${player.hp}/${player.maxHP}`;
-            if (hpPct > 60) hpEl.style.color = '#44ff44';
-            else if (hpPct > 30) hpEl.style.color = '#ffaa00';
-            else hpEl.style.color = '#ff4444';
+        if (hpEl && player.anatomy) {
+            const cond = player.anatomy.getBodyCondition();
+            hpEl.textContent = `${cond.label} | Blood: ${Math.floor(player.anatomy.blood)}%`;
+            hpEl.style.color = cond.color;
         }
 
         // Status (movement mode + time)

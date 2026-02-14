@@ -100,7 +100,22 @@ export class UIManager {
         
         let html = '';
         html += `<div class="stat-line"><span class="stat-label">Name:</span> <span class="stat-value">${player.name}</span></div>`;
-        html += `<div class="stat-line"><span class="stat-label">HP:</span> <span class="stat-value">${player.hp}/${player.maxHP}</span></div>`;
+        
+        // Body condition (replaces HP bar)
+        const condition = player.anatomy.getBodyCondition();
+        html += `<div class="stat-line"><span class="stat-label">Condition:</span> <span class="stat-value" style="color: ${condition.color}; font-weight: bold;">${condition.label}</span></div>`;
+        if (condition.details) {
+            html += `<div class="stat-line"><span class="stat-label"></span> <span class="stat-value" style="color: ${condition.color}; font-size: 13px;">${condition.details}</span></div>`;
+        }
+        
+        // Blood level
+        const bloodStatus = player.anatomy.getBloodStatus();
+        html += `<div class="stat-line"><span class="stat-label">Blood:</span> <span class="stat-value" style="color: ${bloodStatus.color};">${Math.floor(player.anatomy.blood)}%</span></div>`;
+        
+        // Active wounds count
+        if (player.anatomy.wounds.length > 0) {
+            html += `<div class="stat-line"><span class="stat-label">Wounds:</span> <span class="stat-value" style="color: #ff4444;">${player.anatomy.wounds.length} bleeding</span></div>`;
+        }
         
         const hungerColor = player.hunger < 20 ? '#ff4444' : player.hunger < 50 ? '#ffaa00' : '#00ff00';
         const thirstColor = player.thirst < 20 ? '#ff4444' : player.thirst < 50 ? '#ffaa00' : '#00ff00';
@@ -427,12 +442,21 @@ export class UIManager {
             html += '<div style="margin-top: 10px; padding: 5px; background: #1a0a0a; border-left: 3px solid #ff4444;">';
             html += '<div style="color: #ff4444; font-weight: bold; margin-bottom: 3px;">👤 ENTITY</div>';
             html += `<div style="color: ${entity.color}; font-weight: bold; font-size: 16px;">${entity.name}</div>`;
-            if (entity.hp !== undefined) {
-                const hpPercent = (entity.hp / entity.maxHP) * 100;
-                let hpColor = '#00ff00';
-                if (hpPercent < 50) hpColor = '#ffaa00';
-                if (hpPercent < 25) hpColor = '#ff4444';
-                html += `<div style="font-size: 15px; color: ${hpColor};">HP: ${entity.hp}/${entity.maxHP}</div>`;
+            if (entity.anatomy) {
+                const cond = entity.anatomy.getBodyCondition();
+                html += `<div style="font-size: 15px; color: ${cond.color}; font-weight: bold;">${cond.label}</div>`;
+                if (cond.details) {
+                    html += `<div style="font-size: 13px; color: ${cond.color};">${cond.details}</div>`;
+                }
+                const bloodPct = Math.floor(entity.anatomy.blood);
+                const bColor = entity.anatomy.getBloodStatus().color;
+                html += `<div style="font-size: 13px; color: ${bColor};">Blood: ${bloodPct}%</div>`;
+                if (entity.anatomy.wounds.length > 0) {
+                    html += `<div style="font-size: 13px; color: #ff4444;">${entity.anatomy.wounds.length} bleeding wound(s)</div>`;
+                }
+                if (entity.weapon) {
+                    html += `<div style="font-size: 13px; color: #ffaa00;">Armed: ${entity.weapon.name}</div>`;
+                }
             }
             html += '</div>';
         }
@@ -723,7 +747,22 @@ export class UIManager {
         if (player.gender) {
             html += `<div class="stat-line"><span class="stat-label">Gender:</span> <span class="stat-value">${player.gender}</span></div>`;
         }
-        html += `<div class="stat-line"><span class="stat-label">HP:</span> <span class="stat-value">${player.hp}/${player.maxHP}</span></div>`;
+        
+        // Body condition (replaces HP)
+        const detailCond = player.anatomy.getBodyCondition();
+        html += `<div class="stat-line"><span class="stat-label">Condition:</span> <span class="stat-value" style="color: ${detailCond.color}; font-weight: bold;">${detailCond.label}</span></div>`;
+        if (detailCond.details) {
+            html += `<div class="stat-line"><span class="stat-label"></span> <span class="stat-value" style="color: ${detailCond.color}; font-size: 13px;">${detailCond.details}</span></div>`;
+        }
+        const detailBlood = player.anatomy.getBloodStatus();
+        html += `<div class="stat-line"><span class="stat-label">Blood:</span> <span class="stat-value" style="color: ${detailBlood.color};">${Math.floor(player.anatomy.blood)}%</span></div>`;
+        if (player.anatomy.wounds.length > 0) {
+            html += `<div class="stat-line"><span class="stat-label">Wounds:</span> <span class="stat-value" style="color: #ff4444;">${player.anatomy.wounds.length} active</span></div>`;
+            for (const wound of player.anatomy.wounds) {
+                const wColor = wound.type === 'arterial' ? '#ff0000' : '#ff6644';
+                html += `<div style="margin-left: 15px; font-size: 13px; color: ${wColor};">• ${wound.part} — ${wound.type} (${wound.severity.toFixed(1)}/turn)</div>`;
+            }
+        }
         
         const hungerColor = player.hunger < 20 ? '#ff4444' : player.hunger < 50 ? '#ffaa00' : '#00ff00';
         const thirstColor = player.thirst < 20 ? '#ff4444' : player.thirst < 50 ? '#ffaa00' : '#00ff00';
@@ -810,12 +849,14 @@ export class UIManager {
     renderAnatomyPart(part) {
         const healthPercent = (part.hp / part.maxHP) * 100;
         let color = '#00ff00';
-        if (healthPercent < 50) color = '#ffaa00';
-        if (healthPercent < 25) color = '#ff4444';
-        if (!part.functional) color = '#666666';
+        let status = 'Healthy';
+        if (!part.functional) { color = '#666666'; status = 'DESTROYED'; }
+        else if (healthPercent < 25) { color = '#ff4444'; status = 'Critical'; }
+        else if (healthPercent < 50) { color = '#ffaa00'; status = 'Damaged'; }
+        else if (healthPercent < 80) { color = '#aaff00'; status = 'Bruised'; }
         
         const cyberTag = part.cybernetic ? ' [CYBER]' : '';
-        return `<div style="color: ${color}; font-size: 14px; margin-bottom: 4px; line-height: 1.4;">${part.name}${cyberTag}: ${part.hp}/${part.maxHP}</div>`;
+        return `<div style="color: ${color}; font-size: 14px; margin-bottom: 4px; line-height: 1.4;">${part.name}${cyberTag}: ${status} (${part.hp}/${part.maxHP})</div>`;
     }
     
     toggleInventoryScreen() {
@@ -2298,7 +2339,7 @@ export class UIManager {
         content.innerHTML = html;
     }
     
-    showGameOver(victory) {
+    showGameOver(victory, causeOfDeath = null) {
         const modal = document.getElementById('character-creation');
         const form = document.getElementById('creation-form');
         
@@ -2312,17 +2353,27 @@ export class UIManager {
             html += '<div style="color: #00ffff; margin: 20px 0; font-size: 18px;">You survived the Fractured City.</div>';
         } else {
             html += '<h2 style="color: #ff4444;">💀 RUN FAILED</h2>';
-            html += '<div style="color: #ff4444; margin: 20px 0; font-size: 18px;">You died in the Fractured City.</div>';
+            const deathCause = causeOfDeath || 'unknown causes';
+            html += `<div style="color: #ff4444; margin: 20px 0; font-size: 18px;">You ${deathCause} in the Fractured City.</div>`;
         }
         
         html += '<div style="margin: 20px 0; padding: 15px; background: #1a1a1a; border: 1px solid #333;">';
         html += '<h3 style="color: #00ffff; margin-bottom: 10px;">Run Statistics</h3>';
         html += `<div class="stat-line"><span class="stat-label">Character:</span> <span class="stat-value">${player.name}</span></div>`;
         html += `<div class="stat-line"><span class="stat-label">Turns Survived:</span> <span class="stat-value">${turns}</span></div>`;
-        html += `<div class="stat-line"><span class="stat-label">Final HP:</span> <span class="stat-value">${player.hp}/${player.maxHP}</span></div>`;
+        
+        // Body state at death
+        const finalCond = player.anatomy.getBodyCondition();
+        html += `<div class="stat-line"><span class="stat-label">Final Condition:</span> <span class="stat-value" style="color: ${finalCond.color};">${finalCond.label}</span></div>`;
+        html += `<div class="stat-line"><span class="stat-label">Blood Remaining:</span> <span class="stat-value">${Math.floor(player.anatomy.blood)}%</span></div>`;
+        const destroyed = player.anatomy.getDestroyedParts();
+        if (destroyed.length > 0) {
+            html += `<div class="stat-line"><span class="stat-label">Parts Destroyed:</span> <span class="stat-value" style="color: #ff4444;">${destroyed.join(', ')}</span></div>`;
+        }
+        
         html += `<div class="stat-line"><span class="stat-label">Items Carried:</span> <span class="stat-value">${player.inventory.length}</span></div>`;
         
-        const enemiesKilled = this.game.world.entities.filter(e => e !== player && e.hp <= 0).length;
+        const enemiesKilled = this.game.world.entities.filter(e => e !== player && e.anatomy && !e.anatomy.alive).length;
         html += `<div class="stat-line"><span class="stat-label">Enemies Defeated:</span> <span class="stat-value">${enemiesKilled}</span></div>`;
         html += '</div>';
         
@@ -2636,7 +2687,7 @@ export class UIManager {
                 name: item.name
             });
             
-            this.game.ui.log(`Used ${item.name}. Healing ${healPerTurn} HP/turn for ${item.healDuration} turns.`, 'info');
+            this.game.ui.log(`Used ${item.name}. Healing ${healPerTurn}/turn for ${item.healDuration} turns (restores blood, patches wounds).`, 'info');
             
             // Remove item from source
             if (sourceType === 'actions-stored') {

@@ -1,0 +1,577 @@
+/**
+ * CombatSystem - Handles all combat resolution
+ * 
+ * Hit location targeting, damage calculation, armor mitigation,
+ * rich combat log generation, and anatomy-based damage application.
+ * 
+ * EXPANSION POINTS:
+ * - Damage types: piercing, fire, electric, etc.
+ * - Status effects: bleeding, stun, infection, fracture
+ * - Critical hits and fumbles
+ * - Ranged combat with accuracy falloff
+ * - Abilities and special attacks
+ * - Blood/liquid tracking on ground tiles
+ */
+
+// Body region weights for random hit location
+const BODY_REGIONS = [
+    { region: 'head',     weight: 10 },
+    { region: 'torso',    weight: 40 },
+    { region: 'leftArm',  weight: 12 },
+    { region: 'rightArm', weight: 12 },
+    { region: 'leftLeg',  weight: 13 },
+    { region: 'rightLeg', weight: 13 }
+];
+
+// Sub-parts within each region, with their own weights
+const REGION_PARTS = {
+    head: [
+        { part: 'brain', path: 'head.brain', weight: 5, vital: true },
+        { part: 'jaw',   path: 'head.jaw',   weight: 30 },
+        { part: 'leftEye',  path: 'head.eyes.0',  weight: 10, displayName: 'left eye' },
+        { part: 'rightEye', path: 'head.eyes.1',  weight: 10, displayName: 'right eye' },
+        { part: 'leftEar',  path: 'head.ears.0',  weight: 20, displayName: 'left ear' },
+        { part: 'rightEar', path: 'head.ears.1',  weight: 20, displayName: 'right ear' },
+        { part: 'head',     path: null,            weight: 5, displayName: 'head', glancing: true }
+    ],
+    torso: [
+        { part: 'heart',       path: 'torso.heart',      weight: 5, vital: true },
+        { part: 'leftLung',    path: 'torso.lungs.0',    weight: 10, displayName: 'left lung' },
+        { part: 'rightLung',   path: 'torso.lungs.1',    weight: 10, displayName: 'right lung' },
+        { part: 'stomach',     path: 'torso.stomach',    weight: 20 },
+        { part: 'liver',       path: 'torso.liver',      weight: 10 },
+        { part: 'leftKidney',  path: 'torso.kidneys.0',  weight: 5, displayName: 'left kidney' },
+        { part: 'rightKidney', path: 'torso.kidneys.1',  weight: 5, displayName: 'right kidney' },
+        { part: 'torso',       path: null,                weight: 35, displayName: 'torso', glancing: true }
+    ],
+    leftArm: [
+        { part: 'leftArm',  path: 'leftArm.arm',   weight: 50, displayName: 'left arm' },
+        { part: 'leftHand', path: 'leftArm.hand',   weight: 30, displayName: 'left hand' },
+        { part: 'leftFingers', path: null,           weight: 20, displayName: 'left fingers', glancing: true }
+    ],
+    rightArm: [
+        { part: 'rightArm',  path: 'rightArm.arm',   weight: 50, displayName: 'right arm' },
+        { part: 'rightHand', path: 'rightArm.hand',   weight: 30, displayName: 'right hand' },
+        { part: 'rightFingers', path: null,            weight: 20, displayName: 'right fingers', glancing: true }
+    ],
+    leftLeg: [
+        { part: 'leftLeg',  path: 'leftLeg.leg',   weight: 65, displayName: 'left leg' },
+        { part: 'leftFoot', path: 'leftLeg.foot',   weight: 35, displayName: 'left foot' }
+    ],
+    rightLeg: [
+        { part: 'rightLeg',  path: 'rightLeg.leg',   weight: 65, displayName: 'right leg' },
+        { part: 'rightFoot', path: 'rightLeg.foot',   weight: 35, displayName: 'right foot' }
+    ]
+};
+
+// Armor coverage mapping: equipment slot → body regions it protects
+const ARMOR_COVERAGE = {
+    head:      ['head'],
+    torso:     ['torso'],
+    legs:      ['leftLeg', 'rightLeg'],
+    leftHand:  ['leftArm'],
+    rightHand: ['rightArm'],
+    back:      ['torso'],
+    feet:      ['leftLeg', 'rightLeg']
+};
+
+// ── Combat log message templates ──────────────────────────────────────
+// {a} = attacker name, {t} = target name, {w} = weapon name,
+// {p} = body part, {d} = damage number
+
+const ATTACK_VERBS = {
+    blunt: {
+        light:  ['taps', 'bumps', 'nudges', 'clips'],
+        medium: ['strikes', 'hits', 'cracks', 'smacks', 'bashes', 'whacks', 'thumps', 'clubs'],
+        heavy:  ['crushes', 'slams', 'hammers', 'demolishes', 'clobbers', 'pulverizes']
+    },
+    sharp: {
+        light:  ['nicks', 'scratches', 'grazes', 'pricks'],
+        medium: ['cuts', 'slashes', 'slices', 'stabs', 'carves', 'gouges'],
+        heavy:  ['cleaves', 'hacks', 'rips into', 'tears open', 'shreds']
+    },
+    unarmed: {
+        light:  ['flicks', 'jabs', 'pokes', 'swats'],
+        medium: ['punches', 'strikes', 'elbows', 'knees', 'kicks', 'headbutts'],
+        heavy:  ['pummels', 'wallops', 'decks', 'pile-drives', 'hammers']
+    }
+};
+
+// Templates: picked randomly per attack
+const ATTACK_TEMPLATES = [
+    '{a} {verb} {t} in the {p} with {w} for {d} damage.',
+    '{a} {verb} {t} on the {p} with {w} — {d} damage!',
+    '{a} lands a hit on {t}\'s {p} with {w} for {d} damage.',
+    '{a} swings {w} into {t}\'s {p} — {d} damage!',
+    '{w} connects with {t}\'s {p} as {a} attacks — {d} damage.',
+];
+
+const ATTACK_TEMPLATES_UNARMED = [
+    '{a} {verb} {t} in the {p} for {d} damage.',
+    '{a} {verb} {t} on the {p} — {d} damage!',
+    '{a} lands a bare-knuckle hit on {t}\'s {p} for {d} damage.',
+    '{a} catches {t} in the {p} with a wild swing — {d} damage!',
+];
+
+const MISS_TEMPLATES = [
+    '{a} swings at {t} and misses!',
+    '{a} lunges at {t} but hits nothing but air.',
+    '{t} dodges {a}\'s attack.',
+    '{a}\'s attack goes wide.',
+    '{a} swings wildly at {t} — miss!',
+];
+
+const BLOCK_TEMPLATES = [
+    '{t}\'s {armor} absorbs the blow — {blocked} damage blocked.',
+    '{a} hits {t}\'s {armor}, which absorbs {blocked} of the impact.',
+    'The hit glances off {t}\'s {armor} — {blocked} damage mitigated.',
+];
+
+const CRITICAL_TEMPLATES = [
+    'Critical hit! {a} {verb} {t} square in the {p} with {w} — {d} damage!',
+    'A devastating blow! {a} {verb} {t}\'s {p} with {w} for {d} damage!',
+    '{a} finds an opening and {verb} {t} right in the {p} — {d} damage!',
+];
+
+const PART_DESTROYED_TEMPLATES = [
+    '{t}\'s {p} gives out from the damage!',
+    '{t}\'s {p} is mangled beyond use!',
+    'The blow ruins {t}\'s {p}!',
+];
+
+const KILL_TEMPLATES = [
+    '{t} crumples to the ground, dead.',
+    '{t} collapses in a heap.',
+    '{t} slumps over, lifeless.',
+    '{t} drops dead.',
+    '{t} falls and doesn\'t get back up.',
+];
+
+export class CombatSystem {
+    constructor(game) {
+        this.game = game;
+    }
+    
+    /**
+     * Resolve a melee attack between two entities.
+     * @param {Object} attacker - Entity attacking (Player or NPC)
+     * @param {Object} target - Entity being attacked
+     * @param {Object} [weapon] - Weapon item used (null = unarmed)
+     * @returns {Object} result with { hit, damage, bodyPart, critical, killed }
+     */
+    resolveAttack(attacker, target, weapon = null) {
+        const attackerName = this.getDisplayName(attacker, true);
+        const targetName = this.getDisplayName(target, false);
+        
+        // ── Hit check ──
+        const hitChance = this.calculateHitChance(attacker, target, weapon);
+        const hitRoll = Math.random() * 100;
+        
+        if (hitRoll > hitChance) {
+            // Miss
+            this.logMiss(attackerName, targetName);
+            return { hit: false, damage: 0, bodyPart: null, critical: false, killed: false };
+        }
+        
+        // ── Critical hit check ──
+        const critChance = this.calculateCritChance(attacker, weapon);
+        const isCritical = Math.random() * 100 < critChance;
+        
+        // ── Roll hit location ──
+        const location = this.rollHitLocation();
+        const partDisplayName = location.subPart.displayName || location.subPart.part;
+        
+        // ── Calculate damage ──
+        let baseDamage = this.rollWeaponDamage(weapon, attacker);
+        if (isCritical) baseDamage = Math.floor(baseDamage * 1.5);
+        
+        // ── Armor mitigation ──
+        const armorResult = this.calculateArmor(target, location.region);
+        const finalDamage = Math.max(1, baseDamage - armorResult.reduction);
+        const blocked = baseDamage - finalDamage;
+        
+        // ── Apply damage to anatomy ──
+        const partResult = this.applyAnatomyDamage(target, location, finalDamage);
+        
+        // ── Bleeding / wound creation ──
+        const attackType = this.getAttackType(weapon);
+        if (target.anatomy) {
+            // Sharp weapons cause bleeding wounds
+            if (attackType === 'sharp') {
+                const bleedChance = weapon?.weaponStats?.bleedChance || 0.4;
+                if (Math.random() < bleedChance || isCritical) {
+                    const severity = isCritical ? finalDamage * 0.6 : finalDamage * 0.35;
+                    const isArterial = location.subPart.vital && isCritical;
+                    const woundType = isArterial ? 'arterial' : (Math.random() < 0.5 ? 'cut' : 'laceration');
+                    target.anatomy.addWound(partDisplayName, severity, woundType);
+                    this.logWound(targetName, partDisplayName, woundType);
+                }
+            }
+            
+            // Blunt weapons can cause internal bleeding on vital hits
+            if (attackType === 'blunt' && location.subPart.vital && isCritical) {
+                target.anatomy.addWound(partDisplayName, finalDamage * 0.5, 'arterial');
+                this.logWound(targetName, partDisplayName, 'internal');
+            }
+            
+            // Record pain for shock tracking
+            const currentTurn = this.game.turnCount || 0;
+            target.anatomy.addPain(finalDamage, currentTurn);
+        }
+        
+        // ── Generate combat log ──
+        const weaponName = weapon ? weapon.name : null;
+        
+        if (isCritical) {
+            this.logCritical(attackerName, targetName, weaponName, partDisplayName, finalDamage, attackType);
+        } else {
+            this.logAttack(attackerName, targetName, weaponName, partDisplayName, finalDamage, attackType);
+        }
+        
+        if (blocked > 0 && armorResult.armorName) {
+            this.logBlock(attackerName, targetName, armorResult.armorName, blocked);
+        }
+        
+        if (partResult.destroyed) {
+            this.logPartDestroyed(targetName, partDisplayName);
+        }
+        
+        // ── Check death ──
+        const killed = this.checkDeath(target);
+        if (killed) {
+            this.logKill(targetName, target);
+        }
+        
+        return {
+            hit: true,
+            damage: finalDamage,
+            bodyPart: partDisplayName,
+            region: location.region,
+            critical: isCritical,
+            killed,
+            blocked
+        };
+    }
+    
+    // ── Hit chance ──────────────────────────────────────────────────────
+    
+    calculateHitChance(attacker, target, weapon) {
+        // Base 75% hit chance
+        let chance = 75;
+        
+        // Attacker agility bonus
+        if (attacker.stats) {
+            chance += (attacker.stats.agility - 10) * 2;
+        }
+        
+        // Target agility dodge bonus
+        if (target.stats) {
+            chance -= (target.stats.agility - 10);
+        }
+        
+        // Weapon accuracy (future expansion)
+        
+        return Math.max(20, Math.min(95, chance));
+    }
+    
+    calculateCritChance(attacker, weapon) {
+        let chance = 5; // Base 5%
+        
+        if (attacker.stats) {
+            chance += Math.floor((attacker.stats.perception - 10) / 2);
+        }
+        
+        return Math.max(1, Math.min(25, chance));
+    }
+    
+    // ── Hit location ───────────────────────────────────────────────────
+    
+    rollHitLocation() {
+        const region = this.weightedRandom(BODY_REGIONS, 'weight', 'region');
+        const subParts = REGION_PARTS[region];
+        const subPart = this.weightedRandom(subParts, 'weight');
+        
+        return { region, subPart };
+    }
+    
+    weightedRandom(items, weightKey, returnKey = null) {
+        const totalWeight = items.reduce((sum, item) => sum + item[weightKey], 0);
+        let roll = Math.random() * totalWeight;
+        
+        for (const item of items) {
+            roll -= item[weightKey];
+            if (roll <= 0) {
+                return returnKey ? item[returnKey] : item;
+            }
+        }
+        return returnKey ? items[items.length - 1][returnKey] : items[items.length - 1];
+    }
+    
+    // ── Damage calculation ─────────────────────────────────────────────
+    
+    rollWeaponDamage(weapon, attacker) {
+        let damage = 0;
+        
+        if (weapon && weapon.baseDamage) {
+            damage = this.rollDice(weapon.baseDamage);
+            if (weapon.damageMod) {
+                damage = Math.floor(damage * (1 + weapon.damageMod));
+            }
+        } else if (weapon && weapon.weaponStats && weapon.weaponStats.damage) {
+            damage = this.rollDice(weapon.weaponStats.damage);
+        } else {
+            // Unarmed: 1d3
+            damage = Math.floor(Math.random() * 3) + 1;
+        }
+        
+        // Strength bonus
+        if (attacker.stats && attacker.stats.strength) {
+            damage += Math.floor((attacker.stats.strength - 10) / 3);
+        }
+        
+        // NPC flat damage bonus (NPCs without stats)
+        if (attacker.baseDamage && !attacker.stats) {
+            damage += attacker.baseDamage;
+        }
+        
+        return Math.max(1, damage);
+    }
+    
+    rollDice(diceString) {
+        if (!diceString) return 0;
+        
+        let total = 0;
+        // Handle compound dice like "1d8+1d6"
+        const groups = diceString.split('+');
+        for (const group of groups) {
+            const trimmed = group.trim();
+            if (trimmed.includes('d')) {
+                const [count, sides] = trimmed.split('d').map(Number);
+                for (let i = 0; i < count; i++) {
+                    total += Math.floor(Math.random() * sides) + 1;
+                }
+            } else {
+                total += parseInt(trimmed) || 0;
+            }
+        }
+        return total;
+    }
+    
+    getAttackType(weapon) {
+        if (!weapon) return 'unarmed';
+        if (weapon.weaponStats && weapon.weaponStats.attackType) return weapon.weaponStats.attackType;
+        if (weapon.attackType) return weapon.attackType;
+        return 'blunt';
+    }
+    
+    // ── Armor ──────────────────────────────────────────────────────────
+    
+    calculateArmor(target, region) {
+        let reduction = 0;
+        let armorName = null;
+        
+        if (!target.equipment) return { reduction: 0, armorName: null };
+        
+        for (const [slot, coveredRegions] of Object.entries(ARMOR_COVERAGE)) {
+            if (!coveredRegions.includes(region)) continue;
+            
+            const item = target.equipment[slot];
+            if (item && item.defense) {
+                reduction += item.defense;
+                armorName = armorName || item.name;
+            }
+        }
+        
+        return { reduction, armorName };
+    }
+    
+    // ── Anatomy damage ─────────────────────────────────────────────────
+    
+    applyAnatomyDamage(target, location, damage) {
+        if (!target.anatomy || !target.anatomy.parts) {
+            return { destroyed: false };
+        }
+        
+        const subPart = location.subPart;
+        if (!subPart.path) {
+            // Glancing hit — no specific organ, just general region damage
+            return { destroyed: false };
+        }
+        
+        // Navigate the anatomy path (e.g., "head.eyes.0")
+        const pathParts = subPart.path.split('.');
+        let part = target.anatomy.parts;
+        for (const p of pathParts) {
+            if (part === undefined || part === null) return { destroyed: false };
+            const idx = parseInt(p);
+            part = isNaN(idx) ? part[p] : part[idx];
+        }
+        
+        if (!part || part.hp === undefined) return { destroyed: false };
+        
+        const wasFunctional = part.functional;
+        part.hp = Math.max(0, part.hp - damage);
+        
+        if (part.hp <= 0 && wasFunctional) {
+            part.functional = false;
+            return { destroyed: true };
+        }
+        
+        return { destroyed: false };
+    }
+    
+    // ── Death check ────────────────────────────────────────────────────
+    
+    checkDeath(target) {
+        // Anatomy-based death check
+        if (target.anatomy) {
+            return target.anatomy.isDead();
+        }
+        
+        return false;
+    }
+    
+    // ── Display helpers ────────────────────────────────────────────────
+    
+    getDisplayName(entity, isAttacker) {
+        if (entity === this.game.player) return 'You';
+        return entity.name || 'Something';
+    }
+    
+    getDamageIntensity(damage) {
+        if (damage <= 2) return 'light';
+        if (damage <= 6) return 'medium';
+        return 'heavy';
+    }
+    
+    pickRandom(arr) {
+        return arr[Math.floor(Math.random() * arr.length)];
+    }
+    
+    // ── Log generation ─────────────────────────────────────────────────
+    
+    logAttack(attacker, target, weaponName, bodyPart, damage, attackType) {
+        const intensity = this.getDamageIntensity(damage);
+        const verbs = ATTACK_VERBS[attackType] || ATTACK_VERBS.blunt;
+        const verb = this.pickRandom(verbs[intensity]);
+        
+        const isPlayer = attacker === 'You';
+        const conjugatedVerb = isPlayer ? this.baseForm(verb) : verb;
+        
+        const templates = weaponName ? ATTACK_TEMPLATES : ATTACK_TEMPLATES_UNARMED;
+        let msg = this.pickRandom(templates);
+        
+        msg = msg.replace('{a}', attacker)
+                  .replace('{t}', target)
+                  .replace('{w}', weaponName || 'bare fists')
+                  .replace('{p}', bodyPart)
+                  .replace('{d}', damage)
+                  .replace('{verb}', conjugatedVerb);
+        
+        this.game.ui.log(msg, 'combat');
+    }
+    
+    logCritical(attacker, target, weaponName, bodyPart, damage, attackType) {
+        const intensity = 'heavy';
+        const verbs = ATTACK_VERBS[attackType] || ATTACK_VERBS.blunt;
+        const verb = this.pickRandom(verbs[intensity]);
+        
+        const isPlayer = attacker === 'You';
+        const conjugatedVerb = isPlayer ? this.baseForm(verb) : verb;
+        
+        let msg = this.pickRandom(CRITICAL_TEMPLATES);
+        
+        msg = msg.replace('{a}', attacker)
+                  .replace('{t}', target)
+                  .replace('{w}', weaponName || 'bare fists')
+                  .replace('{p}', bodyPart)
+                  .replace('{d}', damage)
+                  .replace('{verb}', conjugatedVerb);
+        
+        this.game.ui.log(msg, 'combat');
+    }
+    
+    logMiss(attacker, target) {
+        let msg = this.pickRandom(MISS_TEMPLATES);
+        msg = msg.replace('{a}', attacker).replace('{t}', target);
+        this.game.ui.log(msg, 'combat');
+    }
+    
+    logBlock(attacker, target, armorName, blocked) {
+        let msg = this.pickRandom(BLOCK_TEMPLATES);
+        msg = msg.replace('{a}', attacker)
+                  .replace('{t}', target)
+                  .replace('{armor}', armorName)
+                  .replace('{blocked}', blocked);
+        this.game.ui.log(msg, 'info');
+    }
+    
+    logPartDestroyed(target, bodyPart) {
+        let msg = this.pickRandom(PART_DESTROYED_TEMPLATES);
+        msg = msg.replace('{t}', target).replace('{p}', bodyPart);
+        this.game.ui.log(msg, 'combat');
+    }
+    
+    logKill(target, entity = null) {
+        let msg = this.pickRandom(KILL_TEMPLATES);
+        msg = msg.replace('{t}', target);
+        this.game.ui.log(msg, 'combat');
+        
+        // Log cause of death if anatomy is available
+        if (entity && entity.anatomy && entity.anatomy.causeOfDeath) {
+            const cause = entity.anatomy.getDeathCause();
+            this.game.ui.log(`Cause of death: ${cause}.`, 'combat');
+        }
+    }
+    
+    logWound(target, bodyPart, woundType) {
+        const templates = {
+            cut: [
+                'Blood wells from a cut on {t}\'s {p}.',
+                'A gash opens on {t}\'s {p}, bleeding freely.',
+                '{t}\'s {p} is sliced open — blood flows.',
+            ],
+            laceration: [
+                '{t}\'s {p} is torn open — a nasty laceration.',
+                'A ragged wound opens across {t}\'s {p}.',
+                'Flesh tears on {t}\'s {p}, blood seeping out.',
+            ],
+            arterial: [
+                'Blood sprays from {t}\'s {p} — an artery is hit!',
+                'Bright red blood pulses from {t}\'s {p}!',
+                'A deep wound on {t}\'s {p} gushes blood!',
+            ],
+            internal: [
+                '{t} coughs blood — internal damage to the {p}.',
+                'Something ruptures inside {t}\'s {p}.',
+                '{t} staggers — internal bleeding from the {p}.',
+            ]
+        };
+        
+        const pool = templates[woundType] || templates.cut;
+        let msg = this.pickRandom(pool);
+        msg = msg.replace('{t}', target).replace('{p}', bodyPart);
+        this.game.ui.log(msg, 'combat');
+    }
+    
+    /**
+     * Convert third-person verb to base form for "You" subject.
+     * "strikes" → "strike", "crushes" → "crush", "hits" → "hit"
+     */
+    baseForm(verb) {
+        // Handle multi-word verbs like "rips into" — conjugate only the first word
+        const parts = verb.split(' ');
+        let first = parts[0];
+        const rest = parts.slice(1).join(' ');
+        
+        if (first.endsWith('es') && (first.endsWith('shes') || first.endsWith('ches') || first.endsWith('zes') || first.endsWith('xes') || first.endsWith('sses'))) {
+            first = first.slice(0, -2);
+        } else if (first.endsWith('ies')) {
+            first = first.slice(0, -3) + 'y';
+        } else if (first.endsWith('s') && !first.endsWith('ss')) {
+            first = first.slice(0, -1);
+        }
+        
+        return rest ? `${first} ${rest}` : first;
+    }
+}

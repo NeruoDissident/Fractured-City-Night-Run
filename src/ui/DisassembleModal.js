@@ -246,13 +246,9 @@ function removeItemFromSource(uiManager, player, item, sourceType, sourceData) {
             player.carrying[sourceData.hand + 'Hand'] = null;
         }
         delete item.carriedIn;
-    } else if (sourceType === 'actions-ground') {
+    } else if (sourceType === 'actions-ground' || sourceType === 'actions-ground-interact') {
         // Item is on ground, remove it from world
-        const groundItems = player.game.world.getItemsAt(player.x, player.y, player.z);
-        const index = groundItems.indexOf(item);
-        if (index !== -1) {
-            player.game.world.removeItem(item);
-        }
+        player.game.world.removeItem(item);
     } else if (sourceType === 'actions-pocket-item') {
         const container = uiManager.findContainerById(sourceData.containerId);
         if (container && container.pockets && container.pockets[sourceData.pocketIndex]) {
