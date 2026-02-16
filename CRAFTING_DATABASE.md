@@ -1,19 +1,20 @@
 # Crafting Database - Master Reference
 
-**Last Updated:** February 4, 2026 (Evening Update)  
-**Status:** Updated with Component Property System & Quality Mechanics
+**Last Updated:** February 15, 2026 (v19 Crafting Overhaul)  
+**Status:** Tier gating, craftable intermediates, raw materials, sub-recipe UI
 
 ---
 
 ## Table of Contents
 1. [Crafting System Overview](#crafting-system-overview)
-2. [Component Property System](#component-property-system)
-3. [Quality & Durability Mechanics](#quality--durability-mechanics)
-4. [Current Game Items](#current-game-items)
-5. [Component Library](#component-library)
-6. [Crafting Recipes](#crafting-recipes)
-7. [Disassembly Outcomes](#disassembly-outcomes)
-8. [Weapon Stats (All Items)](#weapon-stats-all-items)
+2. [Crafting Tier System](#crafting-tier-system)
+3. [Component Property System](#component-property-system)
+4. [Quality & Durability Mechanics](#quality--durability-mechanics)
+5. [Current Game Items](#current-game-items)
+6. [Component Library](#component-library)
+7. [Crafting Recipes](#crafting-recipes)
+8. [Disassembly Outcomes](#disassembly-outcomes)
+9. [Weapon Stats (All Items)](#weapon-stats-all-items)
 
 ---
 
@@ -26,12 +27,22 @@ The crafting system uses **component properties** and **specific component requi
 **Property-Based Requirements:**
 - Items require components with specific properties (e.g., `cutting`, `grip`, `fastening`)
 - Multiple components can satisfy the same requirement if they have the property
-- Example: "Requires cutting +2" can be satisfied by a Knife Blade (cutting: 3) or 2x Metal Shards (cutting: 1 each)
+- Example: "Requires cutting +2" can be satisfied by a Crude Blade (cutting: 2) or Knife Blade (cutting: 3)
+
+**Tier Gating (maxValue):**
+- Requirements can specify a `maxValue` to **exclude** high-tier components
+- Example: Shiv requires `cutting: 1, maxValue: 1` — Metal Shard (1) works, Crude Blade (2) does NOT
+- This prevents wasting good components on low-tier recipes
 
 **Specific Component Requirements:**
 - Some items require exact components (e.g., "Requires 2x Strap")
 - Only components with matching `componentId` will satisfy these
 - Example: Backpack requires exactly 2 Strap components, not just items with binding property
+
+**Craftable Intermediates:**
+- Some recipes produce **components** that are used in higher-tier recipes
+- Example: Crude Blade (cutting: 2) is crafted from Metal Shard + Stone, then used to craft a Knife
+- The UI shows "⚒ Craft" buttons on sub-recipes for drill-down navigation
 
 **Mixed Requirements:**
 - Most items use both types (e.g., Backpack needs specific fabric panels AND any fasteners with fastening +2)
@@ -41,7 +52,68 @@ The crafting system uses **component properties** and **specific component requi
 Components are matched by:
 1. **Component ID** - Exact match for specific requirements (e.g., `fabric_panel`, `strap`)
 2. **Properties** - Numeric values for flexible requirements (e.g., `cutting: 3`, `grip: 2`)
-3. **Tags** - Categories for filtering (e.g., `metal`, `fabric`, `medical`)
+3. **craftedProperties** - Checked first on crafted intermediates (e.g., Crude Blade has `craftedProperties.cutting: 2`)
+4. **Tags** - Categories for filtering (e.g., `metal`, `fabric`, `medical`)
+
+---
+
+## Crafting Tier System
+
+### Crafting Tree
+```
+Tier 0: RAW MATERIALS (found in world)
+├── Stone, Wood Piece, Glass Shard, Metal Shard, Bone Shard
+├── Cloth Wrap, Leather Piece, Rubber Piece, Duct Tape
+├── Nail, Wire, Thread, Fabric Panel
+└── Can Lid, Screw Cap, Bottle Cap
+
+Tier 1: INTERMEDIATES (crafted from raw materials)
+├── Crude Blade (cutting:2) ← Metal/Glass + Stone [3 turns]
+├── Sharpened Stick (piercing:1) ← Wood + Stone [2 turns]
+├── Wrapped Handle (grip:2) ← Wood/Bone + Cloth/Tape/Leather [1 turn]
+└── Strap (binding:3) ← Fabric/Leather [1 turn]
+
+Tier 2: BASIC ITEMS (raw materials only)
+├── Shiv (cutting:1 MAX:1, grip:1) [1 turn]
+└── (other simple items)
+
+Tier 3: STANDARD ITEMS (intermediates required)
+├── Knife (cutting:2+, grip:2+, fastening:1 x2) [2 turns]
+├── Canteen (container:1, fastening:1, binding:2) 
+└── Medkit (medical:1 x6)
+
+Tier 4: ADVANCED ITEMS (multiple intermediates + specifics)
+├── Backpack (3x fabric_panel, 2x strap, fastening:2 x2, thread)
+├── Trenchcoat (padding:1 x4, fastening:1 x7, binding:1)
+└── Coat, Pants
+```
+
+### Tier Gating Examples
+```
+SHIV requires cutting: 1, maxValue: 1
+  ✓ Metal Shard (cutting: 1)     — cheap, intended
+  ✓ Glass Shard (cutting: 1)     — cheap, intended
+  ✓ Can Lid (cutting: 1)         — cheap, intended
+  ✗ Crude Blade (cutting: 2)     — too good, blocked
+  ✗ Knife Blade (cutting: 3)     — way too good, blocked
+  ✗ Cutting Wheel (cutting: 2)   — too good, blocked
+
+KNIFE requires cutting: 2 (no maxValue)
+  ✓ Crude Blade (cutting: 2)     — crafted intermediate
+  ✓ Knife Blade (cutting: 3)     — from disassembly
+  ✓ Cutting Wheel (cutting: 2)   — from disassembly
+  ✗ Metal Shard (cutting: 1)     — too weak
+  ✗ Glass Shard (cutting: 1)     — too weak
+```
+
+### Raw Material Sources
+```
+Outdoors:     Stone(common), Wood(common), Glass Shard, Metal Shard, Bone Shard(rare)
+Residential:  Glass Shard, Cloth Wrap, Duct Tape
+Garage/Tools: Metal Shard, Nail, Wire, Duct Tape, Wood, Rubber
+Warehouse:    Metal Shard, Wood, Nail, Wire
+Disassembly:  All components from breaking down items
+```
 
 ---
 
@@ -241,22 +313,29 @@ scrap_metal_shard
 ├─ Weight: 50g | Volume: 30cm³
 ├─ Properties: cutting: 1, piercing: 1
 ├─ Tags: metal, sharp
-├─ Uses: Shiv blade, improvised cutting
-└─ Source: Smashing metal items, scrap
+├─ Uses: Shiv blade, Crude Blade ingredient
+└─ Source: Loot (garages, warehouses, outdoors), smashing metal items
 
 metal_tube
 ├─ Weight: 200g | Volume: 150cm³
 ├─ Properties: structural: 2, blunt: 1, grip: 1
 ├─ Tags: metal, structural
 ├─ Uses: Pipe weapon, structural support
-└─ Source: Pipe, furniture, plumbing
+└─ Source: Pipe disassembly, furniture, plumbing
 
 blade (Knife Blade)
 ├─ Weight: 80g | Volume: 50cm³
 ├─ Properties: cutting: 3, piercing: 2
 ├─ Tags: metal, sharp
-├─ Uses: Knife, quality cutting tools
-└─ Source: Knife disassembly
+├─ Uses: Knife (cutting:2+ requirement)
+└─ Source: Knife disassembly ONLY
+
+blade_wheel (Cutting Wheel)
+├─ Weight: 30g | Volume: 20cm³
+├─ Properties: cutting: 2, piercing: 1
+├─ Tags: metal, sharp, tool
+├─ Uses: Knife (cutting:2+ requirement)
+└─ Source: Can Opener disassembly
 
 rivet
 ├─ Weight: 5g | Volume: 2cm³
@@ -277,7 +356,7 @@ wire
 ├─ Properties: binding: 2, electrical: 1
 ├─ Tags: metal, flexible
 ├─ Uses: Binding, electrical connections
-└─ Source: Electronics, cables, motors
+└─ Source: Loot (garages, warehouses), electronics
 
 metal_casing
 ├─ Weight: 15g | Volume: 8cm³
@@ -285,6 +364,79 @@ metal_casing
 ├─ Tags: metal, container
 ├─ Uses: Small containers, casings
 └─ Source: Battery disassembly
+
+tin_can
+├─ Weight: 50g | Volume: 80cm³
+├─ Properties: container: 1
+├─ Tags: metal, container
+├─ Uses: Container crafting
+└─ Source: Sealed Can disassembly
+
+can_lid
+├─ Weight: 10g | Volume: 10cm³
+├─ Properties: cutting: 1
+├─ Tags: metal, sharp
+├─ Uses: Shiv blade (cutting:1 maxValue:1)
+└─ Source: Sealed Can disassembly
+
+metal_bottle
+├─ Weight: 150g | Volume: 250cm³
+├─ Properties: container: 2
+├─ Tags: metal, container, liquid
+├─ Uses: Canteen crafting
+└─ Source: Canteen disassembly
+
+nail
+├─ Weight: 5g | Volume: 2cm³
+├─ Properties: piercing: 1, fastening: 1
+├─ Tags: metal, sharp, fastener
+├─ Uses: Fastening, Knife recipe
+└─ Source: Loot (garages, warehouses)
+```
+
+### Raw Materials (New in v19)
+```
+glass_shard
+├─ Weight: 15g | Volume: 10cm³
+├─ Properties: cutting: 1, piercing: 1
+├─ Tags: glass, sharp
+├─ Uses: Shiv blade, Crude Blade ingredient
+└─ Source: Loot (residential, kitchens, outdoors)
+
+wood_piece
+├─ Weight: 80g | Volume: 100cm³
+├─ Properties: structural: 1, grip: 1, fuel: 1
+├─ Tags: wood, structural
+├─ Uses: Wrapped Handle, Sharpened Stick, fuel
+└─ Source: Loot (garages, warehouses, outdoors)
+
+stone
+├─ Weight: 200g | Volume: 80cm³
+├─ Properties: blunt: 2, grinding: 2
+├─ Tags: stone, blunt
+├─ Uses: Crude Blade (grinding surface), Sharpened Stick
+└─ Source: Loot (outdoors, common)
+
+bone_shard
+├─ Weight: 20g | Volume: 15cm³
+├─ Properties: piercing: 1, structural: 1
+├─ Tags: bone, sharp
+├─ Uses: Wrapped Handle core, piercing
+└─ Source: Loot (outdoors, rare)
+
+rubber_piece
+├─ Weight: 30g | Volume: 40cm³
+├─ Properties: grip: 2, padding: 1, insulation: 2
+├─ Tags: rubber, flexible
+├─ Uses: Knife handle (grip:2), insulation
+└─ Source: Loot (garages)
+
+duct_tape
+├─ Weight: 40g | Volume: 30cm³
+├─ Properties: binding: 2, fastening: 1, grip: 1
+├─ Tags: adhesive, flexible
+├─ Uses: Wrapping, fastening, grip
+└─ Source: Loot (garages, residential, offices)
 ```
 
 ### Fabric Components
@@ -293,15 +445,15 @@ fabric_panel
 ├─ Weight: 100g | Volume: 200cm³
 ├─ Properties: padding: 2, insulation: 1, binding: 1
 ├─ Tags: fabric, flexible
-├─ Uses: Clothing, bags, padding, strap crafting
+├─ Uses: Clothing, bags, padding, Strap crafting
 └─ Source: Clothing disassembly, backpacks, curtains
 
 cloth_wrap
 ├─ Weight: 20g | Volume: 30cm³
 ├─ Properties: grip: 1, padding: 1, binding: 1
 ├─ Tags: fabric, flexible
-├─ Uses: Grips, light padding, bandages
-└─ Source: Torn fabric, clothing
+├─ Uses: Shiv grip, Wrapped Handle wrapping, bandages
+└─ Source: Loot (residential), clothing disassembly
 
 thread
 ├─ Weight: 5g | Volume: 10cm³
@@ -310,19 +462,26 @@ thread
 ├─ Uses: Sewing, light fastening
 └─ Source: Clothing disassembly
 
-strap
+leather_piece
+├─ Weight: 20g | Volume: 40cm³
+├─ Properties: grip: 2, padding: 1, binding: 1
+├─ Tags: leather, flexible
+├─ Uses: Knife handle (grip:2), Wrapped Handle wrapping
+└─ Source: Leather items disassembly
+
+strap (CRAFTABLE)
 ├─ Weight: 50g | Volume: 80cm³
 ├─ Properties: binding: 3, structural: 1
 ├─ Tags: fabric, flexible, structural
-├─ Uses: Backpacks, bindings, load-bearing
-└─ Source: Backpack disassembly OR craft from fabric_panel/wire
+├─ Uses: Backpacks, Canteen, load-bearing
+└─ Source: Backpack disassembly OR craft from Fabric/Leather [1 turn]
 ```
 
 ### Plastic Components
 ```
 plastic_bottle
 ├─ Weight: 30g | Volume: 100cm³
-├─ Properties: (none - container only)
+├─ Properties: container: 1
 ├─ Tags: plastic, container, liquid
 ├─ Uses: Water storage
 └─ Source: Sealed bottles
@@ -336,7 +495,7 @@ plastic_case
 
 bottle_cap
 ├─ Weight: 5g | Volume: 5cm³
-├─ Properties: (none - seal only)
+├─ Properties: fastening: 1
 ├─ Tags: plastic, seal
 ├─ Uses: Sealing bottles
 └─ Source: Sealed bottles
@@ -425,51 +584,109 @@ carbon_rod
 
 ## Crafting Recipes
 
-### Tier 1 - Basic Crafting
+### Tier 1 - Intermediates (crafted from raw materials)
+
+#### Crude Blade
+```
+CRAFT: Crude Blade (INTERMEDIATE COMPONENT)
+═══════════════════════════════════════════════
+Time: 3 turns
+Provides: cutting: 2, piercing: 1
+
+Requirements:
+  • cutting +1 (x1) - "Metal/Glass (sharp edge to grind)"
+    Valid: Metal Shard (1), Glass Shard (1), Can Lid (1)
+  • grinding +1 (x1) - "Stone (grinding surface)"
+    Valid: Stone (2)
+
+Output:
+  ✓ Crude Blade component (cutting: 2, piercing: 1)
+  ✓ Can be used in Knife recipe (cutting:2+ requirement)
+  ✓ Also usable as improvised weapon (1d3 sharp, 15% bleed)
+
+Disassembly:
+  • Hand: 50% yield, 50% quality, 1 turn
+```
+
+#### Sharpened Stick
+```
+CRAFT: Sharpened Stick (INTERMEDIATE COMPONENT)
+═══════════════════════════════════════════════
+Time: 2 turns
+Provides: piercing: 1, structural: 1
+
+Requirements:
+  • structural +1 (x1) - "Wood Piece"
+    Valid: Wood Piece (1), Bone Shard (1)
+  • grinding +1 (x1) - "Stone (carving tool)"
+    Valid: Stone (2)
+
+Output:
+  ✓ Sharpened Stick component (piercing: 1, structural: 1)
+  ✓ Also usable as improvised weapon (1d3 sharp, 10% bleed)
+
+Disassembly:
+  • Hand: 50% yield, 50% quality, 1 turn
+```
+
+#### Wrapped Handle
+```
+CRAFT: Wrapped Handle (INTERMEDIATE COMPONENT)
+═══════════════════════════════════════════════
+Time: 1 turn
+Provides: grip: 2, structural: 1
+
+Requirements:
+  • structural +1 (x1) - "Wood/Bone (handle core)"
+    Valid: Wood Piece (1), Bone Shard (1)
+  • binding +1 (x1) - "Cloth/Tape/Leather (wrapping)"
+    Valid: Cloth Wrap (1), Duct Tape (2), Leather Piece (1), Thread (1), Fabric Panel (1)
+
+Output:
+  ✓ Wrapped Handle component (grip: 2, structural: 1)
+  ✓ Can be used in Knife recipe (grip:2+ requirement)
+
+Disassembly:
+  • Hand: 100% yield, 70% quality, 1 turn
+```
 
 #### Strap
 ```
-CRAFT: Strap
-═══════════════════════════════════════════════════
-Difficulty: Simple
+CRAFT: Strap (INTERMEDIATE COMPONENT)
+═══════════════════════════════════════════════
 Time: 1 turn
+Provides: binding: 3, structural: 1
 
-Requirements (Property-Based):
-  • padding +1 (x1) - "Fabric/Wire"
-    Valid: Fabric Panel, Cloth Wrap, Wire
-
-Components Consumed:
-  • 1x component with padding +1 OR binding +2
+Requirements:
+  • padding +1 (x1) - "Fabric/Leather"
+    Valid: Fabric Panel (2), Cloth Wrap (1), Leather Piece (1), Rubber Piece (1)
 
 Output:
-  ✓ Strap (binding: 3, structural: 1)
-  ✓ Quality: Average of component qualities
+  ✓ Strap component (binding: 3, structural: 1)
+  ✓ Used in Backpack and Canteen recipes
 
 Disassembly:
   • Hand: 100% yield, 80% quality, 1 turn
   • Knife: 100% yield, 90% quality, 1 turn
-  → Returns: 1x Fabric Panel
 ```
+
+### Tier 2 - Basic Items
 
 #### Shiv
 ```
 CRAFT: Shiv
-═══════════════════════════════════════════════════
-Difficulty: Simple
-Time: 2 turns
+═══════════════════════════════════════════════
+Time: 1 turn
 
-Requirements (Property-Based):
-  • cutting +1 (x1) - "Sharp Edge"
-    Valid: Metal Shard, Can Lid, Blade
-  • grip +1 (x1) - "Handle/Grip"
-    Valid: Cloth Wrap, Handle, Metal Tube
-
-Components Consumed:
-  • 1x component with cutting +1
-  • 1x component with grip +1
+Requirements (TIER-GATED):
+  • cutting 1-1 (x1) - "Sharp Edge (shard/glass/lid)"
+    ✓ Metal Shard (1), Glass Shard (1), Can Lid (1)
+    ✗ Crude Blade (2), Knife Blade (3) — BLOCKED by maxValue:1
+  • grip +1 (x1) - "Grip (cloth/tape/leather)"
+    Valid: Cloth Wrap (1), Duct Tape (1), Wood Piece (1), Rubber Piece (2), Leather Piece (2)
 
 Output:
-  ✓ Shiv (1d4 damage, 10% bleed)
+  ✓ Shiv (1d4 damage, 30% bleed)
   ✓ Quality: Average of component qualities
 
 Disassembly:
@@ -478,30 +695,26 @@ Disassembly:
   → Returns: 1x Metal Shard, 1x Cloth Wrap
 ```
 
-### Tier 2 - Standard Crafting
+### Tier 3 - Standard Items
 
 #### Knife
 ```
 CRAFT: Knife
-═══════════════════════════════════════════════════
-Difficulty: Standard
-Time: 5 turns
+═══════════════════════════════════════════════
+Time: 2 turns
 
-Requirements (Property-Based):
-  • cutting +2 (x1) - "Quality Blade"
-    Valid: Knife Blade (cutting: 3)
-  • grip +2 (x1) - "Sturdy Handle"
-    Valid: Handle (grip: 3)
-  • fastening +1 (x2) - "Fasteners"
-    Valid: Rivet, Button, Screw, Thread
-
-Components Consumed:
-  • 1x component with cutting +2 (typically Blade)
-  • 1x component with grip +2 (typically Handle)
-  • 2x components with fastening +1 (typically Rivets)
+Requirements:
+  • cutting +2 (x1) - "Blade (crude blade/knife blade)"
+    Valid: Crude Blade (2), Knife Blade (3), Cutting Wheel (2)
+    → Sub-recipe: ⚒ Craft Crude Blade (Metal/Glass + Stone, 3 turns)
+  • grip +2 (x1) - "Handle (wrapped handle/rubber grip)"
+    Valid: Wrapped Handle (2), Rubber Piece (2), Leather Piece (2), Handle (3)
+    → Sub-recipe: ⚒ Craft Wrapped Handle (Wood + Cloth, 1 turn)
+  • fastening +1 (x2) - "Fasteners (rivets/nails/tape)"
+    Valid: Rivet (1), Nail (1), Button (1), Thread (1), Duct Tape (1), Screw Cap (1), Bottle Cap (1)
 
 Output:
-  ✓ Knife (1d6 damage, 15% bleed, can two-hand)
+  ✓ Knife (1d6 damage, 40% bleed, can two-hand)
   ✓ Quality: Average of all component qualities
 
 Disassembly:
@@ -1197,6 +1410,23 @@ Effects:
 ---
 
 ## Update Log
+
+### February 15, 2026 (v19 Crafting Overhaul)
+- **MAJOR UPDATE:** Tier gating, craftable intermediates, raw materials, sub-recipe UI
+- Added `maxValue` tier gating to prevent high-tier components in low-tier recipes
+- Added craftable intermediate components: Crude Blade, Sharpened Stick, Wrapped Handle
+- Added `craftedComponentId` + `craftedProperties` system for intermediates
+- Added raw material components: glass_shard, wood_piece, stone, bone_shard, rubber_piece, duct_tape, nail
+- Added properties to previously bare components: can_lid, leather_piece, blade_wheel, tin_can, metal_bottle, plastic_bottle, bottle_cap, screw_cap
+- Added `createComponent()` method to ContentManager for spawning raw materials
+- Updated LootTables.js: `rollLootPool()` returns `{familyId}` or `{componentId}`, Chunk.js handles both
+- Raw materials spawn in loot tables: outdoors (stone, wood, glass), garages (metal, nails, wire, tape), residential (glass, cloth, tape)
+- Reworked Shiv recipe: cutting 1 maxValue:1 (blocks Crude Blade/Knife Blade), grip 1, 1 turn
+- Reworked Knife recipe: cutting 2+ (needs Crude Blade or better), grip 2+ (needs Wrapped Handle or better), fastening x2, 2 turns
+- Updated Strap to be a proper craftable intermediate with `craftedProperties: { binding: 3, structural: 1 }`
+- CraftingUI: sub-recipe drill-down buttons, back-to-parent navigation, craftTime display, craftedProperties display, maxValue range display
+- CraftingSystem: `getComponentProperty()` checks craftedProperties first, `matchesRequirement()` supports maxValue
+- Cache bumped to v19
 
 ### February 4, 2026 (Evening)
 - **MAJOR UPDATE:** Implemented Component Property System

@@ -19,7 +19,10 @@ export const ROOM_LOOT_TABLES = {
             { familyId: 'strap',          weight: 8 },
             { familyId: 'pipe',           weight: 4 },
             { familyId: 'flashlight',     weight: 2 },
-            { familyId: 'lantern',        weight: 1 }
+            { familyId: 'lantern',        weight: 1 },
+            { componentId: 'glass_shard', weight: 6 },
+            { componentId: 'cloth_wrap',  weight: 5 },
+            { componentId: 'duct_tape',   weight: 3 }
         ]
     },
     
@@ -50,7 +53,9 @@ export const ROOM_LOOT_TABLES = {
             { familyId: 'knife',          weight: 8 },
             { familyId: 'canteen',        weight: 5 },
             { familyId: 'pipe',           weight: 3 },
-            { familyId: 'can_opener',     weight: 4 }
+            { familyId: 'can_opener',     weight: 4 },
+            { componentId: 'glass_shard', weight: 5 },
+            { componentId: 'scrap_metal_shard', weight: 4 }
         ]
     },
     
@@ -203,7 +208,13 @@ export const ROOM_LOOT_TABLES = {
             { familyId: 'can_sealed',     weight: 5 },
             { familyId: 'bottle_sealed',  weight: 5 },
             { familyId: 'flashlight',     weight: 3 },
-            { familyId: 'lantern_fuel',   weight: 4 }
+            { familyId: 'lantern_fuel',   weight: 4 },
+            { componentId: 'scrap_metal_shard', weight: 10 },
+            { componentId: 'nail',        weight: 8 },
+            { componentId: 'wire',        weight: 6 },
+            { componentId: 'duct_tape',   weight: 6 },
+            { componentId: 'wood_piece',  weight: 8 },
+            { componentId: 'rubber_piece', weight: 4 }
         ]
     },
     
@@ -220,7 +231,12 @@ export const ROOM_LOOT_TABLES = {
             { familyId: 'flashlight',     weight: 4 },
             { familyId: 'lantern',        weight: 2 },
             { familyId: 'lantern_fuel',   weight: 3 },
-            { familyId: 'can_opener',     weight: 3 }
+            { familyId: 'can_opener',     weight: 3 },
+            { componentId: 'scrap_metal_shard', weight: 8 },
+            { componentId: 'nail',        weight: 10 },
+            { componentId: 'wire',        weight: 6 },
+            { componentId: 'duct_tape',   weight: 8 },
+            { componentId: 'wood_piece',  weight: 5 }
         ]
     },
     
@@ -237,7 +253,11 @@ export const ROOM_LOOT_TABLES = {
             { familyId: 'strap',          weight: 10 },
             { familyId: 'battery',        weight: 8 },
             { familyId: 'backpack',       weight: 3 },
-            { familyId: 'coat',           weight: 3 }
+            { familyId: 'coat',           weight: 3 },
+            { componentId: 'scrap_metal_shard', weight: 8 },
+            { componentId: 'wood_piece',  weight: 8 },
+            { componentId: 'nail',        weight: 6 },
+            { componentId: 'wire',        weight: 4 }
         ]
     },
     
@@ -262,6 +282,7 @@ export const ROOM_LOOT_TABLES = {
 };
 
 // Roll a weighted random item from a pool
+// Returns { familyId } or { componentId } depending on the entry type
 export function rollLootPool(pool) {
     const totalWeight = pool.reduce((sum, entry) => sum + entry.weight, 0);
     let roll = Math.random() * totalWeight;
@@ -269,16 +290,19 @@ export function rollLootPool(pool) {
     for (const entry of pool) {
         roll -= entry.weight;
         if (roll <= 0) {
-            return entry.familyId;
+            if (entry.componentId) return { componentId: entry.componentId };
+            return { familyId: entry.familyId };
         }
     }
     
     // Fallback to last entry
-    return pool[pool.length - 1].familyId;
+    const last = pool[pool.length - 1];
+    if (last.componentId) return { componentId: last.componentId };
+    return { familyId: last.familyId };
 }
 
 // Generate items for a specific room type
-// Returns array of { familyId, x, y } objects
+// Returns array of { familyId?, componentId?, x, y } objects
 export function generateRoomLoot(roomType, floorTiles) {
     const table = ROOM_LOOT_TABLES[roomType];
     if (!table || !floorTiles.length) return [];
@@ -293,8 +317,8 @@ export function generateRoomLoot(roomType, floorTiles) {
         if (itemCount >= table.maxItems) break;
         if (Math.random() > table.spawnChance) continue;
         
-        const familyId = rollLootPool(table.pools);
-        results.push({ familyId, x: tile.x, y: tile.y });
+        const rolled = rollLootPool(table.pools);
+        results.push({ ...rolled, x: tile.x, y: tile.y });
         itemCount++;
     }
     
@@ -313,6 +337,11 @@ export const OUTDOOR_LOOT = {
         { familyId: 'bottle_sealed',  weight: 8 },
         { familyId: 'medkit',         weight: 3 },
         { familyId: 'coat',           weight: 3 },
-        { familyId: 'pants',          weight: 3 }
+        { familyId: 'pants',          weight: 3 },
+        { componentId: 'stone',       weight: 12 },
+        { componentId: 'wood_piece',  weight: 10 },
+        { componentId: 'glass_shard', weight: 8 },
+        { componentId: 'scrap_metal_shard', weight: 6 },
+        { componentId: 'bone_shard',  weight: 3 }
     ]
 };

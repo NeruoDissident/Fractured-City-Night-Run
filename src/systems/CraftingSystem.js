@@ -206,11 +206,28 @@ export class CraftingSystem {
     }
     
     /**
-     * Check if player has the components to craft an item
-     * @param {Object} player - Player object
-     * @param {Object} itemFamily - Item family definition
-     * @returns {Object} - { canCraft, missingComponents }
+     * Get the effective property value for a component.
+     * Checks craftedProperties first (for crafted intermediates), then base properties.
      */
+    getComponentProperty(comp, property) {
+        // Crafted items store their output properties in craftedProperties
+        if (comp.craftedProperties && comp.craftedProperties[property] !== undefined) {
+            return comp.craftedProperties[property];
+        }
+        const properties = comp.properties || {};
+        return properties[property] || 0;
+    }
+    
+    /**
+     * Check if a component matches a property requirement (respects maxValue)
+     */
+    matchesRequirement(comp, requirement) {
+        const value = this.getComponentProperty(comp, requirement.property);
+        if (value < requirement.minValue) return false;
+        if (requirement.maxValue !== undefined && value > requirement.maxValue) return false;
+        return true;
+    }
+    
     canCraftItem(player, itemFamily) {
         if (!itemFamily.componentRequirements || itemFamily.componentRequirements.length === 0) {
             return { canCraft: false, missingComponents: [] };
@@ -229,11 +246,10 @@ export class CraftingSystem {
                     (comp.id && comp.id.startsWith(requirement.component))
                 );
             } else if (requirement.property) {
-                // Property-based requirement
-                matchingComponents = availableComponents.filter(comp => {
-                    const properties = comp.properties || {};
-                    return properties[requirement.property] >= requirement.minValue;
-                });
+                // Property-based requirement with optional maxValue cap
+                matchingComponents = availableComponents.filter(comp => 
+                    this.matchesRequirement(comp, requirement)
+                );
             }
             
             const totalQuantity = matchingComponents.reduce((sum, c) => sum + (c.quantity || 1), 0);
@@ -243,6 +259,7 @@ export class CraftingSystem {
                     component: requirement.component,
                     property: requirement.property,
                     minValue: requirement.minValue,
+                    maxValue: requirement.maxValue,
                     name: requirement.name,
                     have: totalQuantity,
                     need: requirement.quantity
@@ -328,11 +345,10 @@ export class CraftingSystem {
                     (comp.id && comp.id.startsWith(requirement.component))
                 );
             } else if (requirement.property) {
-                // Property-based requirement
-                available = this.getPlayerComponents(player).filter(comp => {
-                    const properties = comp.properties || {};
-                    return properties[requirement.property] >= requirement.minValue;
-                });
+                // Property-based requirement with maxValue support
+                available = this.getPlayerComponents(player).filter(comp => 
+                    this.matchesRequirement(comp, requirement)
+                );
             }
             
             for (const comp of available) {
@@ -358,14 +374,27 @@ export class CraftingSystem {
         const craftedItem = this.game.content.createItem(itemFamilyId);
         
         // Calculate quality based on component quality
-        const avgQuality = componentsUsed.reduce((sum, c) => sum + c.quality, 0) / componentsUsed.length;
+        const validQualities = componentsUsed.filter(c => c.quality !== undefined);
+        const avgQuality = validQualities.length > 0 
+            ? validQualities.reduce((sum, c) => sum + c.quality, 0) / validQualities.length 
+            : 100;
         craftedItem.durability = Math.floor(avgQuality);
+        
+        // If this is a craftable component, copy craftedProperties so it can be used in further recipes
+        if (itemFamily.craftedComponentId) {
+            craftedItem.isComponent = true;
+            craftedItem.componentId = itemFamily.craftedComponentId;
+            craftedItem.craftedProperties = itemFamily.craftedProperties || {};
+            // Also merge into base properties for display
+            craftedItem.properties = { ...(craftedItem.properties || {}), ...craftedItem.craftedProperties };
+        }
         
         return {
             success: true,
             item: craftedItem,
             message: `Crafted ${craftedItem.name}.`,
-            componentsUsed
+            componentsUsed,
+            craftTime: itemFamily.craftTime || 1
         };
     }
     

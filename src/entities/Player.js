@@ -60,6 +60,44 @@ export class Player extends Entity {
             prone: { name: 'Prone', actionCost: 150, soundVolume: 0, color: '#ff0000' }
         };
         
+        // Combat stance system
+        this.combatStance = 'aggressive';
+        this.combatStances = {
+            aggressive: {
+                name: 'Aggressive',
+                color: '#ff4444',
+                damageMod: 1.25,       // +25% damage dealt
+                hitMod: 5,             // +5% hit chance
+                critMod: 3,            // +3% crit chance
+                incomingDamageMod: 1.2, // +20% damage taken
+                bleedMod: 1.3,         // +30% bleed chance
+                interceptMod: 0.5,     // 50% arm intercept (reckless, less guarding)
+                offBalanceOnMiss: true  // miss → attacker becomes off-balance
+            },
+            defensive: {
+                name: 'Defensive',
+                color: '#4488ff',
+                damageMod: 0.7,        // -30% damage dealt
+                hitMod: -5,            // -5% hit chance (cautious swings)
+                critMod: -2,           // -2% crit chance
+                incomingDamageMod: 0.7, // -30% damage taken
+                bleedMod: 0.6,         // -40% bleed chance
+                interceptMod: 1.5,     // 150% arm intercept (actively guarding)
+                canDisengage: true     // can move away without opportunity attack
+            },
+            opportunistic: {
+                name: 'Opportunistic',
+                color: '#44ff44',
+                damageMod: 1.0,        // normal damage
+                hitMod: 0,             // normal hit chance
+                critMod: 0,            // normal crit
+                incomingDamageMod: 1.0, // normal incoming
+                bleedMod: 1.0,         // normal bleed
+                interceptMod: 1.0,     // normal intercept
+                exploitWounded: true   // bonus crit on already-wounded parts
+            }
+        };
+        
         this.equipment = {
             head: null,
             torso: null,
@@ -279,6 +317,21 @@ export class Player extends Entity {
             return false;
         }
         
+        // Opportunity attacks: adjacent enemies get a free hit when you disengage
+        const stance = this.getStance();
+        if (!stance.canDisengage) {
+            const adjacentEnemies = this.getAdjacentEnemies();
+            for (const enemy of adjacentEnemies) {
+                if (enemy.attack && !enemy.isDead()) {
+                    this.game.ui.log(`${enemy.name} strikes as you pull away!`, 'combat');
+                    enemy.attack(this);
+                    if (this.game.combatEffects) {
+                        this.game.combatEffects.addFloatingText(this.x, this.y, 'OPP. ATTACK', '#ff8800', 1000);
+                    }
+                }
+            }
+        }
+        
         this.x = newX;
         this.y = newY;
         
@@ -290,6 +343,19 @@ export class Player extends Entity {
         this.checkExtraction();
         
         return true;
+    }
+    
+    getAdjacentEnemies() {
+        const enemies = [];
+        for (const entity of this.game.world.entities) {
+            if (entity === this) continue;
+            if (entity.z !== this.z) continue;
+            const chebyshev = Math.max(Math.abs(entity.x - this.x), Math.abs(entity.y - this.y));
+            if (chebyshev <= 1 && entity.attack) {
+                enemies.push(entity);
+            }
+        }
+        return enemies;
     }
     
     getFacingFromDelta(dx, dy) {
@@ -438,6 +504,18 @@ export class Player extends Entity {
             return true;
         }
         return false;
+    }
+    
+    cycleCombatStance() {
+        const stanceOrder = ['aggressive', 'defensive', 'opportunistic'];
+        const currentIndex = stanceOrder.indexOf(this.combatStance);
+        this.combatStance = stanceOrder[(currentIndex + 1) % stanceOrder.length];
+        const stance = this.combatStances[this.combatStance];
+        return stance;
+    }
+    
+    getStance() {
+        return this.combatStances[this.combatStance] || this.combatStances.aggressive;
     }
     
     attack(target) {

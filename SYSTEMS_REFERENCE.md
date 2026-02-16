@@ -657,15 +657,35 @@ Route to specific handler
 ## Crafting System
 **Files:** `src/systems/CraftingSystem.js`, `src/ui/CraftingUI.js`, `src/content/ContentManager.js`
 
-**Purpose:** Manages component-based crafting and disassembly with quality mechanics.
+**Purpose:** Manages tiered component-based crafting and disassembly with quality mechanics.
+
+**Cache:** v19
 
 ### Core Concepts
 
 **Component Property System:**
 - Components have numeric properties (e.g., `cutting: 3`, `grip: 2`, `fastening: 1`)
+- 16 property categories: cutting, piercing, grip, fastening, binding, structural, padding, insulation, container, blunt, grinding, fuel, electrical, conductor, chemical, medical
 - Recipes require minimum property values
 - Multiple components can satisfy the same requirement
-- Example: "Requires cutting +2" accepts Knife Blade (cutting: 3) or 2x Metal Shards (cutting: 1 each)
+
+**Tier Gating (maxValue):**
+- Requirements can specify `maxValue` to exclude high-tier components from low-tier recipes
+- Example: Shiv requires `cutting: 1, maxValue: 1` — Metal Shard (1) works, Crude Blade (2) is blocked
+- Prevents wasting good components on cheap items
+- `matchesRequirement()` checks both minValue and maxValue
+
+**Craftable Intermediates:**
+- Some recipes produce components used in higher-tier recipes
+- Intermediates have `craftedComponentId` and `craftedProperties`
+- `getComponentProperty()` checks `craftedProperties` first, then base `properties`
+- Example: Crude Blade (craftedProperties: {cutting: 2, piercing: 1}) satisfies Knife's cutting:2+ requirement
+- 4 intermediates: Crude Blade, Sharpened Stick, Wrapped Handle, Strap
+
+**Raw Materials (spawn in world via loot tables):**
+- glass_shard, wood_piece, stone, bone_shard, rubber_piece, duct_tape, nail, cloth_wrap
+- LootTables entries use `componentId` instead of `familyId`
+- `rollLootPool()` returns `{familyId}` or `{componentId}`, Chunk.js calls `createComponent()` or `createItem()`
 
 **Specific Component Requirements:**
 - Some recipes require exact component types (e.g., `component: 'fabric_panel'`)
@@ -731,13 +751,26 @@ craftedItem.durability = Math.floor(avgQuality);
 
 ### Component Matching Logic
 
-**Property-Based Matching:**
+**Property-Based Matching (with maxValue):**
 ```javascript
-// Requirement: { property: 'cutting', minValue: 2, quantity: 1 }
-matchingComponents = availableComponents.filter(comp => {
-    const properties = comp.properties || {};
-    return properties['cutting'] >= 2;
-});
+// Requirement: { property: 'cutting', minValue: 1, maxValue: 1, quantity: 1 }
+// matchesRequirement() in CraftingSystem.js:
+const value = getComponentProperty(comp, requirement.property);
+if (value < requirement.minValue) return false;
+if (requirement.maxValue && value > requirement.maxValue) return false;
+return true;
+```
+
+**craftedProperties Priority:**
+```javascript
+// getComponentProperty() checks craftedProperties first:
+getComponentProperty(comp, property) {
+    if (comp.craftedProperties && comp.craftedProperties[property] !== undefined)
+        return comp.craftedProperties[property];
+    if (comp.properties && comp.properties[property] !== undefined)
+        return comp.properties[property];
+    return 0;
+}
 ```
 
 **Specific Component Matching:**
@@ -781,11 +814,11 @@ ContentManager.createItem(familyId) {
 
 ### Recipe Structure
 
-**Property-Based Recipe (Shiv):**
+**Tier-Gated Recipe (Shiv — maxValue blocks high-tier components):**
 ```javascript
 shiv: {
     componentRequirements: [
-        { property: 'cutting', minValue: 1, quantity: 1, name: 'Sharp Edge' },
+        { property: 'cutting', minValue: 1, maxValue: 1, quantity: 1, name: 'Sharp Edge' },
         { property: 'grip', minValue: 1, quantity: 1, name: 'Handle/Grip' }
     ],
     components: [
@@ -888,23 +921,27 @@ disassemblyMethods: {
 ### UI Integration
 
 **Workshop Panel (V key):**
-- Shows all craftable items
-- Displays requirement status (have/need)
-- Lists valid components for property requirements
+- Shows all craftable items with requirement status (have/need)
+- Lists valid components for property requirements with property values
 - Shows disassemblable items
+- Shows `craftTime` for each recipe
+- Shows `maxValue` ranges (e.g., "cutting 1-1" instead of "cutting +1")
+- Shows `craftedProperties` on intermediate recipes
+
+**Sub-Recipe Drill-Down:**
+- If a requirement can be satisfied by a craftable intermediate, shows "⚒ Craft" button
+- Clicking navigates to the sub-recipe detail view
+- Back button returns to parent recipe
+- After crafting a sub-component, navigates back to parent recipe automatically
 
 **Crafting UI:**
 ```javascript
-showRecipeDetails(itemFamilyId) {
-    // For each requirement
-    if (requirement.component) {
-        // Show specific component requirement
-        html += `Requires: ${requirement.name} (x${requirement.quantity})`;
-    } else if (requirement.property) {
-        // Show property requirement + valid items
-        html += `Requires: ${requirement.property} +${requirement.minValue}`;
-        html += `Valid items: ${allMatchingItems.join(', ')}`;
-    }
+showRecipeDetails(uiManager, recipeId, parentRecipeId) {
+    // parentRecipeId enables back-to-parent navigation
+    // For each requirement:
+    //   - Shows maxValue range if present
+    //   - Shows sub-recipe buttons for craftable intermediates
+    //   - Shows valid items with property values
 }
 ```
 

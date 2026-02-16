@@ -197,8 +197,9 @@
 **Responsibility:** Data-driven content generation
 
 **Content Types:**
+- **Components** - Raw materials and crafting parts with properties (40+ types)
 - **Materials** - Base properties (quality, durability, color, tags)
-- **Item Families** - Base item templates (weapons, armor, consumables)
+- **Item Families** - Base item templates (weapons, armor, consumables, intermediates)
 - **Modifiers** - Adjectives that alter items (rusty, reinforced)
 - **Cybernetics** - Implants with bonuses/drawbacks/risks
 - **Traits** - Character creation perks
@@ -206,12 +207,10 @@
 **Item Generation:**
 ```javascript
 content.createItem(familyId, materialId, modifierId)
-// Example: createItem('knife', 'carbon_steel', 'rusty')
-// Result: "Rusty Carbon Steel Knife"
+content.createComponent(componentId)  // Raw material spawning
 ```
 
 **Expansion Points:**
-- Add crafting recipes (combine items to create new ones)
 - Add item quality tiers (poor, standard, fine, masterwork)
 - Add unique/legendary items
 - Add consumable effects (healing, buffs, debuffs)
@@ -234,16 +233,16 @@ content.createItem(familyId, materialId, modifierId)
 - **Character Creation** - Stat allocation
 - **Detailed Character** - Full anatomy breakdown
 - **Detailed Inventory** - Equipment management with buttons
-- **Help Screen** - Controls reference
+- **Help Screen** - Controls, gameplay guide, crafting/combat overview
+- **Workshop** - Crafting and disassembly with sub-recipe drill-down
+- **Combat Overlay** - Real-time combat detail (B key toggle)
 
 **Expansion Points:**
 - Add targeting cursor for ranged attacks
 - Add minimap
 - Add quest/objective tracker
-- Add crafting UI
 - Add trading UI
 - Add dialogue UI
-- Add death screen with run stats
 
 ---
 
@@ -363,17 +362,22 @@ content.createItem(familyId, materialId, modifierId)
 - Trait effects on gameplay
 
 ### 14. Crafting System (`src/systems/CraftingSystem.js`)
-**Responsibility:** Component-based crafting and disassembly with quality mechanics
+**Responsibility:** Tiered component-based crafting and disassembly with quality mechanics
 
-**Status:** ✅ Implemented
+**Status:** ✅ Implemented (v19 overhaul)
 
 **Features:**
 - Disassemble any item into components with quality loss
-- Component property system (cutting, grip, fastening, etc.)
+- Component property system (16 properties: cutting, grip, fastening, etc.)
 - Recipe system with property-based and specific component requirements
+- **Tier gating via maxValue** — prevents high-tier components in low-tier recipes
+- **Craftable intermediates** — Crude Blade, Sharpened Stick, Wrapped Handle, Strap
+- **craftedProperties** — crafted intermediates carry properties for use in higher-tier recipes
+- **Raw materials** — stone, wood, glass, metal spawn in world via loot tables
 - Tool-based quality modifiers (hand vs knife vs proper tool)
 - `canPlayerDisassemble()` free-hand validation
 - Quality degradation loop prevents infinite recycling
+- Sub-recipe drill-down UI with back navigation
 
 ### 15. Time System (`src/systems/TimeSystem.js`)
 **Responsibility:** Day/night cycle, time-of-day tracking
@@ -473,9 +477,10 @@ Fractured-City-Night-Run/
 │   │   └── LootTables.js        # 16 room-type loot pools + outdoor loot
 │   └── ui/
 │       ├── UIManager.js         # Panels, modals, location display
-│       ├── CraftingUI.js        # Crafting workshop UI
+│       ├── CraftingUI.js        # Crafting workshop UI with sub-recipe drill-down
 │       ├── DisassembleModal.js  # Disassembly interface
-│       └── WorldObjectModal.js  # Door/object interaction modal
+│       ├── WorldObjectModal.js  # Door/object interaction modal
+│       └── MobileControls.js   # Touch controls for mobile
 ```
 
 ---

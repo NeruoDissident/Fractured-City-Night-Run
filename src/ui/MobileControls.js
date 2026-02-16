@@ -151,7 +151,7 @@ export class MobileControls {
 
             case 'interact':
                 if (this.game.gameState === 'playing' && !this.game.inspectMode) {
-                    this.game.interactWithWorldObject();
+                    this.game.enterInteractMode();
                 }
                 break;
 
@@ -173,6 +173,18 @@ export class MobileControls {
                 if (this.game.gameState === 'playing' && !this.game.inspectMode) {
                     this.game.processTurn({ type: 'cycle_movement' });
                 }
+                break;
+
+            case 'combat_stance':
+                if (this.game.gameState === 'playing' && !this.game.inspectMode && this.game.player) {
+                    const stance = this.game.player.cycleCombatStance();
+                    this.game.ui.log(`Combat stance: ${stance.name}`, 'info');
+                    this.game.render();
+                }
+                break;
+
+            case 'combat_detail':
+                this.game.ui.toggleCombatOverlay();
                 break;
 
             case 'ascend':
@@ -274,15 +286,18 @@ export class MobileControls {
             hpEl.style.color = cond.color;
         }
 
-        // Status (movement mode + time)
+        // Status (movement mode + stance + time)
         const statusEl = document.getElementById('mobile-status');
         if (statusEl) {
             const mode = player.movementMode || 'walk';
             const modeNames = { walk: 'Walk', run: 'Run', crouch: 'Crouch', prone: 'Prone' };
             const modeText = modeNames[mode] || mode;
+            const stance = player.getStance();
+            const stanceText = stance ? stance.name : '';
             const timeText = this.game.timeSystem ? this.game.timeSystem.getTimeString() : '';
-            statusEl.textContent = timeText ? `${modeText} | ${timeText}` : modeText;
-            statusEl.style.color = mode === 'run' ? '#ffaa00' : mode === 'crouch' ? '#8888ff' : mode === 'prone' ? '#888888' : '#00ff00';
+            const parts = [modeText, stanceText, timeText].filter(Boolean);
+            statusEl.textContent = parts.join(' | ');
+            statusEl.style.color = stance ? stance.color : (mode === 'run' ? '#ffaa00' : '#00ff00');
         }
 
         // Zone/biome
@@ -334,21 +349,31 @@ export class MobileControls {
 
         // Prevent pull-to-refresh and overscroll bounce
         document.addEventListener('touchmove', (e) => {
-            // Allow scrolling inside modal-content and panel drawers
-            const scrollable = e.target.closest('.modal-content, #mobile-panel-drawer, #log-content');
-            if (scrollable) {
-                const atTop = scrollable.scrollTop <= 0;
-                const atBottom = scrollable.scrollTop + scrollable.clientHeight >= scrollable.scrollHeight;
-                // Only prevent if trying to scroll beyond bounds
-                if ((atTop && atBottom) || (atTop && e.touches[0].clientY > this._lastTouchY) || (atBottom && e.touches[0].clientY < this._lastTouchY)) {
-                    e.preventDefault();
+            // Walk up the DOM to find any scrollable ancestor
+            let el = e.target;
+            while (el && el !== document.body && el !== document.documentElement) {
+                const style = window.getComputedStyle(el);
+                const overflowY = style.overflowY;
+                const isScrollable = (overflowY === 'auto' || overflowY === 'scroll') && el.scrollHeight > el.clientHeight;
+                if (isScrollable) {
+                    // Allow native scroll — only block at boundaries to prevent pull-to-refresh
+                    const atTop = el.scrollTop <= 0;
+                    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
+                    const touchY = e.touches[0].clientY;
+                    const movingDown = touchY > (this._lastTouchY || 0);
+                    const movingUp = touchY < (this._lastTouchY || 0);
+                    if ((atTop && movingDown) || (atBottom && movingUp)) {
+                        e.preventDefault();
+                    }
+                    return; // Let the scroll happen
                 }
-                return;
+                el = el.parentElement;
             }
+            // No scrollable ancestor found — block the touch to prevent pull-to-refresh
             e.preventDefault();
         }, { passive: false });
 
-        // Track touch Y for pull-to-refresh detection
+        // Track touch Y for boundary detection
         document.addEventListener('touchstart', (e) => {
             this._lastTouchY = e.touches[0].clientY;
         }, { passive: true });

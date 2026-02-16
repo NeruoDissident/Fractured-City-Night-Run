@@ -1,6 +1,6 @@
 # Fractured City - Game Design Philosophy
 
-**Last Updated:** February 11, 2026
+**Last Updated:** February 15, 2026
 
 ---
 
@@ -73,11 +73,13 @@ Time: 45 turns
 - **No artificial difficulty** - Flashlight doesn't need sterile conditions
 - **Logical requirements** - Can't craft electronics in swamp (wet), but dirt road is fine
 
-**Crafting Tiers:**
-- **Basic:** Bandages, rope, shiv - Anywhere, any tool or hands
-- **Standard:** Flashlight, weapons - Solid surface, basic tools
-- **Advanced:** Electronics, explosives - Indoor preferred, proper tools
-- **Critical:** Cybernetics, precision instruments - Clean space, specialized tools
+**Crafting Tiers (Implemented v19):**
+- **Tier 0 - Raw Materials:** Stone, wood, glass, metal — found in the world
+- **Tier 1 - Intermediates:** Crude Blade, Wrapped Handle, Strap — crafted from raw materials
+- **Tier 2 - Basic Items:** Shiv (tier-gated: maxValue prevents wasting good components)
+- **Tier 3 - Standard Items:** Knife, Canteen — require intermediates
+- **Tier 4 - Advanced Items:** Backpack, Trenchcoat — multiple intermediates + specifics
+- **Future - Critical:** Cybernetics, precision instruments — clean space, specialized tools
 
 ### 5. **Meaningful Extraction**
 Extraction is not a simple "reach the exit" - it requires **work**:
@@ -372,16 +374,22 @@ When starting a new session, remember:
 - ✅ Full item system audit and 12+ bug fixes
 - ✅ QoL: auto-complete smash, Escape closes modals, modal scroll fix
 
-### Phase 2: Combat & NPC AI (Next)
-- Melee/ranged combat system
-- NPC behavior loops, aggro, factions
-- Z-level pathfinding for NPCs
-- Biome-specific enemy types
+### Phase 2: Combat & NPC AI ✅ (Complete)
+- ✅ Anatomy-based combat (no HP bar, blood/wound system)
+- ✅ Body-part targeting, bleeding, wound clotting
+- ✅ Combat overlay (B key), combat stances (T key)
+- ✅ Weapon-specific damage types (sharp/blunt/stab)
+- Remaining: stat-based hit chances, weapon targeting distributions, faction AI
 
-### Phase 3: Status Effects & Injuries
-- Bleeding, infection, broken limbs
-- Medical treatment using existing anatomy system
-- Body-part specific injuries and treatments
+### Crafting System Overhaul ✅ (Complete, v19)
+- ✅ Tiered crafting: raw materials → intermediates → items
+- ✅ maxValue tier gating, craftedProperties, sub-recipe UI
+- ✅ Raw materials in loot tables, 4 craftable intermediates
+
+### Phase 3: Status Effects & Injuries (Partial)
+- ✅ Bleeding, wound clotting, blood loss death
+- ✅ Pain/shock system, organ damage
+- Remaining: infection, broken limbs, medical treatment depth
 
 ### Phase 4: Cybernetics & Echo Effects
 - Details TBD

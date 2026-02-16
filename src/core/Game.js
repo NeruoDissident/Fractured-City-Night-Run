@@ -11,6 +11,7 @@ import { CharacterCreationSystem } from '../systems/CharacterCreationSystem.js';
 import { ItemSystem } from '../systems/ItemSystem.js';
 import { CraftingSystem } from '../systems/CraftingSystem.js';
 import { CombatSystem } from '../systems/CombatSystem.js';
+import { CombatEffects } from '../systems/CombatEffects.js';
 import { WorldObjectSystem } from '../systems/WorldObjectSystem.js';
 import { TimeSystem } from '../systems/TimeSystem.js';
 import { LightingSystem } from '../systems/LightingSystem.js';
@@ -86,6 +87,7 @@ export class Game {
         this.itemSystem = new ItemSystem(this);
         this.craftingSystem = new CraftingSystem(this);
         this.combatSystem = new CombatSystem(this);
+        this.combatEffects = new CombatEffects(this);
         this.worldObjectSystem = new WorldObjectSystem(this);
         
         this.player = new Player(this, characterData);

@@ -1,6 +1,7 @@
 import { showDisassembleModal } from './DisassembleModal.js';
 import { showCraftingUI } from './CraftingUI.js';
 import { showWorldObjectModal, showFurnitureContentsModal } from './WorldObjectModal.js';
+import { Anatomy } from '../entities/Anatomy.js';
 
 export class UIManager {
     constructor(game) {
@@ -48,6 +49,13 @@ export class UIManager {
         this.detailedInventoryModal = document.getElementById('detailed-inventory');
         this.helpModal = document.getElementById('help-screen');
         
+        // Combat overlay elements
+        this.combatOverlay = document.getElementById('combat-overlay');
+        this.combatPlayerPanel = document.getElementById('combat-player-panel');
+        this.combatFeedPanel = document.getElementById('combat-feed-panel');
+        this.combatEnemyPanel = document.getElementById('combat-enemy-panel');
+        this.combatOverlayVisible = false;
+        
         document.getElementById('close-character-btn').addEventListener('click', () => {
             this.detailedCharacterModal.classList.add('hidden');
         });
@@ -59,6 +67,13 @@ export class UIManager {
         document.getElementById('close-help-btn').addEventListener('click', () => {
             this.helpModal.classList.add('hidden');
         });
+        
+        const closeCombatBtn = document.getElementById('close-combat-btn');
+        if (closeCombatBtn) {
+            closeCombatBtn.addEventListener('click', () => {
+                this.toggleCombatOverlay();
+            });
+        }
     }
     
     log(message, type = 'info') {
@@ -90,6 +105,17 @@ export class UIManager {
         this.updateContextPanel();
         this.updateLocationPanel();
         this.updateMinimap();
+        
+        // Auto-manage combat overlay
+        if (this.game.combatSystem) {
+            const inCombat = this.game.combatSystem.isInCombat();
+            if (inCombat && this.combatOverlayVisible) {
+                this.updateCombatOverlay();
+            } else if (!inCombat && this.combatOverlayVisible) {
+                // Auto-hide after combat ends
+                this.hideCombatOverlay();
+            }
+        }
     }
     
     updateCharacterPanel() {
@@ -123,6 +149,11 @@ export class UIManager {
         html += `<div class="stat-line"><span class="stat-label">Thirst:</span> <span class="stat-value" style="color: ${thirstColor};">${Math.floor(player.thirst)}</span></div>`;
         
         html += `<div class="stat-line"><span class="stat-label">Mode:</span> <span class="stat-value" style="color: ${mode.color};">${mode.name}</span></div>`;
+        
+        // Combat stance
+        const stance = player.getStance();
+        html += `<div class="stat-line"><span class="stat-label">Stance:</span> <span class="stat-value" style="color: ${stance.color}; font-weight: bold;">${stance.name}</span></div>`;
+        
         html += `<div class="stat-line"><span class="stat-label">Turn:</span> <span class="stat-value">${this.game.turnCount}</span></div>`;
         html += '<br>';
         
@@ -816,6 +847,61 @@ export class UIManager {
         html += `<div class="stat-line"><span class="stat-label">Movement Penalty:</span> <span class="stat-value">${player.anatomy.getMovementPenalty()}</span></div>`;
         html += '</div>';
         
+        // Combat Stances reference
+        html += '<div style="margin-bottom: 20px;">';
+        html += '<h4 style="color: #00ffff; margin-bottom: 12px;">Combat Stances <span style="font-size: 13px; color: #888;">[T] to cycle</span></h4>';
+        const stanceDescriptions = {
+            aggressive: {
+                desc: 'All-in. Hit hard, get hit hard.',
+                details: [
+                    { label: 'Damage Dealt', value: '+25%', color: '#44ff44' },
+                    { label: 'Hit Chance', value: '+5%', color: '#44ff44' },
+                    { label: 'Crit Chance', value: '+3%', color: '#44ff44' },
+                    { label: 'Bleed Chance', value: '+30%', color: '#44ff44' },
+                    { label: 'Damage Taken', value: '+20%', color: '#ff4444' },
+                    { label: 'Arm Guard', value: 'Reduced', color: '#ff4444' }
+                ]
+            },
+            defensive: {
+                desc: 'Guard up. Survive and retreat.',
+                details: [
+                    { label: 'Damage Taken', value: '-30%', color: '#44ff44' },
+                    { label: 'Arm Guard', value: '1.5x', color: '#44ff44' },
+                    { label: 'Safe Disengage', value: 'Yes', color: '#44ff44' },
+                    { label: 'Damage Dealt', value: '-30%', color: '#ff4444' },
+                    { label: 'Hit Chance', value: '-5%', color: '#ff4444' },
+                    { label: 'Crit Chance', value: '-2%', color: '#ff4444' }
+                ]
+            },
+            opportunistic: {
+                desc: 'Exploit weakness. Finish them off.',
+                details: [
+                    { label: 'Crit on Wounded', value: '+10%', color: '#44ff44' },
+                    { label: 'Damage Dealt', value: 'Normal', color: '#888888' },
+                    { label: 'Damage Taken', value: 'Normal', color: '#888888' },
+                    { label: 'Arm Guard', value: 'Normal', color: '#888888' }
+                ]
+            }
+        };
+        for (const [key, stanceData] of Object.entries(player.combatStances)) {
+            const isActive = player.combatStance === key;
+            const borderColor = isActive ? stanceData.color : '#333';
+            const bgColor = isActive ? '#1a1a2a' : '#0a0a0a';
+            const activeTag = isActive ? ' <span style="color: #fff; font-size: 11px; background: ' + stanceData.color + '; padding: 1px 6px; border-radius: 3px;">ACTIVE</span>' : '';
+            
+            html += `<div style="margin-bottom: 8px; padding: 10px; background: ${bgColor}; border-left: 3px solid ${borderColor};">`;
+            html += `<div style="color: ${stanceData.color}; font-weight: bold; margin-bottom: 4px;">${stanceData.name}${activeTag}</div>`;
+            
+            const sd = stanceDescriptions[key];
+            html += `<div style="font-size: 12px; color: #aaa; font-style: italic; margin-bottom: 6px;">${sd.desc}</div>`;
+            
+            for (const detail of sd.details) {
+                html += `<div style="font-size: 12px; margin-bottom: 2px;"><span style="color: #888;">${detail.label}:</span> <span style="color: ${detail.color};">${detail.value}</span></div>`;
+            }
+            html += '</div>';
+        }
+        html += '</div>';
+        
         if (player.cybernetics.length > 0) {
             html += '<div style="margin-bottom: 20px;">';
             html += '<h4 style="color: #ff00ff; margin-bottom: 8px;">Cybernetics</h4>';
@@ -847,16 +933,266 @@ export class UIManager {
     }
     
     renderAnatomyPart(part) {
-        const healthPercent = (part.hp / part.maxHP) * 100;
-        let color = '#00ff00';
-        let status = 'Healthy';
-        if (!part.functional) { color = '#666666'; status = 'DESTROYED'; }
-        else if (healthPercent < 25) { color = '#ff4444'; status = 'Critical'; }
-        else if (healthPercent < 50) { color = '#ffaa00'; status = 'Damaged'; }
-        else if (healthPercent < 80) { color = '#aaff00'; status = 'Bruised'; }
-        
+        const { status, color } = Anatomy.getPartStatus(part);
         const cyberTag = part.cybernetic ? ' [CYBER]' : '';
         return `<div style="color: ${color}; font-size: 14px; margin-bottom: 4px; line-height: 1.4;">${part.name}${cyberTag}: ${status} (${part.hp}/${part.maxHP})</div>`;
+    }
+    
+    // ── Combat Overlay Methods ────────────────────────────────────────
+    
+    toggleCombatOverlay() {
+        if (!this.combatOverlay) return;
+        this.combatOverlayVisible = !this.combatOverlayVisible;
+        if (this.combatOverlayVisible) {
+            this.combatOverlay.classList.remove('hidden');
+            this.updateCombatOverlay();
+        } else {
+            this.combatOverlay.classList.add('hidden');
+        }
+    }
+    
+    showCombatOverlay(forceShow = false) {
+        if (!this.combatOverlay) return;
+        // On mobile, don't auto-show — only open via BATTLE button (forceShow)
+        if (!forceShow && window.innerWidth <= 768) return;
+        if (!this.combatOverlayVisible) {
+            this.combatOverlayVisible = true;
+            this.combatOverlay.classList.remove('hidden');
+        }
+        this.updateCombatOverlay();
+    }
+    
+    hideCombatOverlay() {
+        if (!this.combatOverlay) return;
+        this.combatOverlayVisible = false;
+        this.combatOverlay.classList.add('hidden');
+    }
+    
+    updateCombatOverlay() {
+        if (!this.combatOverlayVisible || !this.combatOverlay) return;
+        if (!this.game.player || !this.game.combatSystem) return;
+        
+        this.renderCombatPlayerPanel();
+        this.renderCombatEnemyPanel();
+        this.renderCombatFeed();
+    }
+    
+    renderCombatPlayerPanel() {
+        if (!this.combatPlayerPanel) return;
+        const player = this.game.player;
+        const stance = player.getStance();
+        const weapon = player.equipmentSystem ? player.equipmentSystem.getActiveWeapon() : null;
+        
+        let html = '';
+        html += `<div class="combat-entity-name" style="color: #00ffff;">YOU</div>`;
+        
+        // Stance
+        html += `<div style="color: ${stance.color}; font-size: 11px; margin-bottom: 4px;">${stance.name} Stance</div>`;
+        
+        // Weapon
+        const weaponName = weapon ? weapon.name : 'Bare Fists';
+        const weaponType = weapon ? (weapon.weaponStats?.attackType || 'blunt') : 'unarmed';
+        html += `<div style="font-size: 11px; margin-bottom: 6px;"><span style="color: #888;">Weapon:</span> <span style="color: #fff;">${weaponName}</span> <span style="color: #666;">(${weaponType})</span></div>`;
+        
+        // Blood
+        if (player.anatomy) {
+            const bloodStatus = player.anatomy.getBloodStatus();
+            html += `<div style="font-size: 11px; margin-bottom: 2px;"><span style="color: #888;">Blood:</span> <span style="color: ${bloodStatus.color};">${Math.floor(player.anatomy.blood)}%</span></div>`;
+            
+            // Damaged parts only
+            const damagedParts = this.getCombatDamagedParts(player.anatomy);
+            if (damagedParts.length > 0) {
+                html += `<div class="combat-section-label">Injuries</div>`;
+                for (const dp of damagedParts) {
+                    html += `<div class="combat-part-status" style="color: ${dp.color};">${dp.name}: ${dp.status} (${dp.hp}/${dp.maxHP})</div>`;
+                }
+            }
+            
+            // Active wounds
+            if (player.anatomy.wounds.length > 0) {
+                html += `<div class="combat-section-label">Wounds</div>`;
+                for (const wound of player.anatomy.wounds) {
+                    const wColor = this.getWoundColor(wound.type);
+                    html += `<div class="combat-wound-line" style="color: ${wColor};">${wound.part} — ${wound.type} (${wound.severity.toFixed(1)}/turn)</div>`;
+                }
+            }
+            
+            // Status effects
+            const effects = [];
+            if (player.anatomy.inShock) effects.push({ label: 'SHOCK', color: '#ff00ff' });
+            if (player.anatomy.suffocating) effects.push({ label: 'SUFFOCATING', color: '#8800ff' });
+            const bloodPct = player.anatomy.getBloodPercent();
+            if (bloodPct <= 40) effects.push({ label: 'Woozy', color: '#ffaa00' });
+            if (bloodPct <= 20) effects.push({ label: 'Critical Blood Loss', color: '#ff4444' });
+            
+            if (effects.length > 0) {
+                html += `<div class="combat-section-label">Status</div>`;
+                for (const eff of effects) {
+                    html += `<div style="font-size: 11px; color: ${eff.color}; font-weight: bold;">${eff.label}</div>`;
+                }
+            }
+        }
+        
+        this.combatPlayerPanel.innerHTML = html;
+    }
+    
+    renderCombatEnemyPanel() {
+        if (!this.combatEnemyPanel) return;
+        const enemies = this.game.combatSystem.getEngagedEnemies();
+        
+        if (enemies.length === 0) {
+            this.combatEnemyPanel.innerHTML = '<div style="color: #666; font-style: italic;">No enemies engaged</div>';
+            return;
+        }
+        
+        let html = '';
+        for (let i = 0; i < Math.min(enemies.length, 3); i++) {
+            const enemy = enemies[i];
+            if (i > 0) html += '<div style="border-top: 1px solid #333; margin: 8px 0;"></div>';
+            
+            html += `<div class="combat-entity-name" style="color: ${enemy.color || '#ff4444'};">${enemy.name}</div>`;
+            
+            // Weapon
+            const wName = enemy.weapon ? enemy.weapon.name : 'Bare Fists';
+            html += `<div style="font-size: 11px; margin-bottom: 6px;"><span style="color: #888;">Weapon:</span> <span style="color: #fff;">${wName}</span></div>`;
+            
+            if (enemy.anatomy) {
+                // Blood
+                const bloodStatus = enemy.anatomy.getBloodStatus();
+                html += `<div style="font-size: 11px; margin-bottom: 2px;"><span style="color: #888;">Blood:</span> <span style="color: ${bloodStatus.color};">${Math.floor(enemy.anatomy.blood)}%</span></div>`;
+                
+                // Overall condition
+                const cond = enemy.anatomy.getBodyCondition();
+                html += `<div style="font-size: 11px; margin-bottom: 4px;"><span style="color: #888;">Condition:</span> <span style="color: ${cond.color}; font-weight: bold;">${cond.label}</span></div>`;
+                
+                // Damaged parts only
+                const damagedParts = this.getCombatDamagedParts(enemy.anatomy);
+                if (damagedParts.length > 0) {
+                    html += `<div class="combat-section-label">Injuries</div>`;
+                    for (const dp of damagedParts) {
+                        html += `<div class="combat-part-status" style="color: ${dp.color};">${dp.name}: ${dp.status} (${dp.hp}/${dp.maxHP})</div>`;
+                    }
+                }
+                
+                // Active wounds
+                if (enemy.anatomy.wounds.length > 0) {
+                    html += `<div class="combat-section-label">Wounds</div>`;
+                    for (const wound of enemy.anatomy.wounds) {
+                        const wColor = this.getWoundColor(wound.type);
+                        html += `<div class="combat-wound-line" style="color: ${wColor};">${wound.part} — ${wound.type} (${wound.severity.toFixed(1)}/turn)</div>`;
+                    }
+                }
+                
+                // Status effects
+                const effects = [];
+                if (enemy.anatomy.inShock) effects.push({ label: 'SHOCK', color: '#ff00ff' });
+                if (enemy.anatomy.suffocating) effects.push({ label: 'SUFFOCATING', color: '#8800ff' });
+                const bloodPct = enemy.anatomy.getBloodPercent();
+                if (bloodPct <= 40) effects.push({ label: 'Woozy', color: '#ffaa00' });
+                if (bloodPct <= 20) effects.push({ label: 'Critical Blood Loss', color: '#ff4444' });
+                
+                if (effects.length > 0) {
+                    html += `<div class="combat-section-label">Status</div>`;
+                    for (const eff of effects) {
+                        html += `<div style="font-size: 11px; color: ${eff.color}; font-weight: bold;">${eff.label}</div>`;
+                    }
+                }
+            }
+        }
+        
+        this.combatEnemyPanel.innerHTML = html;
+    }
+    
+    renderCombatFeed() {
+        if (!this.combatFeedPanel) return;
+        const events = this.game.combatSystem.combatEvents;
+        
+        if (events.length === 0) {
+            this.combatFeedPanel.innerHTML = '<div style="color: #666; font-style: italic;">No combat yet</div>';
+            return;
+        }
+        
+        let html = '<div class="combat-section-label">Combat Log</div>';
+        
+        // Show most recent events first (last 10)
+        const recent = events.slice(-10).reverse();
+        for (const evt of recent) {
+            if (evt.type === 'miss') {
+                html += `<div class="combat-feed-entry miss">`;
+                html += `<span style="color: #888;">[${evt.turn}]</span> `;
+                html += `<span style="color: #aaa;">${evt.attackerName}</span> swings at <span style="color: #aaa;">${evt.targetName}</span> with <span style="color: #ccc;">${evt.weaponName}</span> — <span style="color: #666;">MISS</span>`;
+                html += `</div>`;
+            } else if (evt.type === 'hit') {
+                const entryClass = evt.killed ? 'kill' : (evt.critical ? 'crit' : 'hit');
+                html += `<div class="combat-feed-entry ${entryClass}">`;
+                html += `<span style="color: #888;">[${evt.turn}]</span> `;
+                
+                // Main hit line
+                if (evt.critical) {
+                    html += `<span style="color: #ffff00; font-weight: bold;">CRIT!</span> `;
+                }
+                html += `<span style="color: #aaa;">${evt.attackerName}</span> hits <span style="color: #aaa;">${evt.targetName}</span>'s <span style="color: #fff;">${evt.bodyPart}</span> with <span style="color: #ccc;">${evt.weaponName}</span>`;
+                html += ` — <span style="color: #ff4444; font-weight: bold;">${evt.damage} damage</span>`;
+                
+                // Armor
+                if (evt.blocked > 0) {
+                    html += `<br><span style="color: #888; margin-left: 10px;">${evt.armorName} absorbs ${evt.blocked} damage</span>`;
+                }
+                
+                // Wounds inflicted
+                if (evt.woundsInflicted && evt.woundsInflicted.length > 0) {
+                    for (const w of evt.woundsInflicted) {
+                        const wColor = this.getWoundColor(w.type);
+                        html += `<br><span style="color: ${wColor}; margin-left: 10px;">Inflicts ${w.type} on ${w.part} (${w.severity.toFixed(1)}/turn bleed)</span>`;
+                    }
+                }
+                
+                // Part destroyed
+                if (evt.partDestroyed) {
+                    html += `<br><span style="color: #ff8800; font-weight: bold; margin-left: 10px;">${evt.bodyPart} DESTROYED</span>`;
+                }
+                
+                // Kill
+                if (evt.killed) {
+                    html += `<br><span style="color: #ff0000; font-weight: bold; margin-left: 10px;">${evt.targetName} KILLED</span>`;
+                }
+                
+                html += `</div>`;
+            }
+        }
+        
+        this.combatFeedPanel.innerHTML = html;
+        // Auto-scroll to top (newest)
+        this.combatFeedPanel.scrollTop = 0;
+    }
+    
+    /**
+     * Get color for a wound type — used across combat overlay and feed.
+     */
+    getWoundColor(woundType) {
+        switch (woundType) {
+            case 'arterial': return '#ff0000';
+            case 'internal': return '#cc2222';
+            case 'puncture': return '#ff4422';
+            case 'laceration': return '#ff6644';
+            case 'cut': return '#ff8844';
+            default: return '#ff6644';
+        }
+    }
+    
+    /**
+     * Get only damaged body parts from an anatomy for compact combat display.
+     * Returns array of { name, hp, maxHP, status, color }.
+     */
+    getCombatDamagedParts(anatomy) {
+        const damaged = [];
+        anatomy.forEachPart((part) => {
+            if (part.hp < part.maxHP) {
+                const { status, color } = Anatomy.getPartStatus(part);
+                damaged.push({ name: part.name, hp: part.hp, maxHP: part.maxHP, status, color });
+            }
+        });
+        return damaged;
     }
     
     toggleInventoryScreen() {
@@ -981,6 +1317,14 @@ export class UIManager {
                 }
                 
                 html += `</div>`;
+                
+                // Weapon stats inline for equipped items
+                if (item.weaponStats && item.weaponStats.damage) {
+                    html += `<div style="font-size: 11px; color: #ff6666; margin-top: 2px;">⚔ ${item.weaponStats.damage} ${item.weaponStats.attackType || 'blunt'}`;
+                    if (item.weaponStats.bleedChance) html += ` | bleed ${Math.round(item.weaponStats.bleedChance * 100)}%`;
+                    if (item.weaponStats.stunChance) html += ` | stun ${Math.round(item.weaponStats.stunChance * 100)}%`;
+                    html += `</div>`;
+                }
                 html += `<div style="margin-top: 5px; display: flex; gap: 5px;">`;
                 html += `<button class="small-btn" data-action="actions-equipped" data-slot="${slot.key}">Actions</button>`;
                 
@@ -1099,6 +1443,14 @@ export class UIManager {
                 if (item.durability !== undefined) {
                     const durLabel = item.tags && item.tags.includes('power') ? 'Charge' : 'Durability';
                     html += `<div style="font-size: 10px; color: #888;">${durLabel}: ${Math.floor(item.durability)}%</div>`;
+                }
+                
+                // Inline weapon stats
+                if (item.weaponStats && item.weaponStats.damage) {
+                    html += `<div style="font-size: 10px; color: #ff6666;">⚔ ${item.weaponStats.damage} ${item.weaponStats.attackType || 'blunt'}`;
+                    if (item.weaponStats.bleedChance) html += ` | bleed ${Math.round(item.weaponStats.bleedChance * 100)}%`;
+                    if (item.weaponStats.stunChance) html += ` | stun ${Math.round(item.weaponStats.stunChance * 100)}%`;
+                    html += `</div>`;
                 }
                 
                 html += `<div style="margin-top: 8px; display: flex; gap: 5px;">`;
@@ -1230,6 +1582,30 @@ export class UIManager {
             const durLabel = item.tags && item.tags.includes('power') ? 'Charge' : 'Durability';
             html += `<div style="margin-bottom: 5px;"><span style="color: #888;">${durLabel}:</span> <span style="color: ${durColor};">${Math.floor(item.durability)}%</span></div>`;
         }
+        
+        // Weapon stats tooltip
+        const ws = item.weaponStats;
+        if (ws && ws.damage) {
+            html += '<div style="margin-top: 10px; padding: 8px; background: #0a0a0a; border-left: 3px solid #ff4444;">';
+            html += '<div style="color: #ff4444; font-weight: bold; margin-bottom: 6px;">⚔ Combat Stats</div>';
+            html += `<div style="margin-bottom: 3px;"><span style="color: #888;">Damage:</span> <span style="color: #fff;">${ws.damage}</span></div>`;
+            html += `<div style="margin-bottom: 3px;"><span style="color: #888;">Type:</span> <span style="color: #fff;">${ws.attackType || 'blunt'}</span></div>`;
+            if (ws.bleedChance) html += `<div style="margin-bottom: 3px;"><span style="color: #888;">Bleed Chance:</span> <span style="color: #ff6666;">${Math.round(ws.bleedChance * 100)}%</span></div>`;
+            if (ws.stunChance) html += `<div style="margin-bottom: 3px;"><span style="color: #888;">Stun Chance:</span> <span style="color: #ffaa00;">${Math.round(ws.stunChance * 100)}%</span></div>`;
+            if (ws.canTwoHand) html += `<div style="margin-bottom: 3px;"><span style="color: #888;">Two-hand:</span> <span style="color: #00ffff;">${ws.twoHandDamage || 'Yes'}</span></div>`;
+            if (ws.throwable) html += `<div style="margin-bottom: 3px;"><span style="color: #888;">Throwable:</span> <span style="color: #ffaa00;">Yes</span></div>`;
+            
+            // Targeting profile description
+            const targetDesc = {
+                blunt: 'Overhead swings target the head and torso. Arms often intercept blows.',
+                sharp: 'Close-range stabs and slashes focus on the torso and arms.',
+                unarmed: 'Wild punches aimed at the head and body. Poor reach.'
+            };
+            const desc = targetDesc[ws.attackType] || targetDesc.blunt;
+            html += `<div style="margin-top: 6px; font-size: 12px; color: #aaa; font-style: italic;">${desc}</div>`;
+            html += '</div>';
+        }
+        
         html += '</div>';
         
         if (item.isContainer) {
@@ -2295,6 +2671,11 @@ export class UIManager {
             closedAny = true;
         }
         
+        if (this.combatOverlayVisible) {
+            this.hideCombatOverlay();
+            closedAny = true;
+        }
+        
         return closedAny;
     }
     
@@ -2313,28 +2694,90 @@ export class UIManager {
         const content = document.getElementById('help-content');
         
         let html = '';
+        
+        // Movement
         html += '<div style="margin-bottom: 20px;">';
         html += '<h4 style="color: #00ffff; margin-bottom: 8px;">Movement</h4>';
         html += '<div class="stat-line"><span class="stat-label">WASD / Arrow Keys:</span> <span class="stat-value">Move</span></div>';
         html += '<div class="stat-line"><span class="stat-label">Space:</span> <span class="stat-value">Wait/Skip Turn</span></div>';
+        html += '<div class="stat-line"><span class="stat-label">M:</span> <span class="stat-value">Cycle mode (Walk/Run/Crouch/Prone)</span></div>';
+        html += '<div class="stat-line"><span class="stat-label">< / >:</span> <span class="stat-value">Use stairs/manholes</span></div>';
+        html += '<div style="color: #888; font-size: 11px; margin-top: 4px;">Running is fast but loud. Crouching is quiet. Prone is silent but very slow.</div>';
         html += '</div>';
         
+        // Actions
         html += '<div style="margin-bottom: 20px;">';
         html += '<h4 style="color: #00ffff; margin-bottom: 8px;">Actions</h4>';
-        html += '<div class="stat-line"><span class="stat-label">X:</span> <span class="stat-value">Inspect mode (arrow keys to move cursor)</span></div>';
-        html += '<div class="stat-line"><span class="stat-label">Escape:</span> <span class="stat-value">Close windows / Exit inspect mode</span></div>';
-        html += '<div class="stat-line"><span class="stat-label">Move into enemy:</span> <span class="stat-value">Attack</span></div>';
-        html += '<div class="stat-line"><span class="stat-label">< / >:</span> <span class="stat-value">Use stairs/manholes</span></div>';
+        html += '<div class="stat-line"><span class="stat-label">G:</span> <span class="stat-value">Pick up item at feet</span></div>';
+        html += '<div class="stat-line"><span class="stat-label">E:</span> <span class="stat-value">Interact with door/object</span></div>';
+        html += '<div class="stat-line"><span class="stat-label">X:</span> <span class="stat-value">Inspect mode (move cursor with arrows)</span></div>';
+        html += '<div class="stat-line"><span class="stat-label">F:</span> <span class="stat-value">Toggle explore mode (auto-walk)</span></div>';
+        html += '<div class="stat-line"><span class="stat-label">Escape:</span> <span class="stat-value">Close any open window</span></div>';
         html += '</div>';
         
+        // Interface
         html += '<div style="margin-bottom: 20px;">';
         html += '<h4 style="color: #00ffff; margin-bottom: 8px;">Interface</h4>';
-        html += '<div class="stat-line"><span class="stat-label">C:</span> <span class="stat-value">Character sheet</span></div>';
-        html += '<div class="stat-line"><span class="stat-label">I:</span> <span class="stat-value">Inventory</span></div>';
-        html += '<div class="stat-line"><span class="stat-label">V:</span> <span class="stat-value">Workshop (Craft/Disassemble)</span></div>';
-        html += '<div class="stat-line"><span class="stat-label">M:</span> <span class="stat-value">Cycle movement mode</span></div>';
-        html += '<div class="stat-line"><span class="stat-label">?:</span> <span class="stat-value">Help</span></div>';
+        html += '<div class="stat-line"><span class="stat-label">I:</span> <span class="stat-value">Inventory — manage items, equip gear</span></div>';
+        html += '<div class="stat-line"><span class="stat-label">C:</span> <span class="stat-value">Character sheet — stats, anatomy, wounds</span></div>';
+        html += '<div class="stat-line"><span class="stat-label">V:</span> <span class="stat-value">Workshop — craft and disassemble</span></div>';
+        html += '<div class="stat-line"><span class="stat-label">T:</span> <span class="stat-value">Cycle combat stance</span></div>';
+        html += '<div class="stat-line"><span class="stat-label">B:</span> <span class="stat-value">Toggle combat detail overlay</span></div>';
+        html += '<div class="stat-line"><span class="stat-label">?:</span> <span class="stat-value">This help screen</span></div>';
         html += '</div>';
+        
+        // Items & Inventory
+        html += '<div style="margin-bottom: 20px;">';
+        html += '<h4 style="color: #ffaa00; margin-bottom: 8px;">Items & Inventory</h4>';
+        html += '<div style="color: #ccc; font-size: 12px; line-height: 1.5;">';
+        html += 'Walk over an item and press <span style="color: #fff;">G</span> to pick it up. ';
+        html += 'Open <span style="color: #fff;">I</span> (Inventory) to manage your gear. ';
+        html += 'Each item has an <span style="color: #fff;">[Actions]</span> button for equip, drop, consume, move, and more.<br><br>';
+        html += 'Items have weight and volume. Clothing and backpacks have pockets with limited capacity. ';
+        html += 'Watch your encumbrance — overloading slows you down.<br><br>';
+        html += 'Sealed cans and bottles must be opened first. A can opener gives full yield; a knife works but spills some. ';
+        html += 'Opened food spoils over time — eat it quickly.';
+        html += '</div></div>';
+        
+        // Crafting & Disassembly
+        html += '<div style="margin-bottom: 20px;">';
+        html += '<h4 style="color: #ffaa00; margin-bottom: 8px;">Crafting & Disassembly</h4>';
+        html += '<div style="color: #ccc; font-size: 12px; line-height: 1.5;">';
+        html += 'Press <span style="color: #fff;">V</span> to open the Workshop. Two tabs: <span style="color: #fff;">Disassemble</span> and <span style="color: #fff;">Craft</span>.<br><br>';
+        html += '<span style="color: #ff6666;">Disassemble:</span> Break items into components. Better tools preserve quality. ';
+        html += 'Hand disassembly loses 25-40% quality; a knife keeps 85-90%.<br><br>';
+        html += '<span style="color: #66ff66;">Craft:</span> Combine components to build items. Recipes need specific components or properties. ';
+        html += 'Some recipes show <span style="color: #ffaa00;">⚒ Craft</span> buttons for sub-recipes — click to drill down and craft intermediate parts first.<br><br>';
+        html += 'Raw materials (stone, wood, glass, metal) are found in the world. ';
+        html += 'Craft intermediates (Crude Blade, Wrapped Handle) from raw materials, then use those to build weapons and tools.';
+        html += '</div></div>';
+        
+        // Combat
+        html += '<div style="margin-bottom: 20px;">';
+        html += '<h4 style="color: #ff4444; margin-bottom: 8px;">Combat</h4>';
+        html += '<div style="color: #ccc; font-size: 12px; line-height: 1.5;">';
+        html += '<span style="color: #fff;">Walk into an enemy</span> to attack. Damage depends on your equipped weapon. ';
+        html += 'Unarmed combat is desperate and nearly unwinnable — find a weapon first.<br><br>';
+        html += 'Hits target specific body parts. Sharp weapons cause bleeding; blunt weapons stun. ';
+        html += 'Vital organ hits (heart, brain, lungs) are extremely dangerous.<br><br>';
+        html += 'There is no HP bar. Your condition is tracked by blood level and wounds. ';
+        html += 'Wounds bleed over time and must clot naturally or be treated. ';
+        html += 'Press <span style="color: #fff;">B</span> to see the combat detail overlay during fights.<br><br>';
+        html += '<span style="color: #ff6666;">Combat is lethal. Avoid fights you can\'t win. Preparation matters.</span>';
+        html += '</div></div>';
+        
+        // Survival Tips
+        html += '<div style="margin-bottom: 20px;">';
+        html += '<h4 style="color: #44ff44; margin-bottom: 8px;">Survival Tips</h4>';
+        html += '<div style="color: #ccc; font-size: 12px; line-height: 1.5;">';
+        html += '• Search furniture (cabinets, lockers, crates) for supplies<br>';
+        html += '• Crouch near enemies to avoid detection<br>';
+        html += '• Disassemble junk items for useful components<br>';
+        html += '• Craft a Shiv early — any sharp shard + cloth wrap<br>';
+        html += '• Keep a light source — flashlight or lantern<br>';
+        html += '• Eat opened food quickly before it spoils<br>';
+        html += '• Use the right tool for disassembly to preserve quality';
+        html += '</div></div>';
         
         content.innerHTML = html;
     }

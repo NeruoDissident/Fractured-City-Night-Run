@@ -431,6 +431,7 @@ export class World {
         }
         
         // Only render entities on the current z-level
+        const combatFx = this.game.combatEffects;
         for (const entity of this.entities) {
             if (entity.z !== z) continue;
             
@@ -442,15 +443,35 @@ export class World {
                     const light = lighting ? lighting.getLightLevel(entity.x, entity.y, z) : 1.0;
                     const tint = lighting ? lighting.getLightTint(entity.x, entity.y, z) : null;
                     
+                    // Apply shake offset if entity was recently hit
+                    const shake = combatFx ? combatFx.getShakeOffset(entity) : { dx: 0, dy: 0 };
+                    const pixelX = screenX * renderer.tileSize + shake.dx;
+                    const pixelY = screenY * renderer.tileSize + shake.dy;
+                    
                     // Determine sprite data for entity
                     const entitySprite = this.getEntitySpriteData(entity);
-                    if (entitySprite) {
-                        renderer.drawTileSprite(screenX, screenY, entity.glyph, entity.color, null, entitySprite, light, tint);
+                    if (entitySprite && renderer.spriteManager) {
+                        renderer.spriteManager.drawSprite(
+                            renderer.ctx, entitySprite.sheet, entitySprite.index,
+                            pixelX, pixelY, renderer.tileSize,
+                            entitySprite.tint || null, light, tint
+                        );
                     } else {
-                        renderer.drawTile(screenX, screenY, entity.glyph, this.applyLight(entity.color, light, tint));
+                        // ASCII fallback with shake
+                        const ctx = renderer.ctx;
+                        ctx.fillStyle = this.applyLight(entity.color, light, tint);
+                        ctx.font = 'bold 24px monospace';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText(entity.glyph, pixelX + renderer.tileSize / 2, pixelY + renderer.tileSize / 2);
                     }
                 }
             }
+        }
+        
+        // Draw floating combat text overlay
+        if (combatFx) {
+            combatFx.drawFloatingTexts(renderer.ctx, cameraX, cameraY, renderer.tileSize);
         }
         
         // Only render extraction point on ground level

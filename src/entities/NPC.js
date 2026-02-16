@@ -44,11 +44,11 @@ export class NPC extends Entity {
     rollRaiderWeapon() {
         const roll = Math.random();
         if (roll < 0.3) {
-            return { name: 'Shiv', type: 'weapon', baseDamage: '1d4', weaponStats: { attackType: 'sharp', bleedChance: 0.10 } };
+            return { name: 'Shiv', type: 'weapon', baseDamage: '1d4', weaponStats: { attackType: 'sharp', bleedChance: 0.30 } };
         } else if (roll < 0.6) {
             return { name: 'Pipe', type: 'weapon', baseDamage: '1d8', weaponStats: { attackType: 'blunt', stunChance: 0.10 } };
         } else if (roll < 0.8) {
-            return { name: 'Knife', type: 'weapon', baseDamage: '1d6', weaponStats: { attackType: 'sharp', bleedChance: 0.15 } };
+            return { name: 'Knife', type: 'weapon', baseDamage: '1d6', weaponStats: { attackType: 'sharp', bleedChance: 0.40 } };
         }
         return null; // 20% chance unarmed
     }

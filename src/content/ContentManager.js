@@ -105,7 +105,11 @@ export class ContentManager {
                 weight: 30,
                 volume: 20,
                 tags: ['metal', 'sharp', 'tool'],
-                stackable: true
+                stackable: true,
+                properties: {
+                    cutting: 2,
+                    piercing: 1
+                }
             },
             tin_can: {
                 name: 'Tin Can',
@@ -114,7 +118,10 @@ export class ContentManager {
                 weight: 50,
                 volume: 80,
                 tags: ['metal', 'container'],
-                stackable: true
+                stackable: true,
+                properties: {
+                    container: 1
+                }
             },
             can_lid: {
                 name: 'Can Lid',
@@ -123,7 +130,10 @@ export class ContentManager {
                 weight: 10,
                 volume: 10,
                 tags: ['metal', 'sharp'],
-                stackable: true
+                stackable: true,
+                properties: {
+                    cutting: 1
+                }
             },
             metal_casing: {
                 name: 'Metal Casing',
@@ -145,7 +155,10 @@ export class ContentManager {
                 weight: 150,
                 volume: 250,
                 tags: ['metal', 'container', 'liquid'],
-                stackable: true
+                stackable: true,
+                properties: {
+                    container: 2
+                }
             },
             
             // Fabric components
@@ -210,7 +223,12 @@ export class ContentManager {
                 weight: 20,
                 volume: 40,
                 tags: ['leather', 'flexible'],
-                stackable: true
+                stackable: true,
+                properties: {
+                    grip: 2,
+                    padding: 1,
+                    binding: 1
+                }
             },
             
             // Plastic components
@@ -221,7 +239,10 @@ export class ContentManager {
                 weight: 30,
                 volume: 100,
                 tags: ['plastic', 'container', 'liquid'],
-                stackable: true
+                stackable: true,
+                properties: {
+                    container: 1
+                }
             },
             plastic_case: {
                 name: 'Plastic Case',
@@ -242,7 +263,10 @@ export class ContentManager {
                 weight: 5,
                 volume: 5,
                 tags: ['plastic', 'seal'],
-                stackable: true
+                stackable: true,
+                properties: {
+                    fastening: 1
+                }
             },
             screw_cap: {
                 name: 'Screw Cap',
@@ -251,7 +275,10 @@ export class ContentManager {
                 weight: 20,
                 volume: 15,
                 tags: ['plastic', 'seal'],
-                stackable: true
+                stackable: true,
+                properties: {
+                    fastening: 1
+                }
             },
             button: {
                 name: 'Button',
@@ -369,6 +396,102 @@ export class ContentManager {
                 properties: {
                     conductor: 2
                 }
+            },
+            
+            // Raw materials — found in the world, used to craft intermediates
+            glass_shard: {
+                name: 'Glass Shard',
+                type: 'component',
+                isComponent: true,
+                weight: 15,
+                volume: 10,
+                tags: ['glass', 'sharp'],
+                stackable: true,
+                properties: {
+                    cutting: 1,
+                    piercing: 1
+                }
+            },
+            wood_piece: {
+                name: 'Wood Piece',
+                type: 'component',
+                isComponent: true,
+                weight: 80,
+                volume: 100,
+                tags: ['wood', 'structural'],
+                stackable: true,
+                properties: {
+                    structural: 1,
+                    grip: 1,
+                    fuel: 1
+                }
+            },
+            stone: {
+                name: 'Stone',
+                type: 'component',
+                isComponent: true,
+                weight: 200,
+                volume: 80,
+                tags: ['stone', 'blunt'],
+                stackable: true,
+                properties: {
+                    blunt: 2,
+                    grinding: 2
+                }
+            },
+            bone_shard: {
+                name: 'Bone Shard',
+                type: 'component',
+                isComponent: true,
+                weight: 20,
+                volume: 15,
+                tags: ['bone', 'sharp'],
+                stackable: true,
+                properties: {
+                    piercing: 1,
+                    structural: 1
+                }
+            },
+            rubber_piece: {
+                name: 'Rubber Piece',
+                type: 'component',
+                isComponent: true,
+                weight: 30,
+                volume: 40,
+                tags: ['rubber', 'flexible'],
+                stackable: true,
+                properties: {
+                    grip: 2,
+                    padding: 1,
+                    insulation: 2
+                }
+            },
+            duct_tape: {
+                name: 'Duct Tape',
+                type: 'component',
+                isComponent: true,
+                weight: 40,
+                volume: 30,
+                tags: ['adhesive', 'flexible'],
+                stackable: true,
+                properties: {
+                    binding: 2,
+                    fastening: 1,
+                    grip: 1
+                }
+            },
+            nail: {
+                name: 'Nail',
+                type: 'component',
+                isComponent: true,
+                weight: 5,
+                volume: 2,
+                tags: ['metal', 'sharp', 'fastener'],
+                stackable: true,
+                properties: {
+                    piercing: 1,
+                    fastening: 1
+                }
             }
         };
     }
@@ -415,6 +538,94 @@ export class ContentManager {
     
     loadItemFamilies() {
         this.itemFamilies = {
+            // ── Intermediate craftable components ──────────────────────
+            crude_blade: {
+                name: 'Crude Blade',
+                type: 'component',
+                glyph: '-',
+                slots: ['hand'],
+                tags: ['component', 'metal', 'sharp'],
+                weight: 60,
+                volume: 35,
+                isComponent: true,
+                craftedComponentId: 'crude_blade',
+                craftedProperties: { cutting: 2, piercing: 1 },
+                components: [
+                    { id: 'scrap_metal_shard', name: 'Metal Shard', quantity: 1, quality: 100, maxQuality: 100, weight: 50, volume: 30 },
+                    { id: 'stone', name: 'Stone', quantity: 1, quality: 100, maxQuality: 100, weight: 200, volume: 80 }
+                ],
+                componentRequirements: [
+                    { property: 'cutting', minValue: 1, quantity: 1, name: 'Metal/Glass (sharp edge to grind)' },
+                    { property: 'grinding', minValue: 1, quantity: 1, name: 'Stone (grinding surface)' }
+                ],
+                craftTime: 3,
+                disassemblyMethods: {
+                    hand: { componentYield: 0.5, qualityMod: 0.5, timeRequired: 1 }
+                },
+                weaponStats: {
+                    damage: '1d3',
+                    actionCost: 100,
+                    attackType: 'sharp',
+                    bleedChance: 0.15,
+                    canTwoHand: false
+                }
+            },
+            sharpened_stick: {
+                name: 'Sharpened Stick',
+                type: 'component',
+                glyph: '/',
+                slots: ['hand'],
+                tags: ['component', 'wood', 'sharp'],
+                weight: 60,
+                volume: 80,
+                isComponent: true,
+                craftedComponentId: 'sharpened_stick',
+                craftedProperties: { piercing: 1, structural: 1 },
+                components: [
+                    { id: 'wood_piece', name: 'Wood Piece', quantity: 1, quality: 100, maxQuality: 100, weight: 80, volume: 100 },
+                    { id: 'stone', name: 'Stone', quantity: 1, quality: 100, maxQuality: 100, weight: 200, volume: 80 }
+                ],
+                componentRequirements: [
+                    { property: 'structural', minValue: 1, quantity: 1, name: 'Wood Piece' },
+                    { property: 'grinding', minValue: 1, quantity: 1, name: 'Stone (carving tool)' }
+                ],
+                craftTime: 2,
+                disassemblyMethods: {
+                    hand: { componentYield: 0.5, qualityMod: 0.5, timeRequired: 1 }
+                },
+                weaponStats: {
+                    damage: '1d3',
+                    actionCost: 110,
+                    attackType: 'sharp',
+                    bleedChance: 0.10,
+                    canTwoHand: false
+                }
+            },
+            wrapped_handle: {
+                name: 'Wrapped Handle',
+                type: 'component',
+                glyph: '|',
+                slots: ['hand'],
+                tags: ['component', 'grip'],
+                weight: 50,
+                volume: 60,
+                isComponent: true,
+                craftedComponentId: 'wrapped_handle',
+                craftedProperties: { grip: 2, structural: 1 },
+                components: [
+                    { id: 'wood_piece', name: 'Wood Piece', quantity: 1, quality: 100, maxQuality: 100, weight: 80, volume: 100 },
+                    { id: 'cloth_wrap', name: 'Cloth Wrap', quantity: 1, quality: 100, maxQuality: 100, weight: 20, volume: 30 }
+                ],
+                componentRequirements: [
+                    { property: 'structural', minValue: 1, quantity: 1, name: 'Wood/Bone (handle core)' },
+                    { property: 'binding', minValue: 1, quantity: 1, name: 'Cloth/Tape/Leather (wrapping)' }
+                ],
+                craftTime: 1,
+                disassemblyMethods: {
+                    hand: { componentYield: 1.0, qualityMod: 0.7, timeRequired: 1 }
+                },
+                weaponStats: null
+            },
             strap: {
                 name: 'Strap',
                 type: 'component',
@@ -423,18 +634,23 @@ export class ContentManager {
                 tags: ['component', 'fabric', 'flexible'],
                 weight: 50,
                 volume: 80,
+                isComponent: true,
+                craftedComponentId: 'strap',
+                craftedProperties: { binding: 3, structural: 1 },
                 components: [
                     { id: 'fabric_panel', name: 'Fabric Panel', quantity: 1, quality: 100, maxQuality: 100, weight: 100, volume: 200 }
                 ],
                 componentRequirements: [
-                    { property: 'padding', minValue: 1, quantity: 1, name: 'Fabric/Wire' }
+                    { property: 'padding', minValue: 1, quantity: 1, name: 'Fabric/Leather' }
                 ],
+                craftTime: 1,
                 disassemblyMethods: {
                     hand: { componentYield: 1.0, qualityMod: 0.8, timeRequired: 1 },
                     knife: { componentYield: 1.0, qualityMod: 0.9, timeRequired: 1 }
                 },
                 weaponStats: null
             },
+            // ── Weapons ──────────────────────────────────────────────
             shiv: {
                 name: 'Shiv',
                 type: 'weapon',
@@ -451,9 +667,10 @@ export class ContentManager {
                     { id: 'cloth_wrap', name: 'Cloth Wrap', quantity: 1, quality: 100, maxQuality: 100, weight: 20, volume: 30 }
                 ],
                 componentRequirements: [
-                    { property: 'cutting', minValue: 1, quantity: 1, name: 'Sharp Edge' },
-                    { property: 'grip', minValue: 1, quantity: 1, name: 'Handle/Grip' }
+                    { property: 'cutting', minValue: 1, maxValue: 1, quantity: 1, name: 'Sharp Edge (shard/glass/lid)' },
+                    { property: 'grip', minValue: 1, quantity: 1, name: 'Grip (cloth/tape/leather)' }
                 ],
+                craftTime: 1,
                 disassemblyMethods: {
                     hand: { componentYield: 1.0, qualityMod: 0.7, timeRequired: 1 },
                     knife: { componentYield: 1.0, qualityMod: 0.9, timeRequired: 1 }
@@ -462,7 +679,7 @@ export class ContentManager {
                     damage: '1d4',
                     actionCost: 100,
                     attackType: 'sharp',
-                    bleedChance: 0.10,
+                    bleedChance: 0.30,
                     canTwoHand: false
                 }
             },
@@ -485,10 +702,11 @@ export class ContentManager {
                     { id: 'rivet', name: 'Rivet', quantity: 2, quality: 100, maxQuality: 100, weight: 5, volume: 2 }
                 ],
                 componentRequirements: [
-                    { property: 'cutting', minValue: 2, quantity: 1, name: 'Quality Blade' },
-                    { property: 'grip', minValue: 2, quantity: 1, name: 'Sturdy Handle' },
-                    { property: 'fastening', minValue: 1, quantity: 2, name: 'Fasteners' }
+                    { property: 'cutting', minValue: 2, quantity: 1, name: 'Blade (crude blade/knife blade)' },
+                    { property: 'grip', minValue: 2, quantity: 1, name: 'Handle (wrapped handle/rubber grip)' },
+                    { property: 'fastening', minValue: 1, quantity: 2, name: 'Fasteners (rivets/nails/tape)' }
                 ],
+                craftTime: 2,
                 disassemblyMethods: {
                     hand: { componentYield: 0.66, qualityMod: 0.6, timeRequired: 2, excludeComponents: ['rivet'] },
                     knife: { componentYield: 1.0, qualityMod: 0.85, timeRequired: 1 }
@@ -497,7 +715,7 @@ export class ContentManager {
                     damage: '1d6',
                     actionCost: 100,
                     attackType: 'sharp',
-                    bleedChance: 0.15,
+                    bleedChance: 0.40,
                     canTwoHand: true,
                     twoHandDamage: '1d6+1d4',
                     twoHandActionCost: 110
@@ -1168,6 +1386,31 @@ export class ContentManager {
         };
     }
     
+    /**
+     * Create a standalone component item from the component template library.
+     * Used by loot tables to spawn raw materials directly.
+     */
+    createComponent(componentId) {
+        const template = this.components[componentId];
+        if (!template) return null;
+        
+        return {
+            id: `${componentId}_${Date.now()}_${Math.random()}`,
+            componentId: componentId,
+            name: template.name,
+            type: 'component',
+            glyph: '*',
+            color: '#ffaa00',
+            weight: template.weight,
+            volume: template.volume,
+            quantity: 1,
+            stackable: template.stackable || false,
+            tags: template.tags || [],
+            properties: { ...(template.properties || {}) },
+            isComponent: true
+        };
+    }
+    
     createItem(familyId, materialId = null, modifierId = null) {
         const family = this.itemFamilies[familyId];
         if (!family) return null;
@@ -1178,7 +1421,14 @@ export class ContentManager {
         // If this is a component-type item, add componentId and properties from component library
         if (family.type === 'component' && this.components[familyId]) {
             item.componentId = familyId;
-            item.properties = this.components[familyId].properties || {};
+            item.properties = { ...(this.components[familyId].properties || {}) };
+            item.isComponent = true;
+        }
+        // Craftable intermediates: set componentId and merge craftedProperties
+        if (family.craftedComponentId) {
+            item.componentId = family.craftedComponentId;
+            item.craftedProperties = { ...(family.craftedProperties || {}) };
+            item.properties = { ...(item.properties || {}), ...item.craftedProperties };
             item.isComponent = true;
         }
         

@@ -161,9 +161,17 @@ export class Anatomy {
             
             // Natural clotting: wounds slowly reduce in severity
             // Clotting doesn't start until the wound has been open a few turns
-            const clotDelay = wound.type === 'arterial' ? 8 : 3;
+            // Deep/internal wounds take longer to clot and clot slower
+            let clotDelay, clotSpeed;
+            switch (wound.type) {
+                case 'arterial':  clotDelay = 10; clotSpeed = 0.02; break;
+                case 'internal':  clotDelay = 8;  clotSpeed = 0.03; break;
+                case 'puncture':  clotDelay = 6;  clotSpeed = 0.05; break;
+                case 'laceration': clotDelay = 3; clotSpeed = 0.08; break;
+                case 'cut':       clotDelay = 3;  clotSpeed = 0.10; break;
+                default:          clotDelay = 3;  clotSpeed = 0.08; break;
+            }
             if (wound.turnsActive > clotDelay) {
-                const clotSpeed = wound.type === 'arterial' ? 0.02 : 0.08;
                 wound.severity = Math.max(0, wound.severity - clotSpeed);
             }
             
@@ -544,7 +552,7 @@ export class Anatomy {
         return true;
     }
     
-    damagePart(partPath, damage) {
+    damagePart(partPath, damage, damageType = 'blunt') {
         // Navigate the anatomy path (e.g., "head.brain", "torso.lungs.0")
         const pathParts = partPath.split('.');
         let part = this.parts;
@@ -558,11 +566,43 @@ export class Anatomy {
         
         const wasFunctional = part.functional;
         part.hp = Math.max(0, part.hp - damage);
+        part.lastDamageType = damageType;
         
         if (part.hp <= 0 && wasFunctional) {
             part.functional = false;
         }
         
         return { part, destroyed: part.hp <= 0 && wasFunctional };
+    }
+    
+    /**
+     * Get a context-aware status label for a body part based on HP% and damage type.
+     * Returns { status, color }.
+     */
+    static getPartStatus(part) {
+        const pct = (part.hp / part.maxHP) * 100;
+        const dtype = part.lastDamageType || 'blunt';
+        
+        if (!part.functional) return { status: 'DESTROYED', color: '#666666' };
+        if (pct >= 100) return { status: 'Healthy', color: '#00ff00' };
+        
+        // Labels vary by damage type and severity
+        if (dtype === 'sharp') {
+            if (pct < 25) return { status: 'Mangled', color: '#ff4444' };
+            if (pct < 50) return { status: 'Cut Deep', color: '#ffaa00' };
+            if (pct < 80) return { status: 'Cut', color: '#aaff00' };
+            return { status: 'Nicked', color: '#88cc00' };
+        } else if (dtype === 'stab') {
+            if (pct < 25) return { status: 'Perforated', color: '#ff4444' };
+            if (pct < 50) return { status: 'Punctured', color: '#ffaa00' };
+            if (pct < 80) return { status: 'Stabbed', color: '#aaff00' };
+            return { status: 'Pierced', color: '#88cc00' };
+        } else {
+            // blunt / unarmed
+            if (pct < 25) return { status: 'Crushed', color: '#ff4444' };
+            if (pct < 50) return { status: 'Battered', color: '#ffaa00' };
+            if (pct < 80) return { status: 'Bruised', color: '#aaff00' };
+            return { status: 'Sore', color: '#88cc00' };
+        }
     }
 }

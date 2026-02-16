@@ -13,7 +13,7 @@
  * - Blood/liquid tracking on ground tiles
  */
 
-// Body region weights for random hit location
+// Default body region weights (fallback)
 const BODY_REGIONS = [
     { region: 'head',     weight: 10 },
     { region: 'torso',    weight: 40 },
@@ -22,6 +22,37 @@ const BODY_REGIONS = [
     { region: 'leftLeg',  weight: 13 },
     { region: 'rightLeg', weight: 13 }
 ];
+
+// Per-weapon-type targeting profiles
+// Blunt: big swings aimed at head/torso, arms often intercept
+// Sharp: close-range stabs/slashes, torso vitals + arm cuts
+// Unarmed: wild punches to head, body blows, poor targeting
+const WEAPON_TARGETING = {
+    blunt: [
+        { region: 'head',     weight: 20 },  // overhead swings
+        { region: 'torso',    weight: 30 },  // body shots
+        { region: 'leftArm',  weight: 15 },  // arms intercept
+        { region: 'rightArm', weight: 15 },  // arms intercept
+        { region: 'leftLeg',  weight: 10 },
+        { region: 'rightLeg', weight: 10 }
+    ],
+    sharp: [
+        { region: 'head',     weight: 5 },   // hard to stab the head
+        { region: 'torso',    weight: 45 },  // go for the gut/vitals
+        { region: 'leftArm',  weight: 18 },  // slashing in close quarters
+        { region: 'rightArm', weight: 18 },  // slashing in close quarters
+        { region: 'leftLeg',  weight: 7 },
+        { region: 'rightLeg', weight: 7 }
+    ],
+    unarmed: [
+        { region: 'head',     weight: 25 },  // punches to the face
+        { region: 'torso',    weight: 35 },  // body blows
+        { region: 'leftArm',  weight: 10 },
+        { region: 'rightArm', weight: 10 },
+        { region: 'leftLeg',  weight: 10 },
+        { region: 'rightLeg', weight: 10 }
+    ]
+};
 
 // Sub-parts within each region, with their own weights
 const REGION_PARTS = {
@@ -36,12 +67,12 @@ const REGION_PARTS = {
     ],
     torso: [
         { part: 'heart',       path: 'torso.heart',      weight: 5, vital: true },
-        { part: 'leftLung',    path: 'torso.lungs.0',    weight: 10, displayName: 'left lung' },
-        { part: 'rightLung',   path: 'torso.lungs.1',    weight: 10, displayName: 'right lung' },
-        { part: 'stomach',     path: 'torso.stomach',    weight: 20 },
-        { part: 'liver',       path: 'torso.liver',      weight: 10 },
-        { part: 'leftKidney',  path: 'torso.kidneys.0',  weight: 5, displayName: 'left kidney' },
-        { part: 'rightKidney', path: 'torso.kidneys.1',  weight: 5, displayName: 'right kidney' },
+        { part: 'leftLung',    path: 'torso.lungs.0',    weight: 10, vital: true, displayName: 'left lung' },
+        { part: 'rightLung',   path: 'torso.lungs.1',    weight: 10, vital: true, displayName: 'right lung' },
+        { part: 'stomach',     path: 'torso.stomach',    weight: 20, vital: true },
+        { part: 'liver',       path: 'torso.liver',      weight: 10, vital: true },
+        { part: 'leftKidney',  path: 'torso.kidneys.0',  weight: 5, vital: true, displayName: 'left kidney' },
+        { part: 'rightKidney', path: 'torso.kidneys.1',  weight: 5, vital: true, displayName: 'right kidney' },
         { part: 'torso',       path: null,                weight: 35, displayName: 'torso', glancing: true }
     ],
     leftArm: [
@@ -102,15 +133,15 @@ const ATTACK_TEMPLATES = [
     '{a} {verb} {t} in the {p} with {w} for {d} damage.',
     '{a} {verb} {t} on the {p} with {w} — {d} damage!',
     '{a} lands a hit on {t}\'s {p} with {w} for {d} damage.',
-    '{a} swings {w} into {t}\'s {p} — {d} damage!',
+    '{a} drives {w} into {t}\'s {p} — {d} damage!',
     '{w} connects with {t}\'s {p} as {a} attacks — {d} damage.',
 ];
 
 const ATTACK_TEMPLATES_UNARMED = [
     '{a} {verb} {t} in the {p} for {d} damage.',
     '{a} {verb} {t} on the {p} — {d} damage!',
-    '{a} lands a bare-knuckle hit on {t}\'s {p} for {d} damage.',
-    '{a} catches {t} in the {p} with a wild swing — {d} damage!',
+    '{a} lands a bare-fisted hit on {t}\'s {p} for {d} damage.',
+    '{a} catches {t} in the {p} — {d} damage!',
 ];
 
 const MISS_TEMPLATES = [
@@ -150,6 +181,69 @@ const KILL_TEMPLATES = [
 export class CombatSystem {
     constructor(game) {
         this.game = game;
+        
+        // Structured combat event log for the combat detail window
+        // Each event: { turn, type, attacker, target, weapon, ... }
+        this.combatEvents = [];
+        this.maxCombatEvents = 20;
+        
+        // Track entities currently engaged in combat (adjacent + recently fought)
+        this.engagedEnemies = new Map(); // entityId -> { entity, lastCombatTurn }
+        this.engagementTimeout = 5; // turns of no combat before disengagement
+    }
+    
+    /**
+     * Record a structured combat event for the detail window.
+     */
+    addCombatEvent(event) {
+        event.turn = this.game.turnCount || 0;
+        this.combatEvents.push(event);
+        if (this.combatEvents.length > this.maxCombatEvents) {
+            this.combatEvents.shift();
+        }
+        // Auto-show combat overlay when combat happens
+        if (this.game.ui && this.game.ui.combatOverlay) {
+            this.game.ui.showCombatOverlay();
+        }
+    }
+    
+    /**
+     * Track an entity as engaged in combat with the player.
+     */
+    trackEngagement(entity) {
+        if (entity === this.game.player) return;
+        const id = entity.id || entity.name + '_' + entity.x + '_' + entity.y;
+        this.engagedEnemies.set(id, {
+            entity,
+            lastCombatTurn: this.game.turnCount || 0
+        });
+    }
+    
+    /**
+     * Get list of currently engaged enemies (still alive and recently fought).
+     */
+    getEngagedEnemies() {
+        const currentTurn = this.game.turnCount || 0;
+        const engaged = [];
+        for (const [id, data] of this.engagedEnemies) {
+            if (data.entity.isDead && data.entity.isDead()) {
+                this.engagedEnemies.delete(id);
+                continue;
+            }
+            if (currentTurn - data.lastCombatTurn > this.engagementTimeout) {
+                this.engagedEnemies.delete(id);
+                continue;
+            }
+            engaged.push(data.entity);
+        }
+        return engaged;
+    }
+    
+    /**
+     * Check if the player is currently in combat (has engaged enemies).
+     */
+    isInCombat() {
+        return this.getEngagedEnemies().length > 0;
     }
     
     /**
@@ -170,48 +264,132 @@ export class CombatSystem {
         if (hitRoll > hitChance) {
             // Miss
             this.logMiss(attackerName, targetName);
+            // Floating miss text
+            if (this.game.combatEffects) {
+                this.game.combatEffects.addFloatingText(target.x, target.y, 'MISS', '#888888', 800);
+            }
+            // Track engagement and record event
+            this.trackEngagement(attacker);
+            this.trackEngagement(target);
+            this.addCombatEvent({
+                type: 'miss',
+                attackerName, targetName,
+                attacker, target,
+                weaponName: weapon ? weapon.name : 'bare fists',
+                hitChance: Math.round(hitChance)
+            });
             return { hit: false, damage: 0, bodyPart: null, critical: false, killed: false };
         }
         
+        // ── Roll hit location (weapon-specific targeting) ──
+        let location = this.rollHitLocation(weapon);
+        
         // ── Critical hit check ──
-        const critChance = this.calculateCritChance(attacker, weapon);
+        let critChance = this.calculateCritChance(attacker, weapon);
+        
+        // Opportunistic stance: bonus crit on already-wounded parts
+        const attackerStanceForCrit = this.getEntityStance(attacker);
+        if (attackerStanceForCrit && attackerStanceForCrit.exploitWounded && target.anatomy) {
+            const partName = location.subPart.displayName || location.subPart.part;
+            const hasWound = target.anatomy.wounds.some(w => w.location === partName);
+            if (hasWound) critChance += 10;
+        }
+        
         const isCritical = Math.random() * 100 < critChance;
         
-        // ── Roll hit location ──
-        const location = this.rollHitLocation();
+        // ── Arm intercept: instinctive block ──
+        // When hit targets head or torso, functional arms may intercept
+        if ((location.region === 'head' || location.region === 'torso') && target.anatomy && !isCritical) {
+            const interceptChance = this.getArmInterceptChance(target);
+            if (Math.random() < interceptChance) {
+                const interceptArm = this.pickInterceptArm(target);
+                if (interceptArm) {
+                    const originalPart = location.subPart.displayName || location.subPart.part;
+                    location = interceptArm;
+                    const armName = location.subPart.displayName || location.subPart.part;
+                    this.game.ui.log(`${targetName} blocks with their ${armName}, shielding their ${originalPart}!`, 'combat');
+                }
+            }
+        }
+        
         const partDisplayName = location.subPart.displayName || location.subPart.part;
         
         // ── Calculate damage ──
         let baseDamage = this.rollWeaponDamage(weapon, attacker);
         if (isCritical) baseDamage = Math.floor(baseDamage * 1.5);
         
+        // Attacker stance damage modifier
+        const attackerStance = this.getEntityStance(attacker);
+        if (attackerStance) baseDamage = Math.floor(baseDamage * (attackerStance.damageMod || 1.0));
+        
         // ── Armor mitigation ──
         const armorResult = this.calculateArmor(target, location.region);
-        const finalDamage = Math.max(1, baseDamage - armorResult.reduction);
+        let finalDamage = Math.max(1, baseDamage - armorResult.reduction);
         const blocked = baseDamage - finalDamage;
         
+        // Target stance incoming damage modifier
+        const targetStance = this.getEntityStance(target);
+        if (targetStance) finalDamage = Math.max(1, Math.floor(finalDamage * (targetStance.incomingDamageMod || 1.0)));
+        
+        // ── Determine attack type ──
+        const attackType = this.getAttackType(weapon);
+        
         // ── Apply damage to anatomy ──
-        const partResult = this.applyAnatomyDamage(target, location, finalDamage);
+        const partResult = this.applyAnatomyDamage(target, location, finalDamage, attackType);
         
         // ── Bleeding / wound creation ──
-        const attackType = this.getAttackType(weapon);
         if (target.anatomy) {
+            const isVital = location.subPart.vital;
+            
             // Sharp weapons cause bleeding wounds
             if (attackType === 'sharp') {
-                const bleedChance = weapon?.weaponStats?.bleedChance || 0.4;
+                let bleedChance = weapon?.weaponStats?.bleedChance || 0.4;
+                // Attacker stance bleed modifier
+                if (attackerStance) bleedChance *= (attackerStance.bleedMod || 1.0);
+                // Vital organ hits always bleed
+                if (isVital) bleedChance = Math.max(bleedChance, 0.8);
+                
                 if (Math.random() < bleedChance || isCritical) {
-                    const severity = isCritical ? finalDamage * 0.6 : finalDamage * 0.35;
-                    const isArterial = location.subPart.vital && isCritical;
-                    const woundType = isArterial ? 'arterial' : (Math.random() < 0.5 ? 'cut' : 'laceration');
+                    // Bleed severity scales with damage — higher base rates
+                    let severity = isCritical ? finalDamage * 0.8 : finalDamage * 0.5;
+                    // Vital organs bleed more (lungs, heart, liver, kidneys)
+                    if (isVital) severity *= 1.5;
+                    
+                    const isArterial = isVital && (isCritical || Math.random() < 0.2);
+                    let woundType;
+                    if (isArterial) {
+                        woundType = 'arterial';
+                    } else if (isVital) {
+                        woundType = 'puncture'; // deep stab into organ
+                    } else {
+                        woundType = Math.random() < 0.5 ? 'cut' : 'laceration';
+                    }
                     target.anatomy.addWound(partDisplayName, severity, woundType);
                     this.logWound(targetName, partDisplayName, woundType);
                 }
             }
             
-            // Blunt weapons can cause internal bleeding on vital hits
-            if (attackType === 'blunt' && location.subPart.vital && isCritical) {
-                target.anatomy.addWound(partDisplayName, finalDamage * 0.5, 'arterial');
-                this.logWound(targetName, partDisplayName, 'internal');
+            // Blunt weapons: internal bleeding on vital hits, surface bleeding on head/face
+            if (attackType === 'blunt') {
+                // Vital organ hits with blunt force — internal bleeding
+                if (isVital && (isCritical || Math.random() < 0.25)) {
+                    const severity = isCritical ? finalDamage * 0.6 : finalDamage * 0.3;
+                    target.anatomy.addWound(partDisplayName, severity, 'internal');
+                    this.logWound(targetName, partDisplayName, 'internal');
+                }
+                // Head/face hits split skin — surface bleeding
+                else if (location.region === 'head' && Math.random() < 0.35) {
+                    const severity = finalDamage * 0.2;
+                    target.anatomy.addWound(partDisplayName, severity, 'laceration');
+                    this.logWound(targetName, partDisplayName, 'laceration');
+                }
+            }
+            
+            // Unarmed: only bleeds on crits to the face
+            if (attackType === 'unarmed' && isCritical && location.region === 'head') {
+                const severity = finalDamage * 0.15;
+                target.anatomy.addWound(partDisplayName, severity, 'laceration');
+                this.logWound(targetName, partDisplayName, 'laceration');
             }
             
             // Record pain for shock tracking
@@ -236,11 +414,70 @@ export class CombatSystem {
             this.logPartDestroyed(targetName, partDisplayName);
         }
         
+        // ── Visual combat feedback ──
+        if (this.game.combatEffects) {
+            const fx = this.game.combatEffects;
+            
+            // Shake the target
+            const shakeIntensity = isCritical ? 5 : 3;
+            const shakeDuration = isCritical ? 350 : 200;
+            fx.shakeEntity(target, shakeIntensity, shakeDuration);
+            
+            // Floating damage text
+            const dmgColor = isCritical ? '#ffff00' : '#ff4444';
+            const dmgText = isCritical ? `CRIT ${finalDamage}` : `${finalDamage}`;
+            fx.addFloatingText(target.x, target.y, dmgText, dmgColor, 1000);
+            
+            // Body part hit indicator (slightly delayed, below damage)
+            const partText = partDisplayName.toUpperCase();
+            fx.addFloatingText(target.x, target.y + 0.4, partText, '#cccccc', 800);
+            
+            // Part destroyed callout
+            if (partResult.destroyed) {
+                fx.addFloatingText(target.x, target.y - 0.3, `${partDisplayName} DESTROYED`, '#ff8800', 1500);
+            }
+        }
+        
         // ── Check death ──
         const killed = this.checkDeath(target);
         if (killed) {
             this.logKill(targetName, target);
+            // Death floating text
+            if (this.game.combatEffects) {
+                this.game.combatEffects.addFloatingText(target.x, target.y - 0.5, 'KILLED', '#ff0000', 2000);
+            }
         }
+        
+        // ── Track engagement and record structured event ──
+        this.trackEngagement(attacker);
+        this.trackEngagement(target);
+        
+        // Gather wound info created this attack
+        const woundsInflicted = [];
+        if (target.anatomy) {
+            // Check the most recent wound(s) — they were just added above
+            const recentWounds = target.anatomy.wounds.filter(w => w.turnsActive === 0);
+            for (const w of recentWounds) {
+                woundsInflicted.push({ part: w.part, type: w.type, severity: w.severity });
+            }
+        }
+        
+        this.addCombatEvent({
+            type: 'hit',
+            attackerName, targetName,
+            attacker, target,
+            weaponName: weapon ? weapon.name : 'bare fists',
+            attackType,
+            bodyPart: partDisplayName,
+            region: location.region,
+            damage: finalDamage,
+            blocked,
+            armorName: armorResult.armorName,
+            critical: isCritical,
+            partDestroyed: partResult.destroyed,
+            woundsInflicted,
+            killed
+        });
         
         return {
             hit: true,
@@ -269,7 +506,12 @@ export class CombatSystem {
             chance -= (target.stats.agility - 10);
         }
         
-        // Weapon accuracy (future expansion)
+        // Stance modifier (attacker)
+        const attackerStance = this.getEntityStance(attacker);
+        if (attackerStance) chance += (attackerStance.hitMod || 0);
+        
+        // Unarmed penalty
+        if (!weapon) chance -= 10;
         
         return Math.max(20, Math.min(95, chance));
     }
@@ -281,13 +523,35 @@ export class CombatSystem {
             chance += Math.floor((attacker.stats.perception - 10) / 2);
         }
         
+        // Stance modifier
+        const stance = this.getEntityStance(attacker);
+        if (stance) chance += (stance.critMod || 0);
+        
+        // Unarmed penalty — fists are imprecise
+        if (!weapon) chance -= 3;
+        
         return Math.max(1, Math.min(25, chance));
+    }
+    
+    /**
+     * Get the combat stance data for an entity.
+     * Players have explicit stances; NPCs default to aggressive.
+     */
+    getEntityStance(entity) {
+        if (entity.combatStances && entity.combatStance) {
+            return entity.combatStances[entity.combatStance];
+        }
+        return null;
     }
     
     // ── Hit location ───────────────────────────────────────────────────
     
-    rollHitLocation() {
-        const region = this.weightedRandom(BODY_REGIONS, 'weight', 'region');
+    rollHitLocation(weapon = null) {
+        // Use weapon-specific targeting profile
+        const attackType = this.getAttackType(weapon);
+        const regionWeights = WEAPON_TARGETING[attackType] || BODY_REGIONS;
+        
+        const region = this.weightedRandom(regionWeights, 'weight', 'region');
         const subParts = REGION_PARTS[region];
         const subPart = this.weightedRandom(subParts, 'weight');
         
@@ -305,6 +569,60 @@ export class CombatSystem {
             }
         }
         return returnKey ? items[items.length - 1][returnKey] : items[items.length - 1];
+    }
+    
+    // ── Arm intercept helpers ──────────────────────────────────────────
+    
+    /**
+     * Calculate chance that target's arms intercept a head/torso hit.
+     * Both arms functional = 25%, one arm = 12%, no arms = 0%.
+     */
+    getArmInterceptChance(target) {
+        if (!target.anatomy) return 0;
+        const leftArm = target.anatomy.parts.leftArm.arm;
+        const rightArm = target.anatomy.parts.rightArm.arm;
+        const functional = (leftArm.functional ? 1 : 0) + (rightArm.functional ? 1 : 0);
+        let baseChance = 0;
+        if (functional === 2) baseChance = 0.25;
+        else if (functional === 1) baseChance = 0.12;
+        
+        // Target stance modifies intercept (defensive guards more, aggressive less)
+        const stance = this.getEntityStance(target);
+        if (stance) baseChance *= (stance.interceptMod || 1.0);
+        
+        return Math.min(0.6, baseChance); // Cap at 60%
+    }
+    
+    /**
+     * Pick which arm intercepts. Returns a location object like rollHitLocation.
+     * Prefers the arm with more HP (instinctively shields with the stronger arm).
+     */
+    pickInterceptArm(target) {
+        if (!target.anatomy) return null;
+        const leftArm = target.anatomy.parts.leftArm.arm;
+        const rightArm = target.anatomy.parts.rightArm.arm;
+        
+        let armRegion, armSubPart;
+        if (leftArm.functional && rightArm.functional) {
+            // Pick the arm with more HP
+            if (leftArm.hp >= rightArm.hp) {
+                armRegion = 'leftArm';
+                armSubPart = REGION_PARTS.leftArm[0]; // left arm main
+            } else {
+                armRegion = 'rightArm';
+                armSubPart = REGION_PARTS.rightArm[0]; // right arm main
+            }
+        } else if (leftArm.functional) {
+            armRegion = 'leftArm';
+            armSubPart = REGION_PARTS.leftArm[0];
+        } else if (rightArm.functional) {
+            armRegion = 'rightArm';
+            armSubPart = REGION_PARTS.rightArm[0];
+        } else {
+            return null;
+        }
+        
+        return { region: armRegion, subPart: armSubPart };
     }
     
     // ── Damage calculation ─────────────────────────────────────────────
@@ -387,7 +705,7 @@ export class CombatSystem {
     
     // ── Anatomy damage ─────────────────────────────────────────────────
     
-    applyAnatomyDamage(target, location, damage) {
+    applyAnatomyDamage(target, location, damage, attackType = 'blunt') {
         if (!target.anatomy || !target.anatomy.parts) {
             return { destroyed: false };
         }
@@ -411,6 +729,15 @@ export class CombatSystem {
         
         const wasFunctional = part.functional;
         part.hp = Math.max(0, part.hp - damage);
+        
+        // Track damage type for context-aware status labels
+        // Map weapon attackType to anatomy damage categories
+        const damageTypeMap = { 'sharp': 'sharp', 'blunt': 'blunt', 'unarmed': 'blunt' };
+        part.lastDamageType = damageTypeMap[attackType] || 'blunt';
+        // Shivs and knives are stab weapons — differentiate from slash
+        if (attackType === 'sharp' && subPart.vital) {
+            part.lastDamageType = 'stab'; // deep penetrating hits on organs
+        }
         
         if (part.hp <= 0 && wasFunctional) {
             part.functional = false;
@@ -535,6 +862,11 @@ export class CombatSystem {
                 '{t}\'s {p} is torn open — a nasty laceration.',
                 'A ragged wound opens across {t}\'s {p}.',
                 'Flesh tears on {t}\'s {p}, blood seeping out.',
+            ],
+            puncture: [
+                'The blade sinks deep into {t}\'s {p} — blood wells up.',
+                '{t}\'s {p} is punctured — dark blood seeps out.',
+                'A deep stab wound in {t}\'s {p} bleeds steadily.',
             ],
             arterial: [
                 'Blood sprays from {t}\'s {p} — an artery is hit!',

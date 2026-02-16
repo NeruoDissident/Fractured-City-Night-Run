@@ -3,7 +3,7 @@
 **Project:** Fractured City - Browser-based Cyberpunk Roguelike  
 **Engine:** Vanilla JavaScript + HTML5 Canvas 2D  
 **Status:** Active Development  
-**Last Updated:** February 11, 2026
+**Last Updated:** February 15, 2026
 
 ---
 
@@ -88,8 +88,11 @@ A traditional turn-based roguelike set in a cyberpunk dystopia. Features permade
 
 ### Current Build Stats
 - **Files:** 30+ modular ES6 modules
-- **Systems:** 16 core systems (Renderer, World, Entities, Equipment, FoV, UI, Content, Input, Container, CharCreation, ItemSystem, Crafting, WorldObject, Sound, Lighting, Time)
-- **Item Types:** 18+ families (weapons, armor, materials, tools, food, drinks, containers, light sources, fuel)
+- **Systems:** 18 core systems (Renderer, World, Entities, Equipment, Combat, FoV, UI, Content, Input, Container, CharCreation, ItemSystem, Crafting, WorldObject, Sound, Lighting, Time, MobileControls)
+- **Item Types:** 20+ families (weapons, armor, materials, tools, food, drinks, containers, light sources, fuel, raw materials, intermediates)
+- **Components:** 40+ component types with 16 property categories
+- **Craftable Intermediates:** 4 (Crude Blade, Sharpened Stick, Wrapped Handle, Strap)
+- **Raw Materials:** 8 world-spawning types (stone, wood, glass, metal, bone, rubber, duct tape, nail)
 - **Building Prefabs:** 9 validated layouts (small, medium, large)
 - **Loot Room Types:** 16 (residential, commercial, office, medical, industrial)
 - **NPCs:** 2 types (Scavengers, Raiders)
@@ -97,20 +100,21 @@ A traditional turn-based roguelike set in a cyberpunk dystopia. Features permade
 - **Z-Levels:** 3 levels (z=-1 sewers/basements, z=0 ground, z=1 second floors)
 - **Buildings:** Prefab and procedural structures with interactive doors and room-tagged loot
 - **Lighting:** Day/night cycle with ambient + point light sources (flashlight cone, lantern radial)
+- **Cache:** v19
 
 ---
 
 ## 🚧 Current Sprint
 
-### Active: Phase 2 — Combat & NPC AI
-**Status:** Not Started  
+### Active: Combat Balance Tuning
+**Status:** Planning  
 **Priority:** HIGH  
 **Estimated Time:** TBD
 
 #### Goals
-- Melee/ranged combat system
-- NPC behavior loops, aggro, factions
-- Z-level pathfinding for NPCs
+- Stat-based hit chances (STR, DEX, AGI influence accuracy)
+- Weapon-specific body part targeting distributions
+- Combat balance: unarmed near-unwinnable, weapons are the turning point
 
 #### Previous Sprint: Phase 1 — Light & Dark + Item Audit ✅
 **Status:** ✅ Complete  
@@ -378,6 +382,49 @@ A roguelike where every run feels different, player choices matter, and the worl
 
 ## 📝 Session Notes
 
+### Session: February 15, 2026
+**Completed:**
+- **v19 Crafting System Overhaul** — Complete redesign of crafting to be tiered and intuitive
+  - Added `maxValue` tier gating: Shiv requires cutting 1 maxValue:1, blocks Crude Blade/Knife Blade
+  - Added 4 craftable intermediate components: Crude Blade (cutting:2), Sharpened Stick (piercing:1), Wrapped Handle (grip:2), Strap (binding:3)
+  - Added `craftedComponentId` + `craftedProperties` system for intermediates
+  - Added 8 raw material components: glass_shard, wood_piece, stone, bone_shard, rubber_piece, duct_tape, nail, cloth_wrap
+  - Added properties to 8+ previously bare components (can_lid, leather_piece, blade_wheel, etc.)
+  - Added `createComponent()` method to ContentManager for spawning raw materials from loot
+  - Updated LootTables.js: `rollLootPool()` returns `{familyId}` or `{componentId}`, Chunk.js handles both
+  - Raw materials spawn in world: outdoors (stone, wood, glass), garages (metal, nails, wire), residential (glass, cloth, tape)
+  - CraftingSystem: `getComponentProperty()` checks craftedProperties first, `matchesRequirement()` supports maxValue
+  - CraftingUI: sub-recipe drill-down buttons, back-to-parent navigation, craftTime display, maxValue range display
+  - Reworked Shiv recipe: cutting 1-1, grip 1, 1 turn
+  - Reworked Knife recipe: cutting 2+, grip 2+, fastening x2, 2 turns
+
+- **Help Screen Expansion** — Added detailed gameplay sections
+  - Items & Inventory guide (pickup, actions, encumbrance, containers)
+  - Crafting & Disassembly guide (workshop, sub-recipes, raw materials)
+  - Combat overview (anatomy-based, no HP bar, bleeding, lethality)
+  - Survival tips
+
+- **Documentation Update** — Updated all MD files
+  - CRAFTING_DATABASE.md: Full rewrite with tier system, intermediates, raw materials, maxValue examples
+  - README.md: Updated features, controls, architecture sections
+  - DEVLOG.md: Added v19 session entry
+  - ARCHITECTURE.md: Updated crafting system section
+  - GAME_DESIGN.md: Updated phase status
+  - SYSTEMS_REFERENCE.md: Updated crafting section with tier gating and intermediates
+
+- **Cache:** Bumped to v19
+
+**Impact:**
+- Crafting is now a multi-tier progression: raw materials → intermediates → items
+- Players can’t waste good components on low-tier recipes (maxValue gating)
+- UI shows drill-down sub-recipes for crafting intermediate components
+- Raw materials spawn naturally in the world via loot tables
+- Help screen now serves as a proper in-game guide
+
+**Next Session Goals:**
+- Playtest crafting flow and tune names/numbers
+- Combat balance: stat-based hit chances, weapon targeting distributions
+
 ### Session: February 11, 2026
 **Completed:**
 - **Phase 1: Light & Dark** — Full day/night cycle and lighting system
@@ -575,9 +622,11 @@ A roguelike where every run feels different, player choices matter, and the worl
 - [x] **Beta 0.2:** Z-levels and vertical exploration (Complete)
 - [x] **Beta 0.3:** Crafting and disassembly system (Complete)
 - [x] **Beta 0.4:** Phase 1 — Light & Dark + Item System Audit (Complete)
-- [ ] **Beta 0.5:** Phase 2 — Combat & NPC AI
-- [ ] **Beta 0.6:** Phase 3 — Status Effects & Injuries
-- [ ] **Beta 0.7:** Phase 4 — Cybernetics & Echo Effects
+- [x] **Beta 0.5:** Combat & Anatomy System (Complete)
+- [x] **Beta 0.6:** v19 Crafting System Overhaul — Tiered crafting, intermediates, raw materials (Complete)
+- [ ] **Beta 0.7:** Combat Balance Tuning — Stat-based hit chances, weapon targeting
+- [ ] **Beta 0.8:** Phase 3 — Status Effects & Injuries
+- [ ] **Beta 0.9:** Phase 4 — Cybernetics & Echo Effects
 - [ ] **Release 1.0:** Full feature set, polished, balanced
 
 ---

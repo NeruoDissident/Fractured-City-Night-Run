@@ -75,6 +75,22 @@ export class InputHandler {
             return;
         }
         
+        if (e.key === 't' || e.key === 'T') {
+            e.preventDefault();
+            if (this.game.gameState === 'playing' && !this.game.inspectMode && this.game.player) {
+                const stance = this.game.player.cycleCombatStance();
+                this.game.ui.log(`Combat stance: ${stance.name}`, 'info');
+                this.game.render();
+            }
+            return;
+        }
+        
+        if (e.key === 'b' || e.key === 'B') {
+            e.preventDefault();
+            this.game.ui.toggleCombatOverlay();
+            return;
+        }
+        
         if (e.key === 'f' || e.key === 'F') {
             e.preventDefault();
             if (this.game.gameState === 'playing') {

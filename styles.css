@@ -114,6 +114,126 @@ body {
     color: #00ff00;
 }
 
+/* ── Combat Detail Overlay ────────────────────────────── */
+#combat-overlay {
+    position: fixed;
+    bottom: 10px;
+    left: 10px;
+    z-index: 900;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column-reverse;
+}
+
+#combat-overlay.hidden {
+    display: none;
+}
+
+#combat-overlay-header {
+    pointer-events: auto;
+    background: rgba(10, 10, 10, 0.95);
+    border: 1px solid #ff4444;
+    border-top: none;
+    padding: 4px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-radius: 0 0 4px 4px;
+}
+
+#combat-overlay-title {
+    color: #ff4444;
+    font-family: 'Courier New', monospace;
+    font-weight: bold;
+    font-size: 14px;
+    letter-spacing: 2px;
+}
+
+#combat-overlay-header .small-btn {
+    font-size: 11px;
+    padding: 2px 8px;
+    margin: 0;
+}
+
+#combat-overlay-body {
+    pointer-events: auto;
+    background: rgba(10, 10, 10, 0.92);
+    border: 1px solid #ff4444;
+    border-radius: 4px 4px 0 0;
+    display: flex;
+    gap: 0;
+    width: 700px;
+    max-width: calc(100vw - 220px);
+    max-height: 45vh;
+    overflow: hidden;
+}
+
+.combat-entity-panel {
+    flex: 1;
+    padding: 10px;
+    overflow-y: auto;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    color: #ccc;
+    min-width: 0;
+    border-right: 1px solid #333;
+}
+
+.combat-entity-panel:last-child {
+    border-right: none;
+}
+
+#combat-feed-panel {
+    flex: 1.2;
+    padding: 10px;
+    overflow-y: auto;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    color: #ccc;
+    border-right: 1px solid #333;
+    max-height: 50vh;
+}
+
+.combat-entity-name {
+    font-weight: bold;
+    font-size: 14px;
+    margin-bottom: 6px;
+}
+
+.combat-section-label {
+    color: #888;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-top: 8px;
+    margin-bottom: 4px;
+    border-bottom: 1px solid #333;
+    padding-bottom: 2px;
+}
+
+.combat-wound-line {
+    font-size: 11px;
+    margin-bottom: 2px;
+}
+
+.combat-feed-entry {
+    font-size: 11px;
+    margin-bottom: 6px;
+    padding: 4px 6px;
+    border-left: 2px solid #333;
+    line-height: 1.4;
+}
+
+.combat-feed-entry.hit { border-left-color: #ff4444; }
+.combat-feed-entry.crit { border-left-color: #ffff00; }
+.combat-feed-entry.miss { border-left-color: #666666; }
+.combat-feed-entry.kill { border-left-color: #ff0000; background: rgba(255, 0, 0, 0.05); }
+
+.combat-part-status {
+    font-size: 11px;
+    margin-bottom: 2px;
+}
+
 .modal {
     position: fixed;
     top: 0;
@@ -275,7 +395,7 @@ input, select {
         position: fixed;
         width: 100%;
         height: 100%;
-        touch-action: none;
+        touch-action: manipulation;
         overscroll-behavior: none;
     }
 
@@ -507,7 +627,7 @@ input, select {
 
     /* --- Modal Fullscreen on Mobile --- */
     .modal {
-        touch-action: none;
+        touch-action: manipulation;
         overflow: hidden;
     }
 
@@ -570,5 +690,32 @@ input, select {
 
     .modal-content label {
         font-size: 14px;
+    }
+
+    /* --- Combat Overlay on Mobile --- */
+    #combat-overlay {
+        bottom: 0;
+        left: 0;
+        right: 0;
+    }
+
+    #combat-overlay-body {
+        flex-direction: column;
+        width: 100vw;
+        max-width: 100vw;
+        max-height: 70vh;
+        border-radius: 0;
+        overflow-y: auto;
+    }
+
+    .combat-entity-panel {
+        border-right: none;
+        border-bottom: 1px solid #333;
+    }
+
+    #combat-feed-panel {
+        border-right: none;
+        border-bottom: 1px solid #333;
+        max-height: none;
     }
 }

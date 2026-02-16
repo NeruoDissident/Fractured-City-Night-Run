@@ -81,7 +81,9 @@ export class Chunk {
         for (const [roomType, tiles] of Object.entries(roomTiles)) {
             const lootItems = generateRoomLoot(roomType, tiles);
             for (const loot of lootItems) {
-                const item = content.createItem(loot.familyId);
+                const item = loot.componentId 
+                    ? content.createComponent(loot.componentId)
+                    : content.createItem(loot.familyId);
                 if (item) {
                     item.x = this.cx * this.size + loot.x;
                     item.y = this.cy * this.size + loot.y;
@@ -95,8 +97,10 @@ export class Chunk {
         for (const tile of outdoorTiles) {
             if (Math.random() > OUTDOOR_LOOT.spawnChance) continue;
             
-            const familyId = rollLootPool(OUTDOOR_LOOT.pools);
-            const item = content.createItem(familyId);
+            const rolled = rollLootPool(OUTDOOR_LOOT.pools);
+            const item = rolled.componentId 
+                ? content.createComponent(rolled.componentId)
+                : content.createItem(rolled.familyId);
             if (item) {
                 item.x = this.cx * this.size + tile.x;
                 item.y = this.cy * this.size + tile.y;
