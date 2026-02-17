@@ -264,6 +264,10 @@ export class CombatSystem {
         const attackerName = this.getDisplayName(attacker, true);
         const targetName = this.getDisplayName(target, false);
         
+        // ── Compute injury penalties for both combatants ──
+        const attackerPenalties = attacker.anatomy ? attacker.anatomy.getCombatPenalties() : null;
+        const targetPenalties = target.anatomy ? target.anatomy.getCombatPenalties() : null;
+        
         // ── Hit check ──
         const hitChance = this.calculateHitChance(attacker, target, weapon);
         const hitRoll = Math.random() * 100;
@@ -283,7 +287,9 @@ export class CombatSystem {
                 attackerName, targetName,
                 attacker, target,
                 weaponName: weapon ? weapon.name : 'bare fists',
-                hitChance: Math.round(hitChance)
+                hitChance: Math.round(hitChance),
+                attackerPenalties,
+                targetPenalties
             });
             return { hit: false, damage: 0, bodyPart: null, critical: false, killed: false };
         }
@@ -328,6 +334,11 @@ export class CombatSystem {
         // Attacker stance damage modifier
         const attackerStance = this.getEntityStance(attacker);
         if (attackerStance) baseDamage = Math.floor(baseDamage * (attackerStance.damageMod || 1.0));
+        
+        // Attacker injury damage modifier (arm/hand damage, blood loss, shock)
+        if (attackerPenalties && attackerPenalties.damageMod < 1.0) {
+            baseDamage = Math.max(1, Math.floor(baseDamage * attackerPenalties.damageMod));
+        }
         
         // ── Armor mitigation ──
         const armorResult = this.calculateArmor(target, location.region);
@@ -483,7 +494,11 @@ export class CombatSystem {
             critical: isCritical,
             partDestroyed: partResult.destroyed,
             woundsInflicted,
-            killed
+            killed,
+            hitChance: Math.round(hitChance),
+            critChance: Math.round(critChance),
+            attackerPenalties,
+            targetPenalties
         });
         
         return {
@@ -520,6 +535,24 @@ export class CombatSystem {
         // Unarmed penalty
         if (!weapon) chance -= 10;
         
+        // Attacker injury penalties (arm/hand damage, blood loss, shock)
+        if (attacker.anatomy) {
+            const penalties = attacker.anatomy.getCombatPenalties();
+            chance += penalties.hitChanceMod;
+        }
+        
+        // Target injury dodge penalties (leg damage, blood loss, shock make them easier to hit)
+        if (target.anatomy) {
+            const targetPenalties = target.anatomy.getCombatPenalties();
+            chance += targetPenalties.dodgeMod;
+        }
+        
+        // Prone targets are much easier to hit
+        if (this.game.abilitySystem && this.game.abilitySystem.hasEffect(target, 'prone')) {
+            const proneEffect = this.game.abilitySystem.getEffect(target, 'prone');
+            chance += (proneEffect && proneEffect.data.dodgePenalty) || 15;
+        }
+        
         return Math.max(20, Math.min(95, chance));
     }
     
@@ -536,6 +569,12 @@ export class CombatSystem {
         
         // Unarmed penalty — fists are imprecise
         if (!weapon) chance -= 3;
+        
+        // Injury penalties (eye damage, blood loss, shock)
+        if (attacker.anatomy) {
+            const penalties = attacker.anatomy.getCombatPenalties();
+            chance += penalties.critChanceMod;
+        }
         
         return Math.max(1, Math.min(25, chance));
     }
@@ -597,6 +636,11 @@ export class CombatSystem {
         const stance = this.getEntityStance(target);
         if (stance) baseChance *= (stance.interceptMod || 1.0);
         
+        // Guard break ability effect reduces intercept
+        if (this.game.abilitySystem) {
+            baseChance *= this.game.abilitySystem.getInterceptModifier(target);
+        }
+        
         return Math.min(0.6, baseChance); // Cap at 60%
     }
     
@@ -657,6 +701,12 @@ export class CombatSystem {
         // NPC flat damage bonus (NPCs without stats)
         if (attacker.baseDamage && !attacker.stats) {
             damage += attacker.baseDamage;
+        }
+        
+        // Injury damage modifier (arm/hand damage, blood loss, shock)
+        if (attacker.anatomy) {
+            const penalties = attacker.anatomy.getCombatPenalties();
+            damage = Math.floor(damage * penalties.damageMod);
         }
         
         return Math.max(1, damage);

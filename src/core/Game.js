@@ -13,6 +13,7 @@ import { CraftingSystem } from '../systems/CraftingSystem.js';
 import { CombatSystem } from '../systems/CombatSystem.js';
 import { CombatEffects } from '../systems/CombatEffects.js';
 import { WorldObjectSystem } from '../systems/WorldObjectSystem.js';
+import { AbilitySystem } from '../systems/AbilitySystem.js';
 import { TimeSystem } from '../systems/TimeSystem.js';
 import { LightingSystem } from '../systems/LightingSystem.js';
 import { MobileControls } from '../ui/MobileControls.js';
@@ -51,6 +52,7 @@ export class Game {
         // Load spritesheets before renderer needs them
         this.spriteManager = new SpriteManager();
         await this.spriteManager.loadSheet('walls', 'assets/walls/walls.png', 4, 32);
+        await this.spriteManager.loadSheet('ground', 'assets/ground/ground.png', 8, 32);
         await this.spriteManager.loadSheet('objects', 'assets/objects/objects.png', 8, 32);
         await this.spriteManager.loadSheet('player', 'assets/entites/player_characters/player_characers.png', 1, 32);
         await this.spriteManager.loadSheet('npcs', 'assets/entites/npcs/npc.png', 2, 32);
@@ -88,6 +90,7 @@ export class Game {
         this.craftingSystem = new CraftingSystem(this);
         this.combatSystem = new CombatSystem(this);
         this.combatEffects = new CombatEffects(this);
+        this.abilitySystem = new AbilitySystem(this);
         this.worldObjectSystem = new WorldObjectSystem(this);
         
         this.player = new Player(this, characterData);
@@ -117,6 +120,9 @@ export class Game {
     processTurn(action) {
         if (!this.isRunning) return;
         
+        // Clear ability popup from previous turn (but not when we're using an ability right now)
+        if (this.ui && action.type !== 'use_ability') this.ui.clearAbilityPopup();
+        
         let playerActed = false;
         
         // Reset last action cost — each action type sets this
@@ -143,6 +149,13 @@ export class Game {
         } else if (action.type === 'descend') {
             playerActed = this.player.tryDescend();
             this.player.lastActionCost = this.player.getMovementActionCost();
+        } else if (action.type === 'use_ability') {
+            // Ability was resolved by the UI before creating this action
+            // action.result contains the ability resolution result
+            if (action.result && action.result.success) {
+                playerActed = true;
+                this.player.lastActionCost = action.result.actionCost || 100;
+            }
         }
         
         if (playerActed) {
@@ -157,6 +170,7 @@ export class Game {
                 this.updateFoV();
                 this.world.processTurn(actionCost);
                 this.soundSystem.processTurn();
+                this.abilitySystem.processTurn();
                 this.checkGameOver();
             }
         }
@@ -241,20 +255,31 @@ export class Game {
         const backpack = c.createItem('backpack');
         if (backpack) p.equipment.back = backpack;
         
-        // Flashlight in right hand (comes pre-loaded with batteries)
+        // Flashlight stored in a pocket, turned off (comes pre-loaded with batteries)
         const flashlight = c.createItem('flashlight');
-        if (flashlight) p.equipment.rightHand = flashlight;
+        if (flashlight) {
+            if (!flashlight.state) flashlight.state = {};
+            flashlight.state.active = false;
+            const flResult = p.addToInventory(flashlight);
+            console.log(`[Loadout] Flashlight: ${flResult.message}`);
+        }
         
-        // Lantern in left hand (comes pre-loaded with fuel)
+        // Lantern stored in a pocket, turned off (comes pre-loaded with fuel)
         const lantern = c.createItem('lantern');
-        if (lantern) p.equipment.leftHand = lantern;
+        if (lantern) {
+            if (!lantern.state) lantern.state = {};
+            lantern.state.active = false;
+            const lnResult = p.addToInventory(lantern);
+            console.log(`[Loadout] Lantern: ${lnResult.message}`);
+        }
         
         console.log('[Loadout] Starting gear equipped:', {
             torso: p.equipment.torso?.name,
             legs: p.equipment.legs?.name,
             back: p.equipment.back?.name,
             rightHand: p.equipment.rightHand?.name,
-            leftHand: p.equipment.leftHand?.name
+            leftHand: p.equipment.leftHand?.name,
+            inventory: p.inventory.map(i => i.name)
         });
     }
     

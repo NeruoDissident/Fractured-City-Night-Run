@@ -251,6 +251,53 @@ body {
     display: none;
 }
 
+/* Ability use popup — persistent until next action */
+#ability-popup {
+    position: fixed;
+    top: 60px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 950;
+    background: rgba(20, 10, 35, 0.92);
+    border: 1px solid #cc88ff;
+    border-left: 3px solid #cc88ff;
+    padding: 8px 18px;
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+    color: #ddd;
+    pointer-events: none;
+    max-width: 500px;
+    text-align: center;
+    box-shadow: 0 2px 12px rgba(140, 80, 220, 0.3);
+}
+
+#ability-popup.hidden {
+    display: none;
+}
+
+#ability-popup .popup-ability-name {
+    color: #cc88ff;
+    font-weight: bold;
+}
+
+#ability-popup .popup-hit {
+    color: #44ff44;
+}
+
+#ability-popup .popup-miss {
+    color: #888;
+}
+
+#ability-popup .popup-damage {
+    color: #ff4444;
+    font-weight: bold;
+}
+
+#ability-popup .popup-effect {
+    color: #ffcc00;
+}
+
 .modal-content {
     background-color: #1a1a1a;
     border: 2px solid #00ffff;

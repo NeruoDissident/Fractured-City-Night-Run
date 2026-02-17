@@ -148,22 +148,23 @@ export class Chunk {
     generateCleanTerrain(x, y, biome) {
         // Phase 1: Generate ONLY floor tiles (no obstacles)
         // Obstacles will be added later in addObstaclesAndDebris()
+        // Ground spritesheet indices: 0=urban_paved, 4=suburbs, 7=industrial, 10=rich, 13=rural, 16=forest, 17=ruins
         
         switch(biome) {
             case 'urban_core':
-                return { glyph: '.', fgColor: '#666666', bgColor: '#0f0f0f', blocked: false, name: 'Paved Ground' };
+                return { glyph: '.', fgColor: '#666666', bgColor: '#0f0f0f', blocked: false, name: 'Paved Ground', spriteData: { sheet: 'ground', index: 0 } };
             case 'suburbs':
-                return { glyph: '.', fgColor: '#556b2f', bgColor: '#0a0a0a', blocked: false, name: 'Suburban Ground' };
+                return { glyph: '.', fgColor: '#556b2f', bgColor: '#0a0a0a', blocked: false, name: 'Suburban Ground', spriteData: { sheet: 'ground', index: 4 } };
             case 'industrial':
-                return { glyph: '.', fgColor: '#555555', bgColor: '#0a0a0a', blocked: false, name: 'Concrete Floor' };
+                return { glyph: '.', fgColor: '#555555', bgColor: '#0a0a0a', blocked: false, name: 'Concrete Floor', spriteData: { sheet: 'ground', index: 7 } };
             case 'rich_neighborhood':
-                return { glyph: '.', fgColor: '#6b8e23', bgColor: '#0f0f0a', blocked: false, name: 'Manicured Ground' };
+                return { glyph: '.', fgColor: '#6b8e23', bgColor: '#0f0f0a', blocked: false, name: 'Manicured Ground', spriteData: { sheet: 'ground', index: 10 } };
             case 'rural':
-                return { glyph: '.', fgColor: '#8b7355', bgColor: '#0a0805', blocked: false, name: 'Dirt Ground' };
+                return { glyph: '.', fgColor: '#8b7355', bgColor: '#0a0805', blocked: false, name: 'Dirt Ground', spriteData: { sheet: 'ground', index: 13 } };
             case 'forest':
-                return { glyph: ',', fgColor: '#4a6741', bgColor: '#0a0f0a', blocked: false, name: 'Forest Floor' };
+                return { glyph: ',', fgColor: '#4a6741', bgColor: '#0a0f0a', blocked: false, name: 'Forest Floor', spriteData: { sheet: 'ground', index: 16 } };
             case 'ruins':
-                return { glyph: '.', fgColor: '#444444', bgColor: '#0a0a0a', blocked: false, name: 'Cracked Floor' };
+                return { glyph: '.', fgColor: '#444444', bgColor: '#0a0a0a', blocked: false, name: 'Cracked Floor', spriteData: { sheet: 'ground', index: 17 } };
             default:
                 return { glyph: '.', fgColor: '#3a3a3a', bgColor: '#050505', blocked: false, name: 'Ground' };
         }
@@ -363,9 +364,9 @@ export class Chunk {
         switch(biome) {
             case 'urban_core':
                 roadConfig = {
-                    mainRoadTile: { glyph: '=', fgColor: '#00ffff', bgColor: '#0a2a2a', blocked: false, name: 'City Street' },
-                    sideStreetTile: { glyph: '-', fgColor: '#00aaaa', bgColor: '#0a1a1a', blocked: false, name: 'Side Street' },
-                    sidewalkTile: { glyph: '·', fgColor: '#888888', bgColor: '#1a1a1a', blocked: false, name: 'Sidewalk' },
+                    mainRoadTile: { glyph: '=', fgColor: '#00ffff', bgColor: '#0a2a2a', blocked: false, name: 'City Street', spriteData: { sheet: 'ground', index: 1 } },
+                    sideStreetTile: { glyph: '-', fgColor: '#00aaaa', bgColor: '#0a1a1a', blocked: false, name: 'Side Street', spriteData: { sheet: 'ground', index: 2 } },
+                    sidewalkTile: { glyph: '·', fgColor: '#888888', bgColor: '#1a1a1a', blocked: false, name: 'Sidewalk', spriteData: { sheet: 'ground', index: 3 } },
                     mainWidth: 4,
                     sideWidth: 3,
                     density: 'very_high',
@@ -375,8 +376,8 @@ export class Chunk {
             
             case 'suburbs':
                 roadConfig = {
-                    mainRoadTile: { glyph: '=', fgColor: '#00aaaa', bgColor: '#0a1a1a', blocked: false, name: 'Suburban Road' },
-                    sideStreetTile: { glyph: '-', fgColor: '#008888', bgColor: '#0a0a0a', blocked: false, name: 'Residential Street' },
+                    mainRoadTile: { glyph: '=', fgColor: '#00aaaa', bgColor: '#0a1a1a', blocked: false, name: 'Suburban Road', spriteData: { sheet: 'ground', index: 5 } },
+                    sideStreetTile: { glyph: '-', fgColor: '#008888', bgColor: '#0a0a0a', blocked: false, name: 'Residential Street', spriteData: { sheet: 'ground', index: 6 } },
                     mainWidth: 3,
                     sideWidth: 2,
                     density: 'high',
@@ -386,8 +387,8 @@ export class Chunk {
             
             case 'industrial':
                 roadConfig = {
-                    mainRoadTile: { glyph: '=', fgColor: '#00ffff', bgColor: '#0a2a2a', blocked: false, name: 'Paved Road' },
-                    sideStreetTile: { glyph: '-', fgColor: '#00aaaa', bgColor: '#0a1a1a', blocked: false, name: 'Asphalt Street' },
+                    mainRoadTile: { glyph: '=', fgColor: '#00ffff', bgColor: '#0a2a2a', blocked: false, name: 'Paved Road', spriteData: { sheet: 'ground', index: 8 } },
+                    sideStreetTile: { glyph: '-', fgColor: '#00aaaa', bgColor: '#0a1a1a', blocked: false, name: 'Asphalt Street', spriteData: { sheet: 'ground', index: 9 } },
                     mainWidth: 3,
                     sideWidth: 2,
                     density: 'high',
@@ -397,8 +398,8 @@ export class Chunk {
             
             case 'rich_neighborhood':
                 roadConfig = {
-                    mainRoadTile: { glyph: '=', fgColor: '#d4af37', bgColor: '#1a1a0a', blocked: false, name: 'Pristine Road' },
-                    sideStreetTile: { glyph: '-', fgColor: '#b8860b', bgColor: '#0f0f0a', blocked: false, name: 'Private Drive' },
+                    mainRoadTile: { glyph: '=', fgColor: '#d4af37', bgColor: '#1a1a0a', blocked: false, name: 'Pristine Road', spriteData: { sheet: 'ground', index: 11 } },
+                    sideStreetTile: { glyph: '-', fgColor: '#b8860b', bgColor: '#0f0f0a', blocked: false, name: 'Private Drive', spriteData: { sheet: 'ground', index: 12 } },
                     mainWidth: 3,
                     sideWidth: 2,
                     density: 'medium',
@@ -408,8 +409,8 @@ export class Chunk {
             
             case 'rural':
                 roadConfig = {
-                    mainRoadTile: { glyph: '·', fgColor: '#aa6633', bgColor: '#0a0500', blocked: false, name: 'Dirt Road' },
-                    sideStreetTile: { glyph: ',', fgColor: '#885522', bgColor: '#050200', blocked: false, name: 'Dirt Trail' },
+                    mainRoadTile: { glyph: '·', fgColor: '#aa6633', bgColor: '#0a0500', blocked: false, name: 'Dirt Road', spriteData: { sheet: 'ground', index: 14 } },
+                    sideStreetTile: { glyph: ',', fgColor: '#885522', bgColor: '#050200', blocked: false, name: 'Dirt Trail', spriteData: { sheet: 'ground', index: 15 } },
                     mainWidth: 2,
                     sideWidth: 1,
                     density: 'low',
@@ -419,8 +420,8 @@ export class Chunk {
             
             case 'ruins':
                 roadConfig = {
-                    mainRoadTile: { glyph: '~', fgColor: '#ff8800', bgColor: '#1a0a00', blocked: false, name: 'Cracked Pavement' },
-                    sideStreetTile: { glyph: '.', fgColor: '#aa5500', bgColor: '#0a0500', blocked: false, name: 'Broken Path' },
+                    mainRoadTile: { glyph: '~', fgColor: '#ff8800', bgColor: '#1a0a00', blocked: false, name: 'Cracked Pavement', spriteData: { sheet: 'ground', index: 18 } },
+                    sideStreetTile: { glyph: '.', fgColor: '#aa5500', bgColor: '#0a0500', blocked: false, name: 'Broken Path', spriteData: { sheet: 'ground', index: 19 } },
                     mainWidth: 2,
                     sideWidth: 1,
                     density: 'medium',
@@ -430,8 +431,8 @@ export class Chunk {
             
             default:
                 roadConfig = {
-                    mainRoadTile: { glyph: '=', fgColor: '#00aaaa', bgColor: '#0a1a1a', blocked: false, name: 'Road' },
-                    sideStreetTile: { glyph: '-', fgColor: '#008888', bgColor: '#0a0a0a', blocked: false, name: 'Street' },
+                    mainRoadTile: { glyph: '=', fgColor: '#00aaaa', bgColor: '#0a1a1a', blocked: false, name: 'Road', spriteData: { sheet: 'ground', index: 1 } },
+                    sideStreetTile: { glyph: '-', fgColor: '#008888', bgColor: '#0a0a0a', blocked: false, name: 'Street', spriteData: { sheet: 'ground', index: 2 } },
                     mainWidth: 3,
                     sideWidth: 2,
                     density: 'medium',
@@ -533,7 +534,7 @@ export class Chunk {
         console.log(`Chunk (${this.cx},${this.cy}): Generating sewer system under roads`);
         
         // Sewer tile configuration
-        const sewerFloorTile = { glyph: '=', fgColor: '#444444', bgColor: '#0a0a0a', blocked: false, name: 'Sewer Floor' };
+        const sewerFloorTile = { glyph: '=', fgColor: '#444444', bgColor: '#0a0a0a', blocked: false, name: 'Sewer Floor', spriteData: { sheet: 'ground', index: 21 } };
         const sewerWallTile = { glyph: '#', fgColor: '#333333', bgColor: '#0a0a0a', blocked: true, isWall: true, name: 'Sewer Wall' };
         const manholeTile = { glyph: 'O', fgColor: '#ffff00', bgColor: '#0a2a2a', blocked: false, name: 'Manhole Cover', isManhole: true, canDescend: true };
         const ladderTile = { glyph: 'H', fgColor: '#888888', bgColor: '#0a0a0a', blocked: false, name: 'Ladder', isLadder: true, canAscend: true };
@@ -892,7 +893,7 @@ export class Chunk {
                 wallTile = { glyph: '▓', fgColor: '#aaaaaa', bgColor: '#3a3a3a', blocked: true, isWall: true, name: 'Wall' };
         }
         
-        const floorTile = { glyph: '.', fgColor: '#aaaaaa', bgColor: '#2a2a2a', blocked: false, name: 'Floor' };
+        const floorTile = { glyph: '.', fgColor: '#aaaaaa', bgColor: '#2a2a2a', blocked: false, name: 'Floor', spriteData: { sheet: 'ground', index: 20 } };
         
         // Determine which side the door should face to be accessible from the road
         // Prefab doors are on the bottom row, so we need doorSide=2 (bottom)
@@ -1232,7 +1233,7 @@ export class Chunk {
                 wallTile = { glyph: '▓', fgColor: '#aaaaaa', bgColor: '#3a3a3a', blocked: true, isWall: true, name: 'Wall' };
         }
         
-        const floorTile = { glyph: '.', fgColor: '#aaaaaa', bgColor: '#2a2a2a', blocked: false, name: 'Floor' };
+        const floorTile = { glyph: '.', fgColor: '#aaaaaa', bgColor: '#2a2a2a', blocked: false, name: 'Floor', spriteData: { sheet: 'ground', index: 20 } };
         
         // Place walls and floors
         for (let dy = 0; dy < height; dy++) {

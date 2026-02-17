@@ -227,6 +227,8 @@ Base: 75%
 - (target.agility - 10) × 1       // target dodge
 + stance.hitMod                     // stance bonus/penalty
 - 10 if unarmed                    // unarmed penalty
++ attacker.anatomy.getCombatPenalties().hitChanceMod   // attacker injury penalties
++ target.anatomy.getCombatPenalties().dodgeMod         // target injury dodge penalties
 Clamped: [20%, 95%]
 ```
 
@@ -237,8 +239,34 @@ Base: 5%
 + stance.critMod
 - 3 if unarmed
 + 10 if opportunistic stance AND target part already wounded
++ attacker.anatomy.getCombatPenalties().critChanceMod  // eye/blood/shock penalties
 Clamped: [1%, 25%]
 ```
+
+**Damage Formula (injury modifier applied last):**
+```
+rollWeaponDamage(weapon, attacker):
+  Base dice roll + STR bonus
+  × attacker.anatomy.getCombatPenalties().damageMod    // arm/hand/blood/shock
+  Minimum: 1
+```
+
+**Injury Combat Modifiers (`Anatomy.getCombatPenalties()`):**
+Centralized method returning all combat-relevant injury penalties. Applied to both players and NPCs.
+
+| Source | Hit Chance | Crit Chance | Damage | Dodge (target) |
+|--------|-----------|-------------|--------|----------------|
+| Arm damage (per avg HP%) | up to -15% | — | down to ×0.5 | — |
+| Hand damage (per avg HP%) | up to -10% | — | down to ×0.7 | — |
+| Eye damage (per avg HP%) | — | up to -8% | — | — |
+| Leg damage (per avg HP%) | — | — | — | up to +15% easier to hit |
+| Foot damage (per avg HP%) | — | — | — | up to +8% easier to hit |
+| Lightheaded (60-80% blood) | -5% | -1% | ×0.9 | +3% easier to hit |
+| Woozy (40-60% blood) | -10% | -3% | ×0.8 | +8% easier to hit |
+| Critical blood loss (<20%) | -20% | -5% | ×0.6 | +15% easier to hit |
+| Shock | -20% | -5% | ×0.5 | +20% easier to hit |
+
+Damage mod clamped at ×0.2 minimum. All penalties stack multiplicatively for damage, additively for hit/crit/dodge.
 
 **Body Region Weights (`WEAPON_TARGETING`):**
 | Region | Blunt | Sharp | Unarmed |
@@ -359,6 +387,103 @@ rollWeaponDamage(weapon, attacker):
 - `startAnimation()` triggers requestAnimationFrame loop
 - `hasActiveEffects()` checks if any shakes or floating texts remain
 - `drawFloatingTexts(ctx, cameraX, cameraY, tileSize)` called after entity rendering
+
+---
+
+### Ability System
+**File:** `src/systems/AbilitySystem.js`
+
+**Purpose:** Manages combat abilities tied to weapon types, stat thresholds, and stances. Data-driven — all abilities defined in `ABILITY_DATA` constant.
+
+**Design Principles:**
+- Abilities unlock at **stat thresholds** (no XP/leveling)
+- All abilities **always visible** in UI — grayed out with requirements shown if locked
+- **Soft stance lock** — abilities work in any stance but get a bonus in the preferred stance (penalty otherwise)
+- **Variable action cost** per ability (120–180 AP vs 100 AP for basic attack)
+- **Per-ability cooldowns** — each ability has a cooldown in turns (2–5), tracked per entity
+
+**Keybind:** `[Q]` opens the ability panel. Number keys `[1-5]` activate abilities directly during combat.
+
+**Ability Resolution Flow (`resolveAbility()`):**
+1. Validate stat requirements, weapon type match, and cooldown
+2. Compute hit chance = base hit chance + ability hitChanceMod + stance hitMod/penalty
+3. Roll to hit (clamped [10%, 95%])
+4. On hit: resolve effects (damage, targeted body part, special effects)
+5. Apply stance damage/bleed/stun modifiers
+6. Record combat event (`ability_hit` or `ability_miss`)
+7. Set action cost on attacker and start cooldown
+
+**Blunt Weapon Abilities:**
+| Ability | Requirements | Preferred Stance | AP Cost | CD | Effect |
+|---------|-------------|-----------------|---------|-----|--------|
+| Limb Breaker | STR 12 | Aggressive | 150 | 3t | Target specific limb, 1.4× damage, +50% pain |
+| Concussion | STR 14, AGI 11 | Aggressive | 180 | 4t | Head strike, stun 1 turn, -15% hit |
+| Sweeping Strike | STR 11, AGI 12 | Aggressive | 160 | 3t | Hit both legs at 0.7× damage each, knock prone |
+| Guard Break | PER 12 | Opportunistic | 140 | 4t | Hit blocking arm, halve intercept for 3 turns |
+| Measured Strike | PER 13, AGI 11 | Defensive | 130 | 2t | Auto-target wounded part, +15% hit, exploit wounds |
+
+**Sharp Weapon Abilities:**
+| Ability | Requirements | Preferred Stance | AP Cost | CD | Effect |
+|---------|-------------|-----------------|---------|-----|--------|
+| Hamstring | AGI 12 | Opportunistic | 140 | 3t | Leg slash, 2× bleed severity |
+| Throat Slash | AGI 14, PER 12 | Opportunistic | 180 | 5t | Head hit, 3× bleed, arterial bleed, -25% hit |
+| Disarm | AGI 12, STR 11 | Defensive | 150 | 4t | Hit weapon hand, drop weapon if hand <50% HP |
+| Flurry | AGI 14 | Aggressive | 170 | 3t | 2 strikes at 0.6× damage each, 1.5× bleed |
+| Precision Stab | PER 13 | Opportunistic | 160 | 3t | Target wounded part, bypass armor on wounds |
+
+**Unarmed Abilities:**
+| Ability | Requirements | Preferred Stance | AP Cost | CD | Effect |
+|---------|-------------|-----------------|---------|-----|--------|
+| Tackle | STR 12, END 11 | Aggressive | 160 | 4t | Knock target prone (self too), 0.6× damage |
+| Eye Gouge | AGI 12 | Opportunistic | 130 | 3t | Target eyes, 0.5× damage, impair vision |
+| Chokehold | STR 13, AGI 12 | Defensive | 180 | 5t | Grapple 3 turns, suffocation damage, breakable |
+| Kidney Shot | STR 11, PER 11 | Opportunistic | 140 | 2t | Organ hit, 2.5× pain (shock trigger) |
+| Headbutt | STR 12, END 12 | Aggressive | 120 | 3t | Head hit, stun 1 turn, self-damage 40% |
+
+**Stance Modifiers (soft lock):**
+- **Preferred stance** → bonus (e.g., +10% hit, +15% damage, +1 stun turn)
+- **Wrong stance** → penalty (e.g., -15% hit, -15% damage)
+- Player can gamble on using wrong-stance abilities — clearly shown in UI
+
+**Cooldown System:**
+- `cooldowns` Map tracks per-entity, per-ability remaining turns
+- Cooldown starts on use (hit or miss) — missing doesn't skip the cooldown
+- `tickCooldowns()` called each turn in `processTurn()` to decrement all cooldowns
+- UI shows remaining turns in red when on cooldown; use buttons disabled
+- Cooldown values: 2t (quick abilities) to 5t (powerful abilities like Throat Slash, Chokehold)
+
+**Active Effects System:**
+- `activeEffects` Map tracks timed effects per entity (stunned, prone, guard_break, grappled, grappling)
+- `processTurn()` ticks all effects and cooldowns, handles grapple suffocation and break-free checks
+
+**Implemented Status Effects:**
+| Effect | Duration | Gameplay Impact | Checked By |
+|--------|----------|----------------|------------|
+| **Stunned** | 1–2t | NPC skips turn entirely | `NPC.executeAI()` → `isStunned()` |
+| **Prone** | 2t | NPC skips turn + 15% easier to hit | `NPC.executeAI()` → `hasEffect('prone')`, `CombatSystem.calculateHitChance()` |
+| **Guard Break** | 3–4t | Halves arm intercept chance | `CombatSystem.getArmInterceptChance()` → `getInterceptModifier()` |
+| **Grappled** | 3t | Suffocation damage per turn, STR break-free roll | `AbilitySystem.processTurn()` |
+| **Disarm** | Permanent | NPC weapon nulled (`this.weapon = null`), weapon dropped as lootable ground item | `NPC.attack()` uses `this.weapon` |
+
+**Anatomy-Based Combat Penalties (via `getCombatPenalties()`):**
+| Injury | Effect | Applied In |
+|--------|--------|-----------|
+| Arm damage | Up to -15% hit, down to 0.5× damage | `calculateHitChance()`, `resolveAttack()` damage calc |
+| Hand damage | Up to -10% hit, down to 0.7× damage | `calculateHitChance()`, `resolveAttack()` damage calc |
+| Eye damage | Up to -8% crit chance | `calculateCritChance()` |
+| Leg damage | Up to +15% easier to hit (dodge penalty) | `calculateHitChance()` dodge mod |
+| Blood loss | -5 to -20% hit, -1 to -5% crit, 0.6–0.9× damage, +3–15% easier to hit | All combat calculations |
+| Shock | -20% hit, -5% crit, 0.5× damage, +20% easier to hit | All combat calculations |
+
+**Floating Text Feedback:**
+- All status effects show floating text over the target: STUNNED, PRONE, GUARD BROKEN, DISARMED, GRAPPLED, ARTERIAL BLEED
+- Damage numbers float in red (yellow for crits), self-damage in orange
+- Part destroyed callouts in orange
+
+**Ability Popup:**
+- Persistent notification shown at top of screen after using an ability
+- Displays ability name, hit/miss, damage, body parts hit, and special effects with mechanical descriptions
+- Stays visible until the player's next action (`clearAbilityPopup()` called in `Game.processTurn()`)
 
 ---
 

@@ -48,6 +48,8 @@ export class UIManager {
         this.detailedCharacterModal = document.getElementById('detailed-character');
         this.detailedInventoryModal = document.getElementById('detailed-inventory');
         this.helpModal = document.getElementById('help-screen');
+        this.abilityPanelModal = document.getElementById('ability-panel');
+        this.abilityPopup = document.getElementById('ability-popup');
         
         // Combat overlay elements
         this.combatOverlay = document.getElementById('combat-overlay');
@@ -66,6 +68,10 @@ export class UIManager {
         
         document.getElementById('close-help-btn').addEventListener('click', () => {
             this.helpModal.classList.add('hidden');
+        });
+        
+        document.getElementById('close-ability-btn').addEventListener('click', () => {
+            this.abilityPanelModal.classList.add('hidden');
         });
         
         const closeCombatBtn = document.getElementById('close-combat-btn');
@@ -1036,6 +1042,13 @@ export class UIManager {
                     html += `<div style="font-size: 11px; color: ${eff.color}; font-weight: bold;">${eff.label}</div>`;
                 }
             }
+            
+            // Injury combat modifiers
+            const combatPenalties = player.anatomy.getCombatPenalties();
+            if (combatPenalties.details.length > 0) {
+                html += `<div class="combat-section-label">Combat Modifiers</div>`;
+                html += this.renderCombatPenaltySummary(combatPenalties);
+            }
         }
         
         this.combatPlayerPanel.innerHTML = html;
@@ -1102,6 +1115,13 @@ export class UIManager {
                         html += `<div style="font-size: 11px; color: ${eff.color}; font-weight: bold;">${eff.label}</div>`;
                     }
                 }
+                
+                // Injury combat modifiers
+                const combatPenalties = enemy.anatomy.getCombatPenalties();
+                if (combatPenalties.details.length > 0) {
+                    html += `<div class="combat-section-label">Combat Modifiers</div>`;
+                    html += this.renderCombatPenaltySummary(combatPenalties);
+                }
             }
         }
         
@@ -1126,6 +1146,13 @@ export class UIManager {
                 html += `<div class="combat-feed-entry miss">`;
                 html += `<span style="color: #888;">[${evt.turn}]</span> `;
                 html += `<span style="color: #aaa;">${evt.attackerName}</span> swings at <span style="color: #aaa;">${evt.targetName}</span> with <span style="color: #ccc;">${evt.weaponName}</span> — <span style="color: #666;">MISS</span>`;
+                if (evt.hitChance !== undefined) {
+                    html += ` <span style="color: #555; font-size: 10px;">(${evt.hitChance}% chance)</span>`;
+                }
+                // Show attacker injury penalties on miss
+                if (evt.attackerPenalties) {
+                    html += this.renderCombatPenaltyInline(evt.attackerPenalties);
+                }
                 html += `</div>`;
             } else if (evt.type === 'hit') {
                 const entryClass = evt.killed ? 'kill' : (evt.critical ? 'crit' : 'hit');
@@ -1138,6 +1165,14 @@ export class UIManager {
                 }
                 html += `<span style="color: #aaa;">${evt.attackerName}</span> hits <span style="color: #aaa;">${evt.targetName}</span>'s <span style="color: #fff;">${evt.bodyPart}</span> with <span style="color: #ccc;">${evt.weaponName}</span>`;
                 html += ` — <span style="color: #ff4444; font-weight: bold;">${evt.damage} damage</span>`;
+                if (evt.hitChance !== undefined) {
+                    html += ` <span style="color: #555; font-size: 10px;">(${evt.hitChance}% hit)</span>`;
+                }
+                
+                // Attacker injury penalties inline
+                if (evt.attackerPenalties) {
+                    html += this.renderCombatPenaltyInline(evt.attackerPenalties);
+                }
                 
                 // Armor
                 if (evt.blocked > 0) {
@@ -1155,6 +1190,94 @@ export class UIManager {
                 // Part destroyed
                 if (evt.partDestroyed) {
                     html += `<br><span style="color: #ff8800; font-weight: bold; margin-left: 10px;">${evt.bodyPart} DESTROYED</span>`;
+                }
+                
+                // Kill
+                if (evt.killed) {
+                    html += `<br><span style="color: #ff0000; font-weight: bold; margin-left: 10px;">${evt.targetName} KILLED</span>`;
+                }
+                
+                html += `</div>`;
+            } else if (evt.type === 'ability_miss') {
+                html += `<div class="combat-feed-entry miss">`;
+                html += `<span style="color: #888;">[${evt.turn}]</span> `;
+                html += `<span style="color: #cc88ff; font-weight: bold;">[${evt.abilityName}]</span> `;
+                html += `<span style="color: #aaa;">${evt.attackerName}</span> attempts <span style="color: #cc88ff;">${evt.abilityName}</span> — <span style="color: #666;">MISS</span>`;
+                if (evt.hitChance !== undefined) {
+                    html += ` <span style="color: #555; font-size: 10px;">(${evt.hitChance}% chance)</span>`;
+                }
+                if (!evt.inPreferredStance) {
+                    html += ` <span style="color: #ffaa00; font-size: 10px;">⚠ wrong stance</span>`;
+                }
+                html += `</div>`;
+            } else if (evt.type === 'ability_hit') {
+                const entryClass = evt.killed ? 'kill' : (evt.critical ? 'crit' : 'hit');
+                html += `<div class="combat-feed-entry ${entryClass}">`;
+                html += `<span style="color: #888;">[${evt.turn}]</span> `;
+                html += `<span style="color: #cc88ff; font-weight: bold;">[${evt.abilityName}]</span> `;
+                
+                if (evt.critical) {
+                    html += `<span style="color: #ffff00; font-weight: bold;">CRIT!</span> `;
+                }
+                
+                // Body parts hit
+                if (evt.bodyParts && evt.bodyParts.length > 0) {
+                    const partNames = evt.bodyParts.map(p => p.name).join(', ');
+                    html += `<span style="color: #aaa;">${evt.attackerName}</span> hits <span style="color: #aaa;">${evt.targetName}</span>'s <span style="color: #fff;">${partNames}</span>`;
+                } else {
+                    html += `<span style="color: #aaa;">${evt.attackerName}</span> hits <span style="color: #aaa;">${evt.targetName}</span>`;
+                }
+                html += ` — <span style="color: #ff4444; font-weight: bold;">${evt.damage} damage</span>`;
+                
+                if (!evt.inPreferredStance) {
+                    html += ` <span style="color: #ffaa00; font-size: 10px;">⚠ wrong stance</span>`;
+                }
+                
+                // Armor on each body part
+                if (evt.bodyParts) {
+                    for (const bp of evt.bodyParts) {
+                        if (bp.blocked > 0) {
+                            html += `<br><span style="color: #888; margin-left: 10px;">${bp.armorName} absorbs ${bp.blocked} on ${bp.name}</span>`;
+                        }
+                    }
+                }
+                
+                // Wounds
+                if (evt.woundsInflicted && evt.woundsInflicted.length > 0) {
+                    for (const w of evt.woundsInflicted) {
+                        const wColor = this.getWoundColor(w.type);
+                        html += `<br><span style="color: ${wColor}; margin-left: 10px;">Inflicts ${w.type} on ${w.part} (${w.severity.toFixed(1)}/turn bleed)</span>`;
+                    }
+                }
+                
+                // Special effects
+                if (evt.specialEffects) {
+                    for (const eff of evt.specialEffects) {
+                        if (eff.type === 'stun') {
+                            html += `<br><span style="color: #ffff00; margin-left: 10px; font-weight: bold;">⚡ STUNNED for ${eff.turns} turn(s)</span>`;
+                        }
+                        if (eff.type === 'guard_break') {
+                            html += `<br><span style="color: #ff8800; margin-left: 10px; font-weight: bold;">🛡 Guard broken for ${eff.turns} turn(s)</span>`;
+                        }
+                        if (eff.type === 'disarm' || eff.type === 'weapon_dropped') {
+                            html += `<br><span style="color: #ff4400; margin-left: 10px; font-weight: bold;">⚔ DISARMED${eff.weaponName ? ` — ${eff.weaponName} dropped` : ''}</span>`;
+                        }
+                        if (eff.type === 'grapple') {
+                            html += `<br><span style="color: #cc88ff; margin-left: 10px; font-weight: bold;">🤼 Grappling for ${eff.turns} turn(s)</span>`;
+                        }
+                        if (eff.type === 'knock_prone') {
+                            html += `<br><span style="color: #ff8844; margin-left: 10px;">Knocked ${eff.target === 'self' ? 'self' : 'target'} prone</span>`;
+                        }
+                        if (eff.type === 'part_destroyed') {
+                            html += `<br><span style="color: #ff8800; font-weight: bold; margin-left: 10px;">${eff.part} DESTROYED</span>`;
+                        }
+                        if (eff.type === 'self_damage') {
+                            html += `<br><span style="color: #ff8844; margin-left: 10px;">Self-damage: ${eff.damage} to ${eff.part}</span>`;
+                        }
+                        if (eff.type === 'arterial_bleed') {
+                            html += `<br><span style="color: #ff0000; margin-left: 10px; font-weight: bold;">🩸 ARTERIAL BLEEDING</span>`;
+                        }
+                    }
                 }
                 
                 // Kill
@@ -1198,6 +1321,51 @@ export class UIManager {
             }
         });
         return damaged;
+    }
+    
+    /**
+     * Render a compact combat penalty summary for the overlay panels.
+     * Shows each injury source and its effects, plus a totals line.
+     */
+    renderCombatPenaltySummary(penalties) {
+        let html = '';
+        for (const detail of penalties.details) {
+            let parts = [];
+            if (detail.hitMod) parts.push(`Hit ${detail.hitMod > 0 ? '+' : ''}${detail.hitMod}%`);
+            if (detail.critMod) parts.push(`Crit ${detail.critMod > 0 ? '+' : ''}${detail.critMod}%`);
+            if (detail.damageMod) parts.push(`Dmg ${detail.damageMod > 0 ? '+' : ''}${detail.damageMod}%`);
+            if (detail.dodgePenalty) parts.push(`Dodge ${-detail.dodgePenalty}%`);
+            html += `<div style="font-size: 10px; color: ${detail.color}; margin-bottom: 1px;">⚠ ${detail.label}: ${parts.join(', ')}</div>`;
+        }
+        // Totals line
+        const totalHit = penalties.hitChanceMod;
+        const totalCrit = penalties.critChanceMod;
+        const totalDmg = Math.round((penalties.damageMod - 1) * 100);
+        const totalDodge = penalties.dodgeMod;
+        let totals = [];
+        if (totalHit !== 0) totals.push(`Hit ${totalHit > 0 ? '+' : ''}${totalHit}%`);
+        if (totalCrit !== 0) totals.push(`Crit ${totalCrit > 0 ? '+' : ''}${totalCrit}%`);
+        if (totalDmg !== 0) totals.push(`Dmg ${totalDmg > 0 ? '+' : ''}${totalDmg}%`);
+        if (totalDodge !== 0) totals.push(`Dodge ${-totalDodge}%`);
+        if (totals.length > 0) {
+            html += `<div style="font-size: 10px; color: #ff6666; margin-top: 2px; border-top: 1px solid #333; padding-top: 2px; font-weight: bold;">Total: ${totals.join(', ')}</div>`;
+        }
+        return html;
+    }
+    
+    /**
+     * Render a compact inline penalty note for combat feed entries.
+     * Returns a short string like "(-15% hit, -30% dmg from injuries)"
+     */
+    renderCombatPenaltyInline(penalties) {
+        if (!penalties || penalties.details.length === 0) return '';
+        let parts = [];
+        if (penalties.hitChanceMod !== 0) parts.push(`${penalties.hitChanceMod > 0 ? '+' : ''}${penalties.hitChanceMod}% hit`);
+        if (penalties.critChanceMod !== 0) parts.push(`${penalties.critChanceMod > 0 ? '+' : ''}${penalties.critChanceMod}% crit`);
+        const dmgPct = Math.round((penalties.damageMod - 1) * 100);
+        if (dmgPct !== 0) parts.push(`${dmgPct > 0 ? '+' : ''}${dmgPct}% dmg`);
+        if (parts.length === 0) return '';
+        return `<span style="color: #ff8844; font-size: 10px;"> [injuries: ${parts.join(', ')}]</span>`;
     }
     
     toggleInventoryScreen() {
@@ -2676,12 +2844,324 @@ export class UIManager {
             closedAny = true;
         }
         
+        if (this.abilityPanelModal && !this.abilityPanelModal.classList.contains('hidden')) {
+            this.abilityPanelModal.classList.add('hidden');
+            if (this._abilityKeyHandler) {
+                document.removeEventListener('keydown', this._abilityKeyHandler);
+                this._abilityKeyHandler = null;
+            }
+            closedAny = true;
+        }
+        
         if (this.combatOverlayVisible) {
             this.hideCombatOverlay();
             closedAny = true;
         }
         
         return closedAny;
+    }
+    
+    toggleAbilityPanel() {
+        if (!this.abilityPanelModal) return;
+        
+        if (this.abilityPanelModal.classList.contains('hidden')) {
+            this.showAbilityPanel();
+            this.abilityPanelModal.classList.remove('hidden');
+        } else {
+            this.abilityPanelModal.classList.add('hidden');
+            // Clean up number key handler
+            if (this._abilityKeyHandler) {
+                document.removeEventListener('keydown', this._abilityKeyHandler);
+                this._abilityKeyHandler = null;
+            }
+        }
+    }
+    
+    showAbilityPanel() {
+        if (!this.game.player || !this.game.abilitySystem) return;
+        
+        const content = document.getElementById('ability-panel-content');
+        const player = this.game.player;
+        const abilitySys = this.game.abilitySystem;
+        const abilities = abilitySys.getAvailableAbilities(player);
+        const weapon = abilitySys.getEntityWeapon(player);
+        const weaponType = abilitySys.getWeaponType(weapon);
+        const weaponName = weapon ? weapon.name : 'Bare Fists';
+        const stance = player.getStance();
+        const stanceName = stance ? stance.name : 'Aggressive';
+        const stanceColor = stance ? stance.color : '#ff4444';
+        
+        // Check if in combat (any engaged enemies)
+        const inCombat = this.game.combatSystem && this.game.combatSystem.getEngagedEnemies().length > 0;
+        
+        let html = '';
+        
+        // Header: weapon + stance info
+        html += `<div style="margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #333;">`;
+        html += `<div style="font-size: 14px; color: #aaa;">Weapon: <span style="color: #fff; font-weight: bold;">${weaponName}</span> <span style="color: #888;">(${weaponType})</span></div>`;
+        html += `<div style="font-size: 14px; color: #aaa;">Stance: <span style="color: ${stanceColor}; font-weight: bold;">${stanceName}</span> <span style="color: #888;">[T to change]</span></div>`;
+        if (!inCombat) {
+            html += `<div style="font-size: 12px; color: #888; margin-top: 4px;">Not in combat — abilities can only be used when engaged with an enemy.</div>`;
+        }
+        html += `</div>`;
+        
+        if (abilities.length === 0) {
+            html += `<div style="color: #888; font-style: italic;">No abilities available for ${weaponType} weapons.</div>`;
+        }
+        
+        // Render each ability
+        for (let i = 0; i < abilities.length; i++) {
+            const ab = abilities[i];
+            const locked = !ab.unlocked;
+            const onCooldown = ab.onCooldown;
+            const opacity = locked ? '0.45' : (onCooldown ? '0.6' : '1.0');
+            const borderColor = locked ? '#333' : (onCooldown ? '#555' : (ab.inPreferredStance ? '#44ff44' : '#ffaa00'));
+            const bgColor = locked ? '#111' : (onCooldown ? '#151520' : '#1a1a2a');
+            
+            html += `<div style="opacity: ${opacity}; border: 1px solid ${borderColor}; background: ${bgColor}; padding: 8px; margin-bottom: 6px; border-radius: 4px;">`;
+            
+            // Title row: name + stance tag + AP cost
+            html += `<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">`;
+            html += `<div>`;
+            html += `<span style="color: #fff; font-weight: bold; font-size: 14px;">${ab.name}</span> `;
+            
+            // Stance tag
+            const stanceTagColor = ab.inPreferredStance ? '#44ff44' : '#ffaa00';
+            const stanceTagLabel = ab.inPreferredStance ? `✓ ${ab.preferredStance}` : `⚠ best in ${ab.preferredStance}`;
+            html += `<span style="color: ${stanceTagColor}; font-size: 11px; border: 1px solid ${stanceTagColor}; padding: 1px 4px; border-radius: 3px;">${stanceTagLabel}</span>`;
+            html += `</div>`;
+            
+            // AP cost + cooldown info
+            if (onCooldown) {
+                html += `<span style="font-size: 12px;"><span style="color: #ffcc00; font-weight: bold;">${ab.actionCost} AP</span> <span style="color: #ff6666; font-weight: bold;">CD: ${ab.cooldownRemaining}t</span></span>`;
+            } else {
+                html += `<span style="font-size: 12px;"><span style="color: #ffcc00; font-weight: bold;">${ab.actionCost} AP</span> <span style="color: #888;">${ab.cooldown}t CD</span></span>`;
+            }
+            html += `</div>`;
+            
+            // Description
+            html += `<div style="color: #aaa; font-size: 12px; margin-bottom: 6px;">${ab.description}</div>`;
+            
+            // Stat requirements
+            html += `<div style="font-size: 11px; margin-bottom: 4px;">`;
+            html += `<span style="color: #888;">Requires: </span>`;
+            const statNames = { strength: 'STR', agility: 'AGI', perception: 'PER', endurance: 'END', intelligence: 'INT' };
+            const reqEntries = Object.entries(ab.statRequirements);
+            for (let j = 0; j < reqEntries.length; j++) {
+                const [stat, val] = reqEntries[j];
+                const playerVal = player.stats[stat] || 0;
+                const met = playerVal >= val;
+                const color = met ? '#44ff44' : '#ff4444';
+                const label = statNames[stat] || stat.toUpperCase();
+                html += `<span style="color: ${color};">${label} ${val}</span>`;
+                if (!met) html += ` <span style="color: #ff4444; font-size: 10px;">(${playerVal})</span>`;
+                if (j < reqEntries.length - 1) html += `, `;
+            }
+            html += `</div>`;
+            
+            // Stance modifiers preview
+            if (!locked) {
+                const mods = ab.stanceMods;
+                let modParts = [];
+                if (mods.hitMod) modParts.push(`Hit ${mods.hitMod > 0 ? '+' : ''}${mods.hitMod}%`);
+                if (mods.critMod) modParts.push(`Crit ${mods.critMod > 0 ? '+' : ''}${mods.critMod}%`);
+                if (mods.damageMod && mods.damageMod !== 1.0) {
+                    const pct = Math.round((mods.damageMod - 1) * 100);
+                    modParts.push(`Dmg ${pct > 0 ? '+' : ''}${pct}%`);
+                }
+                if (mods.bleedMod && mods.bleedMod !== 1.0) {
+                    const pct = Math.round((mods.bleedMod - 1) * 100);
+                    modParts.push(`Bleed ${pct > 0 ? '+' : ''}${pct}%`);
+                }
+                if (mods.stunDurationBonus) modParts.push(`Stun +${mods.stunDurationBonus} turn`);
+                if (mods.effectDurationBonus) modParts.push(`Duration +${mods.effectDurationBonus} turn`);
+                
+                if (modParts.length > 0) {
+                    const modColor = ab.inPreferredStance ? '#44ff44' : '#ff8844';
+                    const modLabel = ab.inPreferredStance ? 'Stance bonus' : 'Wrong stance penalty';
+                    html += `<div style="font-size: 11px; color: ${modColor};">${modLabel}: ${modParts.join(', ')}</div>`;
+                }
+            }
+            
+            // Use button (only if unlocked, not on cooldown, and in combat)
+            if (!locked && onCooldown) {
+                html += `<div style="font-size: 11px; color: #ff6666; margin-top: 4px; font-style: italic;">On cooldown — ${ab.cooldownRemaining} turn(s) remaining</div>`;
+            } else if (!locked && inCombat) {
+                const needsTarget = ab.effects.targetRegion === 'choose_limb' || ab.effects.targetRegion === 'choose_leg';
+                if (needsTarget) {
+                    html += `<div style="margin-top: 6px; display: flex; gap: 4px; flex-wrap: wrap;">`;
+                    if (ab.effects.targetRegion === 'choose_limb') {
+                        const limbs = [
+                            { id: 'leftArm', label: 'L.Arm' }, { id: 'rightArm', label: 'R.Arm' },
+                            { id: 'leftLeg', label: 'L.Leg' }, { id: 'rightLeg', label: 'R.Leg' }
+                        ];
+                        for (const limb of limbs) {
+                            html += `<button class="ability-use-btn" data-ability="${ab.id}" data-limb="${limb.id}" style="background: #333; color: #fff; border: 1px solid #555; padding: 3px 8px; cursor: pointer; font-size: 11px; border-radius: 3px;">${limb.label}</button>`;
+                        }
+                    } else {
+                        const legs = [{ id: 'leftLeg', label: 'L.Leg' }, { id: 'rightLeg', label: 'R.Leg' }];
+                        for (const leg of legs) {
+                            html += `<button class="ability-use-btn" data-ability="${ab.id}" data-limb="${leg.id}" style="background: #333; color: #fff; border: 1px solid #555; padding: 3px 8px; cursor: pointer; font-size: 11px; border-radius: 3px;">${leg.label}</button>`;
+                        }
+                    }
+                    html += `</div>`;
+                } else {
+                    html += `<button class="ability-use-btn" data-ability="${ab.id}" style="margin-top: 6px; background: #224422; color: #44ff44; border: 1px solid #44ff44; padding: 4px 12px; cursor: pointer; font-size: 12px; font-weight: bold; border-radius: 3px;">Use [${i + 1}]</button>`;
+                }
+            } else if (locked) {
+                html += `<div style="font-size: 11px; color: #ff4444; margin-top: 4px; font-style: italic;">Locked — stat requirements not met</div>`;
+            }
+            
+            html += `</div>`;
+        }
+        
+        content.innerHTML = html;
+        
+        // Attach event listeners to use buttons
+        const buttons = content.querySelectorAll('.ability-use-btn');
+        for (const btn of buttons) {
+            btn.addEventListener('click', (e) => {
+                const abilityId = e.target.dataset.ability;
+                const targetLimb = e.target.dataset.limb || null;
+                this.useAbility(abilityId, targetLimb);
+            });
+        }
+        
+        // Number key shortcuts for abilities (1-5)
+        this._abilityKeyHandler = (e) => {
+            const num = parseInt(e.key);
+            if (num >= 1 && num <= abilities.length) {
+                const ab = abilities[num - 1];
+                if (ab.unlocked && inCombat && !ab.onCooldown) {
+                    // If needs target selection, skip shortcut (must click)
+                    if (ab.effects.targetRegion !== 'choose_limb' && ab.effects.targetRegion !== 'choose_leg') {
+                        this.useAbility(ab.id, null);
+                    }
+                }
+            }
+        };
+        document.addEventListener('keydown', this._abilityKeyHandler);
+    }
+    
+    useAbility(abilityId, targetLimb) {
+        if (!this.game.player || !this.game.abilitySystem) return;
+        
+        const enemies = this.game.combatSystem.getEngagedEnemies();
+        if (enemies.length === 0) {
+            this.log('No enemies in range.', 'warning');
+            return;
+        }
+        
+        // Target the closest engaged enemy
+        const target = enemies[0];
+        const options = {};
+        if (targetLimb) options.targetLimb = targetLimb;
+        
+        const result = this.game.abilitySystem.resolveAbility(this.game.player, target, abilityId, options);
+        
+        if (!result.success) {
+            this.log(`Cannot use ability: ${result.reason}`, 'warning');
+            return;
+        }
+        
+        // Log the ability use
+        if (result.hit) {
+            let msg = `Used ${result.abilityName}!`;
+            if (result.damage > 0) {
+                const parts = result.bodyParts ? result.bodyParts.map(p => p.name).join(', ') : '';
+                msg += ` ${result.damage} damage${parts ? ' to ' + parts : ''}.`;
+            }
+            if (result.specialEffects) {
+                for (const eff of result.specialEffects) {
+                    if (eff.type === 'stun') msg += ` STUNNED ${eff.turns}t — skips next turn!`;
+                    if (eff.type === 'guard_break') msg += ` GUARD BROKEN ${eff.turns}t — halved arm block!`;
+                    if (eff.type === 'disarm') msg += ` DISARMED!`;
+                    if (eff.type === 'weapon_dropped') msg += ` ${eff.weaponName} dropped on ground!`;
+                    if (eff.type === 'grapple') msg += ` GRAPPLED ${eff.turns}t — suffocating!`;
+                    if (eff.type === 'knock_prone') {
+                        if (eff.target === 'self') msg += ` You fall prone (skip turn, +15% to be hit).`;
+                        else msg += ` PRONE ${eff.turns}t — skips turn, easier to hit!`;
+                    }
+                    if (eff.type === 'part_destroyed') msg += ` ${eff.part} DESTROYED!`;
+                    if (eff.type === 'self_damage') msg += ` Self-damage: ${eff.damage} to ${eff.part}.`;
+                    if (eff.type === 'arterial_bleed') msg += ` ARTERIAL BLEED — rapid blood loss!`;
+                }
+            }
+            this.log(msg, 'combat');
+        } else {
+            this.log(`${result.abilityName} missed! (ability on cooldown for ${result.actionCost ? Math.ceil(result.actionCost / 100) : '?'}t)`, 'combat');
+        }
+        
+        // Show persistent popup with result summary
+        this.showAbilityPopup(result);
+        
+        // Close the ability panel
+        this.abilityPanelModal.classList.add('hidden');
+        
+        // Remove number key handler
+        if (this._abilityKeyHandler) {
+            document.removeEventListener('keydown', this._abilityKeyHandler);
+            this._abilityKeyHandler = null;
+        }
+        
+        // Process the turn with the ability's action cost
+        this.game.processTurn({ type: 'use_ability', result });
+    }
+    
+    /**
+     * Show a persistent popup summarizing the ability result.
+     * Stays visible until clearAbilityPopup() is called (on next player action).
+     */
+    showAbilityPopup(result) {
+        if (!this.abilityPopup) return;
+        
+        let html = '';
+        html += `<span class="popup-ability-name">${result.abilityName}</span> — `;
+        
+        if (result.hit) {
+            html += `<span class="popup-hit">HIT</span>`;
+            if (result.damage > 0) {
+                html += ` <span class="popup-damage">${result.damage} dmg</span>`;
+            }
+            if (result.bodyParts && result.bodyParts.length > 0) {
+                const parts = result.bodyParts.map(p => p.name).join(', ');
+                html += ` → ${parts}`;
+            }
+            if (result.specialEffects && result.specialEffects.length > 0) {
+                const effects = [];
+                for (const eff of result.specialEffects) {
+                    if (eff.type === 'stun') effects.push(`Stunned ${eff.turns}t (skip turn)`);
+                    if (eff.type === 'guard_break') effects.push(`Guard broken ${eff.turns}t (halved block)`);
+                    if (eff.type === 'disarm') effects.push('Disarmed!');
+                    if (eff.type === 'weapon_dropped') effects.push(`${eff.weaponName} dropped`);
+                    if (eff.type === 'grapple') effects.push(`Grapple ${eff.turns}t (suffocating)`);
+                    if (eff.type === 'knock_prone') {
+                        if (eff.target === 'self') effects.push('You: prone');
+                        else effects.push(`Prone ${eff.turns}t (skip turn, +hit)`);
+                    }
+                    if (eff.type === 'part_destroyed') effects.push(`${eff.part} DESTROYED`);
+                    if (eff.type === 'self_damage') effects.push(`Self: -${eff.damage}`);
+                    if (eff.type === 'arterial_bleed') effects.push('Arterial bleed!');
+                }
+                if (effects.length > 0) {
+                    html += ` | <span class="popup-effect">${effects.join(', ')}</span>`;
+                }
+            }
+        } else {
+            html += `<span class="popup-miss">MISS</span>`;
+        }
+        
+        this.abilityPopup.innerHTML = html;
+        this.abilityPopup.classList.remove('hidden');
+    }
+    
+    /**
+     * Clear the ability popup (called on next player action).
+     */
+    clearAbilityPopup() {
+        if (this.abilityPopup) {
+            this.abilityPopup.classList.add('hidden');
+        }
     }
     
     toggleHelpScreen() {
@@ -2727,6 +3207,7 @@ export class UIManager {
         html += '<div class="stat-line"><span class="stat-label">C:</span> <span class="stat-value">Character sheet — stats, anatomy, wounds</span></div>';
         html += '<div class="stat-line"><span class="stat-label">V:</span> <span class="stat-value">Workshop — craft and disassemble</span></div>';
         html += '<div class="stat-line"><span class="stat-label">T:</span> <span class="stat-value">Cycle combat stance</span></div>';
+        html += '<div class="stat-line"><span class="stat-label">Q:</span> <span class="stat-value">Combat abilities panel</span></div>';
         html += '<div class="stat-line"><span class="stat-label">B:</span> <span class="stat-value">Toggle combat detail overlay</span></div>';
         html += '<div class="stat-line"><span class="stat-label">?:</span> <span class="stat-value">This help screen</span></div>';
         html += '</div>';

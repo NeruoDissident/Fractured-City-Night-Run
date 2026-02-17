@@ -29,7 +29,7 @@ export class TimeSystem {
         // Time tracking
         this.totalTurns = 0;
         this.turnsPerHour = 60;
-        this.startHour = 22; // Game starts at 10 PM (night) - adjust later
+        this.startHour = 8; // Game starts at 8 AM (morning) - just before peak daylight
         
         // Ambient light curve (indexed by hour 0-23)
         this.ambientCurve = [

@@ -158,6 +158,16 @@ export class NPC extends Entity {
     
     // ─── Main AI dispatcher — returns energy cost of action taken ───────────
     executeAI() {
+        // Stunned entities skip their turn
+        if (this.game.abilitySystem && this.game.abilitySystem.isStunned(this)) {
+            return this.profile.moveCost; // consume energy but do nothing
+        }
+        
+        // Prone entities skip their turn (getting up)
+        if (this.game.abilitySystem && this.game.abilitySystem.hasEffect(this, 'prone')) {
+            return this.profile.moveCost;
+        }
+        
         // Check morale first — override everything if fleeing
         if (this.shouldFlee()) {
             this.detectionState = DETECTION_STATE.FLEEING;

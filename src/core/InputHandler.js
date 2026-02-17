@@ -85,6 +85,14 @@ export class InputHandler {
             return;
         }
         
+        if (e.key === 'q' || e.key === 'Q') {
+            e.preventDefault();
+            if (this.game.gameState === 'playing' && !this.game.inspectMode) {
+                this.game.ui.toggleAbilityPanel();
+            }
+            return;
+        }
+        
         if (e.key === 'b' || e.key === 'B') {
             e.preventDefault();
             this.game.ui.toggleCombatOverlay();

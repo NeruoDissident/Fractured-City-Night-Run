@@ -548,6 +548,125 @@ export class Anatomy {
         return Math.min(1.0, penalty);
     }
     
+    /**
+     * Get all combat-relevant injury penalties for this entity.
+     * Returns an object with modifier values and human-readable breakdown.
+     * Used by CombatSystem and combat overlay UI.
+     */
+    getCombatPenalties() {
+        const penalties = {
+            hitChanceMod: 0,      // Added to hit chance (negative = penalty)
+            critChanceMod: 0,     // Added to crit chance (negative = penalty)
+            damageMod: 1.0,       // Multiplied with damage (< 1.0 = penalty)
+            dodgeMod: 0,          // Added to target's dodge (negative = easier to hit)
+            details: []           // Human-readable penalty descriptions
+        };
+        
+        // ── Arm/hand damage reduces hit chance and damage ──
+        const leftArm = this.parts.leftArm.arm;
+        const rightArm = this.parts.rightArm.arm;
+        const leftHand = this.parts.leftArm.hand;
+        const rightHand = this.parts.rightArm.hand;
+        
+        // Arm condition: average HP% of both arms
+        const armCondition = ((leftArm.hp / leftArm.maxHP) + (rightArm.hp / rightArm.maxHP)) / 2;
+        // Hand condition: average HP% of both hands
+        const handCondition = ((leftHand.hp / leftHand.maxHP) + (rightHand.hp / rightHand.maxHP)) / 2;
+        
+        // Damaged arms reduce hit chance (up to -15%) and damage (down to 0.5x)
+        if (armCondition < 1.0) {
+            const armHitPenalty = Math.round((1.0 - armCondition) * -15);
+            const armDamageMod = 0.5 + (armCondition * 0.5); // 1.0 at full, 0.5 at destroyed
+            penalties.hitChanceMod += armHitPenalty;
+            penalties.damageMod *= armDamageMod;
+            if (armHitPenalty !== 0) {
+                penalties.details.push({ label: 'Arm damage', hitMod: armHitPenalty, damageMod: Math.round((armDamageMod - 1) * 100), color: '#ff8844' });
+            }
+        }
+        
+        // Damaged hands reduce hit chance (up to -10%) and damage (down to 0.7x)
+        if (handCondition < 1.0) {
+            const handHitPenalty = Math.round((1.0 - handCondition) * -10);
+            const handDamageMod = 0.7 + (handCondition * 0.3); // 1.0 at full, 0.7 at destroyed
+            penalties.hitChanceMod += handHitPenalty;
+            penalties.damageMod *= handDamageMod;
+            if (handHitPenalty !== 0) {
+                penalties.details.push({ label: 'Hand damage', hitMod: handHitPenalty, damageMod: Math.round((handDamageMod - 1) * 100), color: '#ff8844' });
+            }
+        }
+        
+        // ── Eye damage reduces crit chance ──
+        const leftEye = this.parts.head.eyes[0];
+        const rightEye = this.parts.head.eyes[1];
+        const eyeCondition = ((leftEye.hp / leftEye.maxHP) + (rightEye.hp / rightEye.maxHP)) / 2;
+        if (eyeCondition < 1.0) {
+            const eyeCritPenalty = Math.round((1.0 - eyeCondition) * -8);
+            penalties.critChanceMod += eyeCritPenalty;
+            if (eyeCritPenalty !== 0) {
+                penalties.details.push({ label: 'Eye damage', critMod: eyeCritPenalty, color: '#ff6666' });
+            }
+        }
+        
+        // ── Blood loss reduces all combat effectiveness ──
+        const bloodPct = this.getBloodPercent();
+        if (bloodPct <= BLOOD_THRESHOLDS.critical) {
+            penalties.hitChanceMod += -20;
+            penalties.critChanceMod += -5;
+            penalties.damageMod *= 0.6;
+            penalties.dodgeMod += 15; // easier to hit when critical
+            penalties.details.push({ label: 'Critical blood loss', hitMod: -20, critMod: -5, damageMod: -40, dodgePenalty: 15, color: '#ff4444' });
+        } else if (bloodPct <= BLOOD_THRESHOLDS.woozy) {
+            penalties.hitChanceMod += -10;
+            penalties.critChanceMod += -3;
+            penalties.damageMod *= 0.8;
+            penalties.dodgeMod += 8;
+            penalties.details.push({ label: 'Woozy (blood loss)', hitMod: -10, critMod: -3, damageMod: -20, dodgePenalty: 8, color: '#ffaa00' });
+        } else if (bloodPct <= BLOOD_THRESHOLDS.lightheaded) {
+            penalties.hitChanceMod += -5;
+            penalties.critChanceMod += -1;
+            penalties.damageMod *= 0.9;
+            penalties.dodgeMod += 3;
+            penalties.details.push({ label: 'Lightheaded', hitMod: -5, critMod: -1, damageMod: -10, dodgePenalty: 3, color: '#aaff00' });
+        }
+        
+        // ── Shock severely impairs combat ──
+        if (this.inShock) {
+            penalties.hitChanceMod += -20;
+            penalties.critChanceMod += -5;
+            penalties.damageMod *= 0.5;
+            penalties.dodgeMod += 20;
+            penalties.details.push({ label: 'SHOCK', hitMod: -20, critMod: -5, damageMod: -50, dodgePenalty: 20, color: '#ff00ff' });
+        }
+        
+        // ── Leg damage reduces dodge (easier to hit) ──
+        const leftLeg = this.parts.leftLeg.leg;
+        const rightLeg = this.parts.rightLeg.leg;
+        const leftFoot = this.parts.leftLeg.foot;
+        const rightFoot = this.parts.rightLeg.foot;
+        const legCondition = ((leftLeg.hp / leftLeg.maxHP) + (rightLeg.hp / rightLeg.maxHP)) / 2;
+        const footCondition = ((leftFoot.hp / leftFoot.maxHP) + (rightFoot.hp / rightFoot.maxHP)) / 2;
+        
+        if (legCondition < 1.0) {
+            const legDodgePenalty = Math.round((1.0 - legCondition) * 15);
+            penalties.dodgeMod += legDodgePenalty;
+            if (legDodgePenalty > 0) {
+                penalties.details.push({ label: 'Leg damage', dodgePenalty: legDodgePenalty, color: '#ff8844' });
+            }
+        }
+        if (footCondition < 1.0) {
+            const footDodgePenalty = Math.round((1.0 - footCondition) * 8);
+            penalties.dodgeMod += footDodgePenalty;
+            if (footDodgePenalty > 0) {
+                penalties.details.push({ label: 'Foot damage', dodgePenalty: footDodgePenalty, color: '#ff8844' });
+            }
+        }
+        
+        // Clamp damage mod
+        penalties.damageMod = Math.max(0.2, penalties.damageMod);
+        
+        return penalties;
+    }
+    
     installCybernetic(cyberneticData, slot) {
         return true;
     }
