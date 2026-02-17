@@ -11,67 +11,439 @@ This document details how every system in Fractured City works and how they inte
 ### Player System
 **File:** `src/entities/Player.js`
 
-**Purpose:** Manages player character state, stats, inventory, and equipment.
+**Purpose:** Manages player character state, stats, inventory, equipment, and combat.
 
 **Key Properties:**
-- `hp` / `maxHP` - Health points
-- `hunger` / `maxHunger` - Hunger level (0-100)
-- `thirst` / `maxThirst` - Thirst level (0-100)
-- `stats` - Core attributes (strength, agility, endurance, intelligence, perception)
+- `anatomy` - Anatomy instance (replaces HP — see Anatomy System)
+- `hunger` / `maxHunger` - Hunger level (0-100), drains 0.1/turn
+- `thirst` / `maxThirst` - Thirst level (0-100), drains 0.2/turn
+- `stats` - Core attributes: strength, agility, endurance, intelligence, perception (default 10)
 - `inventory` - Array of carried items
-- `equipment` - Equipped items by slot
-- `traitEffects` - Active trait modifiers
-- `statusEffects` - Active temporary effects (healing, sickness, etc.)
+- `equipment` - Equipped items by slot (head, torso, legs, back, leftHand, rightHand)
+- `carrying` - Items held in hands (leftHand, rightHand) — separate from equipment
+- `traitEffects` - Active trait modifiers from character creation
+- `statusEffects` - Active temporary effects (heal, sickness)
+- `facing` - Direction player faces (north/south/east/west/ne/nw/se/sw) — used for flashlight cone
+- `exploreMode` - Debug toggle (F key) — disables hunger/thirst drain
+
+**Movement Modes** (M key cycles):
+- `walk` — actionCost: 100, soundVolume: 3
+- `run` — actionCost: 75, soundVolume: 8
+- `crouch` — actionCost: 125, soundVolume: 1
+- `prone` — actionCost: 150, soundVolume: 0
+
+**Combat Stances** (T key cycles):
+- `aggressive` — +25% damage, +5% hit, +3% crit, +20% incoming damage, +30% bleed, 50% intercept, off-balance on miss
+- `defensive` — -30% damage, -5% hit, -2% crit, -30% incoming damage, -40% bleed, 150% intercept, can disengage without opportunity attack
+- `opportunistic` — normal everything, bonus crit on already-wounded parts
 
 **Key Methods:**
-- `getMaxHP()` - Calculates max HP from endurance + trait modifiers
-- `getMaxCarryWeight()` - Calculates carry capacity from strength + trait modifiers
-- `processStatusEffects()` - Processes hunger/thirst drain and active effects each turn
-- `addStatusEffect()` - Adds temporary effect (heal-over-time, sickness, etc.)
+- `getMaxCarryWeight()` - Base 10000 + (STR × 1000), modified by `carryMod` trait
+- `processStatusEffects()` - Processes hunger/thirst drain, starvation/dehydration organ damage, anatomy turn, heal/sickness effects
+- `attack(target)` - Gets active weapon via EquipmentSystem, calls `combatSystem.resolveAttack()`
+- `isDead()` - Delegates to `anatomy.isDead()`
+- `cycleCombatStance()` - Cycles aggressive → defensive → opportunistic
 
-**Trait Integration Points:**
-- `weakConstitution` - Reduces max HP by 10
-- `packRat` - Increases carry capacity by 20%
-- `slowHealer` - Reduces healing effectiveness by 50%
-- `ironStomach` - Reduces food poisoning by 50%
+**Death is anatomy-based** — no HP bar. Legacy `hp=999` kept for compatibility only.
+
+**Starvation path:** hunger=0 → damages stomach → stomach destroyed → damages liver → organ failure cascade → brain death
+**Dehydration path:** thirst=0 → damages kidneys → both kidneys destroyed → damages brain directly
+
+**Opportunity Attacks:** Moving away from adjacent enemies triggers free attacks unless in defensive stance (`canDisengage: true`).
+
+**Trait Integration:**
+- `packRat` - +20% carry capacity via `carryMod`
+- `ironStomach` - 50% poison resistance via `poisonResist`
+- `slowHealer` - -50% healing via `healingMod`
 
 ---
 
 ### Anatomy System
 **File:** `src/entities/Anatomy.js`
 
-**Purpose:** Manages detailed body part system with HP, functionality, and cybernetics.
+**Purpose:** Full body simulation replacing the HP bar. Every entity has blood, organs, and limbs. Death comes from physiological causes, not an HP counter.
 
 **Key Properties:**
-- `parts` - Hierarchical body structure (head, torso, arms, legs)
-- Each part has: `hp`, `maxHP`, `functional`, `cybernetic`
+- `parts` - Hierarchical body structure (head, torso, leftArm, rightArm, leftLeg, rightLeg)
+- `blood` / `maxBlood` - Blood level (100 = full), wounds drain blood per turn
+- `wounds` - Array of active wounds, each bleeding at its own rate
+- `painHistory` - Array of `{turn, amount}` for shock tracking
+- `suffocationCounter` - Turns without functional lungs (death at `SUFFOCATION_TURNS = 8`)
+- `causeOfDeath` - String describing how the entity died (null while alive)
+- `regenCooldown` - Turns before natural blood regeneration kicks in
 
-**Key Methods:**
-- `getVisionRange()` - Calculates vision based on eye functionality + traits
-- `getHearingRange()` - Calculates hearing based on ear functionality
-- `canUseHands()` - Checks if hands are functional
-- `takeDamage()` - Applies damage to specific body parts
+**Body Part Structure:**
+Each part has: `hp`, `maxHP`, `functional`, `cybernetic`, `lastDamageType`
 
-**Trait Integration Points:**
-- `nightVision` - Adds +2 to vision range
-- `nearSighted` - Subtracts -2 from vision range
+```
+head:
+  brain (hp:10, vital)
+  jaw (hp:15)
+  eyes[0,1] (hp:5 each)
+  ears[0,1] (hp:5 each)
+torso:
+  heart (hp:15, vital)
+  lungs[0,1] (hp:12 each, vital)
+  stomach (hp:15, vital)
+  liver (hp:12, vital)
+  kidneys[0,1] (hp:10 each, vital)
+leftArm / rightArm:
+  arm (hp:20)
+  hand (hp:10)
+leftLeg / rightLeg:
+  leg (hp:25)
+  foot (hp:10)
+```
+
+**Blood Loss Thresholds (`BLOOD_THRESHOLDS`):**
+| Range | Status | Effect |
+|-------|--------|--------|
+| 80-100% | Healthy | No effects |
+| 60-80% | Lightheaded | Minor penalties |
+| 40-60% | Woozy | Significant penalties, vision dims |
+| 20-40% | Critical | Near unconscious, severe penalties |
+| 10-20% | Unconscious | Passed out, helpless |
+| 0-10% | Dead | Death from exsanguination |
+
+**Wound Types & Clotting:**
+| Type | Clot Delay (turns) | Clot Speed (severity/turn) | Source |
+|------|-------------------|---------------------------|--------|
+| arterial | 10 | 0.02 | Sharp hits on vital organs |
+| internal | 8 | 0.03 | Blunt crits on vitals |
+| puncture | 6 | 0.05 | Stab wounds on vitals |
+| laceration | 3 | 0.08 | Sharp weapon hits |
+| cut | 3 | 0.10 | Light sharp/default |
+
+Each wound has: `{ type, bodyPart, severity, bleedRate, turnCreated, clotDelay, clotSpeed }`
+
+**Death Causes:**
+1. **Brain destruction** — instant death
+2. **Blood loss** — bleeding out below 10% blood
+3. **Cardiac arrest** — heart destroyed → massive internal bleed (5.0 severity) → rapid blood drain
+4. **Suffocation** — both lungs destroyed → death in 8 turns
+5. **Organ failure cascade** — liver + both kidneys destroyed → toxin buildup damages brain (1 hp/turn)
+6. **Shock** — 80+ pain accumulated in 5-turn window → movement penalty, potential death
+7. **Starvation** — stomach → liver → organ failure (driven by Player.processStatusEffects)
+8. **Dehydration** — kidneys → brain (driven by Player.processStatusEffects)
+
+**processTurn(currentTurn):**
+1. Heart destroyed → add arterial wound (severity 5.0) if not already present
+2. Suffocation counter increments if both lungs destroyed (death at 8 turns)
+3. Organ failure: if liver + both kidneys gone → damage brain 1 hp/turn
+4. Shock check: if pain > 80 in last 5 turns → shock effects
+5. Process all wounds: after clot delay, reduce severity by clotSpeed; bleed = severity × bleedRate → drain blood
+6. Blood regeneration: if regenCooldown expired and blood < maxBlood → +0.1 blood/turn
+7. Blood status effects: log messages at threshold crossings
+8. Returns `{ alive, effects[] }` — effects are `{type, msg}` for UI logging
+
+**Context-Aware Status Labels (`Anatomy.getPartStatus(part, damageType)`):**
+| Damage Type | 75%+ Part HP | 50-75% | 25-50% | <25% |
+|-------------|---------|--------|--------|------|
+| sharp | Nicked | Cut | Cut Deep | Mangled |
+| stab | Pierced | Stabbed | Punctured | Perforated |
+| blunt | Sore | Bruised | Battered | Crushed |
+| default | Damaged | Damaged | Critical | DESTROYED |
+
+**Sensory Methods:**
+- `getVisionRange()` — base 8, -4 per destroyed eye, +/- trait modifiers (nightVision/nearSighted)
+- `getHearingRange()` — base 12, -6 per destroyed ear
+- `canUseHands()` — true if at least one hand is functional
+- `getMovementPenalty()` — 0.5 per destroyed leg, 0.25 per destroyed foot
+
+**Cybernetics:**
+- `installCybernetic(partPath, cybernetic)` — replaces organic part, restores HP to max, marks `cybernetic: true`
+
+**Trait Integration:**
+- `nightVision` — +2 vision range
+- `nearSighted` — -2 vision range
 
 ---
 
 ### Equipment System
 **File:** `src/systems/EquipmentSystem.js`
 
-**Purpose:** Handles equipping/unequipping items and calculating equipment bonuses.
+**Purpose:** Handles equipping/unequipping items, slot validation, dual-wielding, two-handed grips, and stat calculations.
+
+**Equipment Slots:** `head`, `torso`, `legs`, `back`, `leftHand`, `rightHand`
+
+**Slot Mapping from Item `slots` Array:**
+- `'hand'` → leftHand, rightHand (+ bothHands if `canTwoHand`)
+- `'head'` → head
+- `'torso'` → torso
+- `'legs'` → legs
+- `'back'` → back
+
+**Two-Handed Grip:**
+- Items with `canTwoHand: true` can be equipped as `bothHands`
+- Sets `item.twoHandGrip = true`, stores same item ref in both leftHand and rightHand
+- Two-handed weapons get bonus damage via `twoHandDamageBonus` dice string
+- Two-handed weapons use `twoHandActionCost` instead of `actionCost`
+
+**Hand Blocking:** Carrying items in hands (via `player.carrying`) blocks equipping to that hand slot. Must drop carried item first.
 
 **Key Methods:**
-- `equipItem()` - Equips item to appropriate slot
-- `unequipItem()` - Removes item from slot
-- `getDefenseBonus()` - Calculates total armor defense
-- `getActionCostModifier()` - Calculates action speed from equipment + traits
+- `equipItem(inventoryIndex, targetSlot, skipAutoUnequip)` — equips item, auto-unequips existing if needed
+- `unequipSlot(slot)` — removes item from slot (handles two-handed unequip)
+- `getActiveWeapon()` — returns primary weapon: two-handed grip > rightHand > leftHand > null (unarmed)
+- `getEquippedDamage()` — rolls damage from equipped weapons using dice strings (e.g. "1d6", "2d4")
+- `getEquippedDefense()` — sums `defense` + `defenseMod` from all armor-type equipment
+- `getActionCostModifier()` — multiplies `weightMod` from all equipment × `actionCostMod` trait
+- `getWeaponActionCost()` — returns action cost for current weapon setup (100 = baseline)
+- `canEquipHandItem()` — checks `anatomy.canUseHands()`
 
-**Trait Integration Points:**
-- `quickReflexes` - Reduces action cost by 10%
-- `clumsy` - Increases action cost by 10%
+**Unarmed Fallback:** If no weapons equipped, `getEquippedDamage()` returns 1-3 random damage.
+
+**Trait Integration:**
+- `quickReflexes` — -10% action cost via `actionCostMod`
+- `clumsy` — +10% action cost via `actionCostMod`
+
+---
+
+### Combat System
+**File:** `src/systems/CombatSystem.js`
+
+**Purpose:** Handles all combat resolution — hit location targeting, damage calculation, armor mitigation, wound creation, rich combat log generation, and anatomy-based damage application.
+
+**Attack Flow (`resolveAttack(attacker, target, weapon)`):**
+1. **Hit check** — roll vs `calculateHitChance()`
+2. **Roll hit location** — weapon-specific body region → sub-part (weighted random)
+3. **Critical hit check** — roll vs `calculateCritChance()`
+4. **Arm intercept** — if targeting head/torso and not a crit, arms may block
+5. **Calculate damage** — `rollWeaponDamage()` × crit multiplier (1.5×) × stance damageMod
+6. **Armor mitigation** — `calculateArmor()` reduces damage (minimum 1)
+7. **Target stance modifier** — `incomingDamageMod` applied
+8. **Apply anatomy damage** — `applyAnatomyDamage()` reduces part HP, tracks damage type
+9. **Wound creation** — bleeding/wound logic based on attack type (see below)
+10. **Pain tracking** — `target.anatomy.addPain(damage, turn)` for shock system
+11. **Combat log** — randomized template messages with verb conjugation
+12. **Visual effects** — shake, floating damage text, part destroyed callout
+13. **Death check** — `target.anatomy.isDead()`
+14. **Event recording** — structured event added to `combatEvents[]` (max 20)
+
+**Hit Chance Formula:**
+```
+Base: 75%
++ (attacker.agility - 10) × 2     // attacker skill
+- (target.agility - 10) × 1       // target dodge
++ stance.hitMod                     // stance bonus/penalty
+- 10 if unarmed                    // unarmed penalty
+Clamped: [20%, 95%]
+```
+
+**Critical Hit Formula:**
+```
+Base: 5%
++ floor((attacker.perception - 10) / 2)
++ stance.critMod
+- 3 if unarmed
++ 10 if opportunistic stance AND target part already wounded
+Clamped: [1%, 25%]
+```
+
+**Body Region Weights (`WEAPON_TARGETING`):**
+| Region | Blunt | Sharp | Unarmed |
+|--------|-------|-------|---------|
+| head | 20 | 5 | 25 |
+| torso | 30 | 45 | 35 |
+| leftArm | 15 | 18 | 10 |
+| rightArm | 15 | 18 | 10 |
+| leftLeg | 10 | 7 | 10 |
+| rightLeg | 10 | 7 | 10 |
+
+**Sub-Parts (`REGION_PARTS`):**
+Each region has weighted sub-parts. Some are `vital: true`, some are `glancing: true` (no specific organ, no anatomy path).
+
+| Region | Sub-Parts (weight) |
+|--------|-------------------|
+| head | brain(5,vital), jaw(30), leftEye(10), rightEye(10), leftEar(20), rightEar(20), head(5,glancing) |
+| torso | heart(5,vital), leftLung(10,vital), rightLung(10,vital), stomach(20,vital), liver(10,vital), leftKidney(5,vital), rightKidney(5,vital), torso(35,glancing) |
+| leftArm | leftArm(50), leftHand(30), leftFingers(20,glancing) |
+| rightArm | rightArm(50), rightHand(30), rightFingers(20,glancing) |
+| leftLeg | leftLeg(65), leftFoot(35) |
+| rightLeg | rightLeg(65), rightFoot(35) |
+
+**Arm Intercept System:**
+- Triggers on head/torso hits only, never on crits
+- Both arms functional: 25% base chance, one arm: 12%, no arms: 0%
+- Modified by stance `interceptMod` (defensive 1.5×, aggressive 0.5×)
+- Capped at 60%
+- Prefers arm with more HP (instinctive shield with stronger arm)
+- Redirects hit to arm sub-part instead of original target
+
+**Armor Coverage (`ARMOR_COVERAGE`):**
+| Equipment Slot | Protects Regions |
+|---------------|-----------------|
+| head | head |
+| torso | torso |
+| legs | leftLeg, rightLeg |
+| leftHand | leftArm |
+| rightHand | rightArm |
+| back | torso |
+| feet | leftLeg, rightLeg |
+
+**Damage Calculation:**
+```
+rollWeaponDamage(weapon, attacker):
+  If weapon.baseDamage → rollDice(baseDamage) × (1 + damageMod)
+  Else if weapon.weaponStats.damage → rollDice(damage)
+  Else (unarmed) → 1d3
+  + floor((STR - 10) / 3) strength bonus
+  Minimum: 1
+```
+
+`rollDice()` supports compound dice strings like `"1d8+1d6"`.
+
+**Wound Creation by Attack Type:**
+
+*Sharp weapons:*
+- bleedChance = weapon.weaponStats.bleedChance (default 0.4) × stance.bleedMod
+- Vital hits: bleedChance = max(bleedChance, 0.8)
+- Crits always bleed
+- Severity: crit → damage×0.8, normal → damage×0.5, vital → ×1.5
+- Wound type: vital+crit/20% → arterial, vital → puncture, else → 50/50 cut/laceration
+
+*Blunt weapons:*
+- Vital hits: 25% chance (or crit) → internal bleeding, severity crit→damage×0.6, normal→damage×0.3
+- Head hits: 35% chance → surface laceration, severity damage×0.2
+
+*Unarmed:*
+- Only bleeds on crit to head → laceration, severity damage×0.15
+
+**Damage Type Tracking:**
+`applyAnatomyDamage()` sets `part.lastDamageType`:
+- sharp → 'sharp' (or 'stab' if vital organ)
+- blunt/unarmed → 'blunt'
+- Used by `Anatomy.getPartStatus()` for context-aware status labels
+
+**Engagement Tracking:**
+- `engagedEnemies` Map — tracks entities in combat with player
+- `engagementTimeout` = 5 turns of no combat before auto-disengage
+- Dead enemies auto-removed from tracking
+- `isInCombat()` — returns true if any engaged enemies remain
+
+**Combat Log Templates:**
+- Attack verbs by type (blunt/sharp/unarmed) × intensity (light/medium/heavy)
+- Randomized sentence templates with `{a}`, `{t}`, `{w}`, `{p}`, `{d}` placeholders
+- Verb conjugation: third-person for NPCs ("strikes"), base form for player ("strike")
+- Separate templates for: attack, critical, miss, block, part destroyed, kill, wound
+
+**NPC Weapons (from `NPC.rollRaiderWeapon()`):**
+| Weapon | Chance | Damage | Type | Bleed |
+|--------|--------|--------|------|-------|
+| Shiv | 30% | 1d4 | sharp | 30% |
+| Pipe | 30% | 1d8 | blunt | — |
+| Knife | 20% | 1d6 | sharp | 40% |
+| Unarmed | 20% | 1d3 | unarmed | — |
+
+---
+
+### Combat Effects System
+**File:** `src/systems/CombatEffects.js`
+
+**Purpose:** Visual feedback for combat events — entity shake and floating combat text.
+
+**Entity Shake:**
+- `shakeEntity(entity, intensity, duration)` — sprite offset on hit
+- Typical: normal hit (3px, 200ms), crit (5px, 350ms)
+- Decaying intensity over duration, rapid random oscillation
+- `getShakeOffset(entity)` called by renderer each frame → returns `{dx, dy}` in pixels
+
+**Floating Text:**
+- `addFloatingText(worldX, worldY, text, color, duration)` — damage numbers, status text
+- Floats upward over time (1.2× tileSize travel)
+- Fades out in last 40% of duration
+- Black outline for readability
+- Used for: damage numbers (red/yellow for crit), "MISS" (gray), body part name (gray), "DESTROYED" (orange), "KILLED" (red), "OPP. ATTACK" (orange)
+
+**Animation Loop:**
+- `startAnimation()` triggers requestAnimationFrame loop
+- `hasActiveEffects()` checks if any shakes or floating texts remain
+- `drawFloatingTexts(ctx, cameraX, cameraY, tileSize)` called after entity rendering
+
+---
+
+### NPC System
+**File:** `src/entities/NPC.js`
+
+**Purpose:** Manages NPC entities with anatomy, energy-based speed, detection state AI, morale, and combat.
+
+**Data-Driven NPC Types (`NPC_TYPES` config):**
+Add new enemy types by adding entries to `NPC_TYPES` — no code changes needed.
+
+| Parameter | Scavenger | Raider | Description |
+|-----------|-----------|--------|-------------|
+| `speed` | 70 | 85 | Energy gained per game tick (player walk = 100) |
+| `attackCost` | 100 | 100 | Energy cost to attack |
+| `moveCost` | 100 | 100 | Energy cost to move one tile |
+| `visionRange` | 6 | 8 | Base vision range in tiles |
+| `hearingRange` | 10 | 14 | Max distance to hear sounds |
+| `hostile` | false | true | Will attack on sight? |
+| `aggression` | 0.0 | 0.8 | Chance to engage when first spotting player |
+| `courage` | 1.0 | 0.35 | Blood% threshold to flee (1.0 = never flees) |
+| `leashRange` | 15 | 25 | Max chase distance from spawn |
+| `giveUpTurns` | 5 | 15 | Turns without sight before returning to wander |
+| `wanderChance` | 0.3 | 0.3 | Chance to move randomly when idle |
+| `weaponTable` | null | weighted table | Weighted random weapon selection |
+
+**Energy-Based Speed System:**
+- Each game tick, NPCs gain energy = `speed × (playerActionCost / 100)`
+- When energy ≥ `moveCost`, NPC acts (move, attack, etc.) and spends energy
+- Fast player actions (running, cost 75) → NPCs gain less energy → player outruns them
+- Slow player actions (crouching, cost 125) → NPCs gain more energy → they catch up
+- Energy capped at `moveCost × 2` to prevent idle NPCs from banking huge reserves
+- Max 3 actions per tick (safety cap)
+
+**Detection State Machine:**
+```
+UNAWARE → ALERT → SEARCHING → ENGAGED
+                                  ↓
+                               FLEEING
+```
+- `UNAWARE` — idle, wandering. Hasn't noticed player.
+- `ALERT` — heard a sound or glimpsed movement. Moves to investigate.
+- `SEARCHING` — lost sight of player. Checks last known position, then wanders nearby.
+- `ENGAGED` — actively chasing/fighting player.
+- `FLEEING` — retreating due to low morale (blood < courage threshold or 3+ destroyed parts).
+
+**NPC Vision (independent of player FoV):**
+- Uses `FoVSystem.hasLineOfSight()` from NPC position to player position
+- Effective range = `visionRange × lightingFactor × stealthFactor`
+- Lighting: `getLightLevel()` at player tile (0.0–1.0), min 0.25 multiplier
+- Stealth modifiers: crouch ×0.6, prone ×0.35, run ×1.25, walk ×1.0
+
+**Sound Response:**
+- All NPC types can hear sounds (not just raiders)
+- `hearSound()` checks distance against `hearingRange`
+- Alert level builds up from repeated sounds (volume / distance × 30)
+- Loud sounds (volume ≥ 6) or alert level ≥ 40 → sets investigate target → ALERT state
+- Already ENGAGED or FLEEING NPCs ignore sounds
+
+**Morale / Retreat:**
+- `shouldFlee()` checks blood% against `courage` threshold
+- Also flees if 3+ body parts destroyed
+- FLEEING NPCs move away from player
+- Once far enough away (75% of leashRange), calms down → UNAWARE
+- Fleeing NPCs try perpendicular directions if blocked
+
+**Leash System:**
+- NPCs track their spawn position
+- If chase takes them beyond `leashRange` from spawn → give up → UNAWARE
+
+**Opportunity Attacks:**
+- Only ENGAGED NPCs get opportunity attacks when player moves away
+- UNAWARE/ALERT NPCs do not strike
+
+**Per-Turn Processing:**
+1. Process anatomy (bleeding, organ effects) via `anatomy.processTurn()`
+2. If anatomy reports not alive → `die()`
+3. Accumulate energy proportional to player's action cost
+4. While energy ≥ moveCost: execute AI behavior, spend energy
+
+**All NPCs have:**
+- Full anatomy system (same as player)
+- Equipment slots (for armor coverage)
+- Weapon item (null = unarmed, or rolled from `weaponTable`)
+- Detection state, alert level, spawn position tracking
 
 ---
 
@@ -161,7 +533,7 @@ openMethods: {
 
 - **Negative Traits (give points):**
   - `nearSighted` - -2 vision range
-  - `weakConstitution` - -10 max HP
+  - `weakConstitution` - -10 max HP (legacy effect — `maxHPMod`, no current anatomy impact)
   - `slowHealer` - -50% healing effectiveness
   - `clumsy` - +10% action cost
   - `lightSleeper` - Reduced rest benefits (not yet implemented)
@@ -187,12 +559,17 @@ openMethods: {
 ### Sound System
 **File:** `src/systems/SoundSystem.js`
 
-**Purpose:** Tracks sound events and propagation (for stealth/detection).
+**Purpose:** Tracks sound events and propagation for stealth/detection.
 
 **Key Concepts:**
-- Actions generate sound with volume
-- Movement mode affects sound volume
-- Future: Enemy AI will react to sounds
+- Actions generate sound with volume (movement, combat, items)
+- Movement mode affects sound volume: walk=3, run=8, crouch=1, prone=0
+- `makeSound(x, y, volume, type, source)` creates a sound event
+- `alertNearbyNPCs(sound)` notifies all NPCs within `sound.volume` radius
+- NPCs filter sounds against their own `hearingRange` parameter
+- Sound events decay after 2 turns
+- Loud sounds (volume ≥ 6) immediately trigger NPC investigation
+- Repeated quieter sounds build up NPC `alertLevel` over time
 
 ---
 
@@ -245,11 +622,21 @@ Player Turn
     ↓
 Player.processStatusEffects()
     ↓
-Hunger -= 0.1, Thirst -= 0.2
+Hunger -= 0.1, Thirst -= 0.2 (skipped in exploreMode)
     ↓
-If hunger/thirst <= 0 → Apply HP damage
+If hunger <= 0:
+    → Damage stomach (1 hp/turn)
+    → If stomach destroyed → damage liver
+    → Set causeOfDeath = 'starvation'
     ↓
-Process other status effects (heal, sickness)
+If thirst <= 0:
+    → Damage kidneys (1 hp/turn to first functional kidney)
+    → If both kidneys destroyed → damage brain directly
+    → Set causeOfDeath = 'dehydration'
+    ↓
+anatomy.processTurn() — bleeding, organ effects, suffocation, shock
+    ↓
+Process status effects (heal patches wounds / restores blood, sickness damages stomach)
 ```
 
 ### Opening Container Flow
@@ -325,7 +712,14 @@ Player.addStatusEffect({ type: 'heal', value, duration })
     ↓
 Each turn: Player.processStatusEffects()
     ↓
-Apply heal value to HP (capped at maxHP)
+If wounds exist:
+    → Reduce each wound.severity by (value × 0.15)
+    → Remove wounds with severity < 0.01
+    → Log: "{name} helps close your wounds."
+Else (no wounds):
+    → Restore blood by (value × 0.3), capped at maxBlood
+    → Reset regenCooldown to 0 (bypass natural regen delay)
+    → Log: "+{amount} blood restored by {name}"
     ↓
 Decrement duration
     ↓
@@ -342,7 +736,6 @@ CharacterCreationSystem.applyTraitsToCharacter()
 Merge trait.effect into player.traitEffects
     ↓
 Systems check player.traitEffects:
-    - Player.getMaxHP() → checks maxHPMod
     - Player.getMaxCarryWeight() → checks carryMod
     - Anatomy.getVisionRange() → checks visionBonus/visionPenalty
     - EquipmentSystem.getActionCostModifier() → checks actionCostMod
@@ -350,27 +743,73 @@ Systems check player.traitEffects:
     - ItemSystem.consumeFood() → checks poisonResist
 ```
 
+### Combat Flow
+
+```
+Player bumps into entity (tryMove detects blocked tile with entity)
+    ↓
+Player.attack(target)
+    ↓
+EquipmentSystem.getActiveWeapon() → weapon or null
+    ↓
+CombatSystem.resolveAttack(player, target, weapon)
+    ↓
+[Full attack resolution — see Combat System section]
+    ↓
+If result.killed → target.die()
+    ↓
+Opportunity attacks: if player moves away from adjacent ENGAGED enemies
+    → Only ENGAGED NPCs get free attack (UNAWARE/ALERT NPCs do not)
+    → Skipped if player is in defensive stance (canDisengage)
+    → CombatEffects floating text "OPP. ATTACK"
+```
+
 ---
 
 ## Data Flow
 
-### Turn Processing
+### Turn Processing (Energy-Based)
 
 ```
 Game.processTurn(action)
     ↓
-Player performs action (move, pickup, use item, etc.)
+Player performs action (move, pickup, wait, cycle_movement, ascend, descend)
     ↓
-If player acted:
-    - turnCount++
-    - player.processStatusEffects()
-    - updateFoV()
-    - world.processTurn()
-    - soundSystem.processTurn()
-    - checkGameOver()
+Each action has an energy cost (stored in player.lastActionCost):
+    - Walk move: 100 (baseline)
+    - Run move: 75 (faster — fewer NPC actions)
+    - Crouch move: 125 (slower — more NPC actions)
+    - Prone move: 150
+    - Attack: weapon actionCost × equipment modifier
+    - Wait: 100
+    - Pickup/GrabAll: 50
+    - Cycle movement mode: 0 (free action — no world tick)
+    ↓
+If player acted AND actionCost > 0:
+    1. turnCount++
+    2. timeSystem.tick()                    // advance day/night clock
+    3. lightingSystem.consumeFuel()         // drain batteries/fuel from active lights
+    4. player.processStatusEffects()        // hunger, thirst, anatomy, heal/sickness
+    5. updateFoV()                          // recalculate vision + lighting
+    6. world.processTurn(actionCost)        // NPC turns (energy-scaled), food spoilage
+    7. soundSystem.processTurn()            // decay active sounds
+    8. checkGameOver()                      // anatomy.isDead() → game over screen
+    ↓
+world.processTurn(actionCost):
+    For each NPC within 30 tiles:
+        NPC gains energy = NPC.speed × (actionCost / 100)
+        While energy ≥ moveCost (max 3 actions):
+            Execute AI behavior → spend energy
     ↓
 Render updated game state
+
+Game.advanceTurn(turns) — same loop with actionCost=100 per turn (crafting, smashing, etc.)
 ```
+
+**Speed Examples:**
+- Player running (cost 75) vs Raider (speed 85): Raider gains 63.75 energy/tick → ~1.57 ticks per move → **player outruns raider**
+- Player walking (cost 100) vs Raider (speed 85): Raider gains 85 energy/tick → ~1.18 ticks per move → **raider slightly slower**
+- Player crouching (cost 125) vs Raider (speed 85): Raider gains 106.25 energy/tick → acts every tick → **raider catches up**
 
 ### Item Creation
 
@@ -469,26 +908,30 @@ For untagged tiles → OUTDOOR_LOOT (2% per-tile chance)
 ### Effect Types
 
 **heal:**
-- Applied by: Medkit
-- Effect: Restores HP over time
-- Modified by: `slowHealer` trait
+- Applied by: Medkit (and other medical items)
+- Effect: Patches wounds (reduces wound severity) or restores blood if no wounds
+- Wound healing: each wound.severity reduced by `value × 0.15` per turn
+- Blood restoration: `value × 0.3` blood per turn (bypasses regenCooldown)
+- Modified by: `slowHealer` trait (×0.5 value)
 - Duration: Item-specific (medkit = 4 turns)
 
 **sickness:**
 - Applied by: Contaminated food
-- Effect: Damages HP over time
-- Modified by: `ironStomach` trait
+- Effect: Damages stomach via `anatomy.damagePart('torso.stomach', value)`
+- Modified by: `ironStomach` trait (50% reduction in contamination effect)
 - Duration: Based on contamination level
 
 ### Status Effect Processing
 
 Each turn in `Player.processStatusEffects()`:
-1. Process hunger/thirst drain
-2. Apply starvation/dehydration damage if needed
-3. Iterate through active status effects
-4. Apply effect value to HP
-5. Decrement duration
-6. Remove expired effects
+1. Process hunger/thirst drain (skipped in exploreMode)
+2. Starvation: hunger=0 → damage stomach → liver → organ failure
+3. Dehydration: thirst=0 → damage kidneys → brain
+4. `anatomy.processTurn()` — bleeding, organ effects, suffocation, shock, blood regen
+5. Iterate through active status effects:
+   - `heal` → patch wounds or restore blood
+   - `sickness` → damage stomach
+6. Decrement duration, remove expired effects
 
 ---
 
@@ -626,9 +1069,9 @@ Route to specific handler
 - `searchFurniture(object, player)` - Opens furniture contents transfer UI
 
 **Smash Auto-Complete:**
-- Loops damage until object HP reaches 0 or weapon durability reaches 0
+- Loops damage until object durability reaches 0 or weapon durability reaches 0
 - Reports summary: hit count, total turns, materials dropped, contents spilled
-- Lock breaks at <30% HP
+- Lock breaks at <30% object durability
 - All turns advance at once via `advanceTurn(totalTime)`
 
 ---
@@ -637,20 +1080,38 @@ Route to specific handler
 
 ### Sleep/Rest System
 - Will use `lightSleeper` trait
-- Natural healing during rest
+- Natural healing during rest (wound patching + blood regen)
 - Modified by `slowHealer` trait
 
-### Loot System ✅ (Implemented)
-- Building-aware spawning via room-type loot tables
-- 16 room types with weighted item pools
-- Outdoor loot at 2% per-tile chance
-- Future: `lucky` trait for better quality/rare drops
+### Ranged Combat
+- Accuracy falloff with distance
+- Ammunition system
+- Cover mechanics
 
-### Combat System (Phase 2 — Next)
-- Melee/ranged combat
-- NPC behavior loops, aggro, factions
-- Action cost modifiers from traits
-- Weapon durability degradation
+### Advanced NPC AI (Phase 2)
+- Faction system (hostile, neutral, friendly) — core detection/aggression implemented
+- NPC-to-NPC combat
+- Trading with friendly NPCs
+- Patrol routes and territory
+- Group tactics (flanking, coordinated attacks)
+
+### Status Effects & Injuries (Phase 3)
+- Infection from untreated wounds
+- Fractures and splinting
+- Tourniquet system
+- Medical treatment using existing anatomy + medical items
+
+### Cybernetics & Echo Effects (Phase 4)
+- Cybernetic organ replacements (framework exists in `Anatomy.installCybernetic()`)
+- Blood type / transfusion
+- Echo effects (TBD)
+
+### Other Planned Features
+- `lucky` trait for better loot/crit rolls
+- Weapon durability degradation in combat
+- Equipment set bonuses
+- Equipment stat requirements (cybernetic prerequisites)
+- Stamina system tied to movement modes
 
 ---
 
@@ -983,7 +1444,7 @@ showRecipeDetails(uiManager, recipeId, parentRecipeId) {
 
 ### Trait Testing Checklist
 
-- [ ] `weakConstitution` - Check max HP is reduced by 10
+- [ ] `weakConstitution` - Legacy maxHPMod effect (no current anatomy impact — may need rework)
 - [ ] `packRat` - Check carry capacity increased by 20%
 - [ ] `slowHealer` - Use medkit, verify heal is halved
 - [ ] `ironStomach` - Eat contaminated food, verify reduced sickness
@@ -1326,7 +1787,17 @@ my_armor: {
 4. **`src/systems/ItemSystem.js`** - Verify opening logic handles new container
 
 ### Adding Weapons:
-3. **`src/systems/CombatSystem.js`** - Add weapon-specific combat logic (when implemented)
+3. **`src/content/ContentManager.js`** - Define weapon with required properties:
+   - `type: 'weapon'` — required for EquipmentSystem to recognize it
+   - `baseDamage: '1d6'` — dice string for damage roll
+   - `weaponStats.attackType` — `'sharp'`, `'blunt'`, or `'unarmed'` (determines targeting profile, wound types, bleed behavior)
+   - `weaponStats.bleedChance` — 0.0-1.0 (sharp weapons only, default 0.4)
+   - `slots: ['hand']` — equippable in hand slots
+   - Optional: `canTwoHand: true`, `twoHandDamageBonus: '1d4'`, `twoHandActionCost: 120`
+   - Optional: `damageMod: 0.2` — flat damage multiplier bonus
+   - Optional: `actionCost: 100` — turn cost (higher = slower)
+4. **`src/systems/CombatSystem.js`** - No changes needed unless adding a new `attackType` (would need new entry in `WEAPON_TARGETING` and `ATTACK_VERBS`)
+5. **`src/content/LootTables.js`** - Add to appropriate room type loot pools
 
 ### Adding Wearables:
 3. **`src/systems/EquipmentSystem.js`** - Verify slot compatibility
@@ -1363,9 +1834,21 @@ my_armor: {
     contents: [],              // Container contents
     openMethods: {},           // How to open container
     pockets: [],               // Wearable storage
-    slot: 'torso',             // Equipment slot
-    defense: 5,                // Armor value
-    damage: { min: 5, max: 10 }, // Weapon damage
+    slots: ['hand'],           // Equipment slots array ('hand', 'head', 'torso', 'legs', 'back')
+    defense: 5,                // Armor value (armor-type items)
+    defenseMod: 0,             // Bonus armor value
+    baseDamage: '1d6',         // Weapon damage dice string
+    damageMod: 0.2,            // Weapon damage multiplier bonus
+    weaponStats: {             // Weapon combat properties
+        attackType: 'sharp',   // 'sharp', 'blunt', or 'unarmed'
+        bleedChance: 0.4       // Chance to cause bleeding (sharp only)
+    },
+    canTwoHand: true,          // Can be equipped in both hands
+    twoHandGrip: false,        // Currently held two-handed (runtime)
+    twoHandDamageBonus: '1d4', // Extra damage dice when two-handed
+    twoHandActionCost: 120,    // Action cost when two-handed
+    actionCost: 100,           // Turn cost for weapon attacks
+    weightMod: 1.0,            // Action cost multiplier from equipment weight
     actions: []                // Available actions
 }
 ```
@@ -1407,11 +1890,16 @@ my_armor: {
 - [ ] Contents display inline with Actions buttons
 
 ### Weapon Items:
-- [ ] Item spawns in world
-- [ ] Can be equipped
-- [ ] Damage values are balanced
-- [ ] Attack cost is reasonable
-- [ ] Durability decreases with use
+- [ ] Item spawns in world (loot tables or crafting)
+- [ ] Can be equipped in hand slot(s)
+- [ ] `baseDamage` dice string rolls correctly
+- [ ] `weaponStats.attackType` matches intended type (sharp/blunt/unarmed)
+- [ ] Weapon-specific targeting profile feels right (check `WEAPON_TARGETING` weights)
+- [ ] Bleed chance creates wounds at expected rate (sharp only)
+- [ ] Two-handed grip works if `canTwoHand: true` (bonus damage, action cost)
+- [ ] Damage feels balanced vs NPC anatomy part HP values
+- [ ] Combat log verbs match attack type (sharp/blunt/unarmed verb pools)
+- [ ] Armor mitigation interacts correctly with weapon damage range
 
 ### Wearable Items:
 - [ ] Item spawns in world

@@ -145,15 +145,22 @@ export class World {
         ];
         
         for (const npcDef of npcTypes) {
+            let spawned = 0;
             for (let i = 0; i < npcDef.count; i++) {
-                const x = Math.floor(Math.random() * 80) - 20;
-                const y = Math.floor(Math.random() * 80) - 20;
-                
-                if (!this.isBlocked(x, y, 0)) {
-                    const npc = new NPC(this.game, npcDef.type, x, y);
-                    this.addEntity(npc);
+                // Retry up to 10 times to find an unblocked position
+                for (let attempt = 0; attempt < 10; attempt++) {
+                    const x = Math.floor(Math.random() * 80) - 20;
+                    const y = Math.floor(Math.random() * 80) - 20;
+                    
+                    if (!this.isBlocked(x, y, 0)) {
+                        const npc = new NPC(this.game, npcDef.type, x, y);
+                        this.addEntity(npc);
+                        spawned++;
+                        break;
+                    }
                 }
             }
+            console.log(`[World] Spawned ${spawned}/${npcDef.count} ${npcDef.type}s`);
         }
     }
     
@@ -215,7 +222,12 @@ export class World {
         console.warn('Failed to spawn access card after 50 attempts');
     }
     
-    processTurn() {
+    /**
+     * Process world turn. actionCost is the player's action cost in energy units.
+     * NPCs gain energy proportional to actionCost (100 = 1 full turn).
+     * @param {number} actionCost - Player's action cost (default 100)
+     */
+    processTurn(actionCost = 100) {
         const player = this.game.player;
         
         // Process food spoilage and liquid spillage
@@ -230,9 +242,10 @@ export class World {
             // Skip entities that died earlier this turn
             if (entity.anatomy && entity.anatomy.isDead()) continue;
             
+            // Only process nearby entities (performance)
             const dist = Math.abs(entity.x - player.x) + Math.abs(entity.y - player.y);
-            if (dist < 20) {
-                entity.takeTurn();
+            if (dist < 30) {
+                entity.takeTurn(actionCost);
             }
         }
     }

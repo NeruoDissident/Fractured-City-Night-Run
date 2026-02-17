@@ -473,6 +473,11 @@ export class UIManager {
             html += '<div style="margin-top: 10px; padding: 5px; background: #1a0a0a; border-left: 3px solid #ff4444;">';
             html += '<div style="color: #ff4444; font-weight: bold; margin-bottom: 3px;">👤 ENTITY</div>';
             html += `<div style="color: ${entity.color}; font-weight: bold; font-size: 16px;">${entity.name}</div>`;
+            if (entity.getDetectionLabel) {
+                const label = entity.getDetectionLabel();
+                const dColor = entity.getDetectionColor();
+                html += `<div style="font-size: 13px; color: ${dColor}; font-weight: bold;">${label}</div>`;
+            }
             if (entity.anatomy) {
                 const cond = entity.anatomy.getBodyCondition();
                 html += `<div style="font-size: 15px; color: ${cond.color}; font-weight: bold;">${cond.label}</div>`;

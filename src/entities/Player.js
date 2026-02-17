@@ -117,6 +117,9 @@ export class Player extends Entity {
         this.maxThirst = 100;
         this.thirstRate = 0.2;
         
+        // Energy system — tracks cost of last action for world tick scaling
+        this.lastActionCost = 100;
+        
         // Debug mode
         this.exploreMode = false; // Toggle with F key - disables hunger/thirst
         
@@ -297,8 +300,32 @@ export class Player extends Entity {
         const nextIndex = (currentIndex + 1) % modes.length;
         this.movementMode = modes[nextIndex];
         const mode = this.movementModes[this.movementMode];
-        this.game.ui.log(`Movement: ${mode.name}`, 'info');
+        this.game.ui.log(`Movement: ${mode.name} (${(mode.actionCost / 100).toFixed(2)} turns/tile)`, 'info');
         return true;
+    }
+    
+    // ─── Action cost helpers ────────────────────────────────────────────────
+    getMovementActionCost() {
+        const mode = this.movementModes[this.movementMode];
+        let cost = mode.actionCost;
+        
+        // Equipment weight modifier
+        cost *= this.equipmentSystem.getActionCostModifier();
+        
+        // Anatomy penalties (destroyed legs/feet)
+        const movePenalty = this.anatomy.getMovementPenalty();
+        cost *= (1 + movePenalty);
+        
+        return Math.round(cost);
+    }
+    
+    getAttackActionCost() {
+        let cost = this.equipmentSystem.getWeaponActionCost();
+        
+        // Equipment weight modifier
+        cost *= this.equipmentSystem.getActionCostModifier();
+        
+        return Math.round(cost);
     }
     
     tryMove(dx, dy) {
@@ -312,6 +339,8 @@ export class Player extends Entity {
             const entity = this.game.world.getEntityAt(newX, newY, this.z);
             if (entity && entity !== this) {
                 this.attack(entity);
+                // Store attack action cost for energy system
+                this.lastActionCost = this.getAttackActionCost();
                 return true;
             }
             return false;
@@ -323,6 +352,8 @@ export class Player extends Entity {
             const adjacentEnemies = this.getAdjacentEnemies();
             for (const enemy of adjacentEnemies) {
                 if (enemy.attack && !enemy.isDead()) {
+                    // Only engaged enemies get opportunity attacks
+                    if (enemy.detectionState && enemy.detectionState !== 'engaged') continue;
                     this.game.ui.log(`${enemy.name} strikes as you pull away!`, 'combat');
                     enemy.attack(this);
                     if (this.game.combatEffects) {
@@ -339,6 +370,9 @@ export class Player extends Entity {
         if (mode.soundVolume > 0) {
             this.game.soundSystem.makeSound(this.x, this.y, mode.soundVolume, 'movement', this);
         }
+        
+        // Store movement action cost for energy system
+        this.lastActionCost = this.getMovementActionCost();
         
         this.checkExtraction();
         

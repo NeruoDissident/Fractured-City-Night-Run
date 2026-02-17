@@ -217,6 +217,13 @@ export class CombatSystem {
             entity,
             lastCombatTurn: this.game.turnCount || 0
         });
+        
+        // Force NPC into ENGAGED detection state when attacked
+        if (entity.detectionState && entity.detectionState !== 'fleeing') {
+            entity.detectionState = 'engaged';
+            entity.lastKnownPlayerPos = { x: this.game.player.x, y: this.game.player.y };
+            entity.turnsWithoutSight = 0;
+        }
     }
     
     /**

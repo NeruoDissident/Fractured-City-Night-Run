@@ -119,31 +119,46 @@ export class Game {
         
         let playerActed = false;
         
+        // Reset last action cost — each action type sets this
+        this.player.lastActionCost = 100; // default 1 turn
+        
         if (action.type === 'move') {
             playerActed = this.player.tryMove(action.dx, action.dy);
+            // lastActionCost set by tryMove (movement or attack cost)
         } else if (action.type === 'wait') {
             playerActed = true;
+            this.player.lastActionCost = 100;
         } else if (action.type === 'pickup') {
             playerActed = this.player.tryPickup();
+            this.player.lastActionCost = 50; // quick action
         } else if (action.type === 'grabAll') {
             playerActed = this.player.grabAll();
+            this.player.lastActionCost = 50;
         } else if (action.type === 'cycle_movement') {
             playerActed = this.player.cycleMovementMode();
+            this.player.lastActionCost = 0; // free action — no world tick
         } else if (action.type === 'ascend') {
             playerActed = this.player.tryAscend();
+            this.player.lastActionCost = this.player.getMovementActionCost();
         } else if (action.type === 'descend') {
             playerActed = this.player.tryDescend();
+            this.player.lastActionCost = this.player.getMovementActionCost();
         }
         
         if (playerActed) {
-            this.turnCount++;
-            this.timeSystem.tick();
-            this.lightingSystem.consumeFuel();
-            this.player.processStatusEffects();
-            this.updateFoV();
-            this.world.processTurn();
-            this.soundSystem.processTurn();
-            this.checkGameOver();
+            const actionCost = this.player.lastActionCost;
+            
+            // Free actions (cost 0) don't advance the world
+            if (actionCost > 0) {
+                this.turnCount++;
+                this.timeSystem.tick();
+                this.lightingSystem.consumeFuel();
+                this.player.processStatusEffects();
+                this.updateFoV();
+                this.world.processTurn(actionCost);
+                this.soundSystem.processTurn();
+                this.checkGameOver();
+            }
         }
         
         this.render();
@@ -152,7 +167,7 @@ export class Game {
     /**
      * Advance game turns for actions that take time
      * Used by systems like WorldObjectSystem for door interactions, crafting, etc.
-     * @param {number} turns - Number of turns to advance
+     * @param {number} turns - Number of turns to advance (each turn = 100 energy)
      */
     advanceTurn(turns = 1) {
         if (!this.isRunning) return;
@@ -163,7 +178,7 @@ export class Game {
             this.lightingSystem.consumeFuel();
             this.player.processStatusEffects();
             this.updateFoV();
-            this.world.processTurn();
+            this.world.processTurn(100); // 1 full turn = 100 energy
             this.soundSystem.processTurn();
             this.checkGameOver();
         }
