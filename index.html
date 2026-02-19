@@ -67,15 +67,17 @@
                         <button type="button" class="action-btn" id="btn-interact" data-action="interact">ACT</button>
                         <button type="button" class="action-btn" id="btn-inspect" data-action="inspect">LOOK</button>
                         <button type="button" class="action-btn" id="btn-inventory" data-action="inventory">INV</button>
+                        <button type="button" class="action-btn" id="btn-craft" data-action="craft">CRAFT</button>
                         <button type="button" class="action-btn" id="btn-character" data-action="character">CHAR</button>
                     </div>
                     <div class="action-row">
+                        <button type="button" class="action-btn" id="btn-grab" data-action="grab_all">GRAB</button>
+                        <button type="button" class="action-btn" id="btn-abilities" data-action="abilities">ABIL</button>
                         <button type="button" class="action-btn" id="btn-move-mode" data-action="move_mode">MODE</button>
-                        <button type="button" class="action-btn" id="btn-stance" data-action="combat_stance">STANCE</button>
-                        <button type="button" class="action-btn" id="btn-combat" data-action="combat_detail">BATTLE</button>
+                        <button type="button" class="action-btn" id="btn-stance" data-action="combat_stance">STNC</button>
+                        <button type="button" class="action-btn" id="btn-combat" data-action="combat_detail">BTL</button>
                         <button type="button" class="action-btn" id="btn-ascend" data-action="ascend">&#9650;Z</button>
                         <button type="button" class="action-btn" id="btn-descend" data-action="descend">&#9660;Z</button>
-                        <button type="button" class="action-btn" id="btn-craft" data-action="craft">CRAFT</button>
                     </div>
                 </div>
             </div>
@@ -141,9 +143,12 @@
     </div>
     
     <div id="help-screen" class="modal hidden">
-        <div class="modal-content">
-            <h2>Help & Controls</h2>
-            <div id="help-content"></div>
+        <div class="modal-content" style="max-width: 800px;">
+            <div id="help-tabs" style="display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 2px solid #333; padding-bottom: 8px;"></div>
+            <div id="help-search" style="display: none; margin-bottom: 10px;">
+                <input id="help-search-input" type="text" placeholder="Search..." style="width: 100%; padding: 6px 10px; background: #1a1a1a; border: 1px solid #444; color: #fff; font-size: 13px; border-radius: 3px;">
+            </div>
+            <div id="help-content" style="max-height: 65vh; overflow-y: auto;"></div>
             <button id="close-help-btn">Close [?]</button>
         </div>
     </div>

@@ -355,13 +355,26 @@ rollWeaponDamage(weapon, attacker):
 - Verb conjugation: third-person for NPCs ("strikes"), base form for player ("strike")
 - Separate templates for: attack, critical, miss, block, part destroyed, kill, wound
 
-**NPC Weapons (from `NPC.rollRaiderWeapon()`):**
-| Weapon | Chance | Damage | Type | Bleed |
+**NPC Weapons (from `NPC_TYPES.raider.weaponTable`):**
+| Weapon | Weight | Damage | Type | Bleed |
 |--------|--------|--------|------|-------|
-| Shiv | 30% | 1d4 | sharp | 30% |
-| Pipe | 30% | 1d8 | blunt | — |
-| Knife | 20% | 1d6 | sharp | 40% |
-| Unarmed | 20% | 1d3 | unarmed | — |
+| Shiv | 30 | 1d4 | sharp | 30% |
+| Pipe | 30 | 1d8 | blunt | stun 10% |
+| Knife | 20 | 1d6 | sharp | 40% |
+| Unarmed | 20 | 1d3 | unarmed | — |
+
+**Combat Stances (Player only — `Player.combatStances`):**
+| Stance | Damage | Hit | Crit | Incoming | Bleed | Intercept | Special |
+|--------|--------|-----|------|----------|-------|-----------|---------|
+| Aggressive | +25% | +5% | +3% | +20% taken | +30% | 50% (reckless) | off-balance on miss |
+| Defensive | -30% | -5% | -2% | -30% taken | -40% | 150% (guarding) | can disengage (no opp. attack) |
+| Opportunistic | ×1.0 | ±0 | ±0 | ×1.0 | ×1.0 | ×1.0 | +10% crit on wounded parts |
+
+Stance affects: hit chance, crit chance, damage dealt, damage taken, bleed chance, arm intercept chance, and ability bonuses/penalties.
+
+**Prone Effect (from abilities):**
+- Prone targets get +15% easier to hit (dodge penalty)
+- Checked via `abilitySystem.hasEffect(target, 'prone')`
 
 ---
 
@@ -387,6 +400,35 @@ rollWeaponDamage(weapon, attacker):
 - `startAnimation()` triggers requestAnimationFrame loop
 - `hasActiveEffects()` checks if any shakes or floating texts remain
 - `drawFloatingTexts(ctx, cameraX, cameraY, tileSize)` called after entity rendering
+
+---
+
+### Sprite System
+**Files:** `src/core/SpriteManager.js`, `src/core/Renderer.js`
+
+**Purpose:** Loads and renders tile-based spritesheets with tinting, lighting, and dimming support. Falls back to ASCII glyph rendering if sprites fail to load.
+
+**Spritesheets (loaded in `Game.init()`):**
+| Sheet Name | Path | Grid | Tile Size | Contents |
+|-----------|------|------|-----------|----------|
+| `walls` | `assets/walls/walls.png` | 4 cols | 32px | 16 wall autotile variants (bitmask: N=1,W=2,S=4,E=8) |
+| `ground` | `assets/ground/ground.png` | 8 cols | 32px | Floor tiles (grass, dirt, concrete, gravel, etc.) |
+| `objects` | `assets/objects/objects.png` | 8 cols | 32px | Furniture, doors, world objects |
+| `player` | `assets/entites/player_characters/player_characers.png` | 1 col | 32px | Player character sprite |
+| `npcs` | `assets/entites/npcs/npc.png` | 2 cols | 32px | NPC sprites (index 0=raider, 1=scavenger) |
+
+**Entity Sprite Mapping (`World.getEntitySpriteData()`):**
+| Entity | Sheet | Index |
+|--------|-------|-------|
+| Player (`@`) | `player` | 0 |
+| Raider | `npcs` | 0 |
+| Scavenger | `npcs` | 1 |
+
+**Rendering Features:**
+- **Tinting:** Multiply compositing on offscreen canvas (used for biome wall colors)
+- **Lighting:** Darkness overlay based on `lightLevel` (0.0–1.0), light source tint glow
+- **Dimming:** Explored-but-not-visible tiles rendered at 30% opacity
+- **Wall autotiling:** Bitmask-based sprite selection from neighbor connectivity
 
 ---
 
@@ -898,7 +940,7 @@ Opportunity attacks: if player moves away from adjacent ENGAGED enemies
 ```
 Game.processTurn(action)
     ↓
-Player performs action (move, pickup, wait, cycle_movement, ascend, descend)
+Player performs action (move, pickup, wait, cycle_movement, ascend, descend, use_ability)
     ↓
 Each action has an energy cost (stored in player.lastActionCost):
     - Walk move: 100 (baseline)
@@ -906,6 +948,7 @@ Each action has an energy cost (stored in player.lastActionCost):
     - Crouch move: 125 (slower — more NPC actions)
     - Prone move: 150
     - Attack: weapon actionCost × equipment modifier
+    - Ability: ability.actionCost (120-180 depending on ability)
     - Wait: 100
     - Pickup/GrabAll: 50
     - Cycle movement mode: 0 (free action — no world tick)
@@ -918,7 +961,8 @@ If player acted AND actionCost > 0:
     5. updateFoV()                          // recalculate vision + lighting
     6. world.processTurn(actionCost)        // NPC turns (energy-scaled), food spoilage
     7. soundSystem.processTurn()            // decay active sounds
-    8. checkGameOver()                      // anatomy.isDead() → game over screen
+    8. abilitySystem.processTurn()          // tick cooldowns, process grapple/stun/prone
+    9. checkGameOver()                      // anatomy.isDead() → game over screen
     ↓
 world.processTurn(actionCost):
     For each NPC within 30 tiles:
@@ -1245,7 +1289,7 @@ Route to specific handler
 
 **Purpose:** Manages tiered component-based crafting and disassembly with quality mechanics.
 
-**Cache:** v19
+**Cache:** v20
 
 ### Core Concepts
 

@@ -458,7 +458,7 @@ export class WorldObjectSystem {
                 ? Math.floor(Math.random() * (materialDef.quality[1] - materialDef.quality[0] + 1)) + materialDef.quality[0]
                 : materialDef.quality || 100;
             
-            const actualQuantity = Math.floor(quantity * yieldModifier);
+            const actualQuantity = Math.max(1, Math.floor(quantity * yieldModifier));
             
             if (actualQuantity > 0) {
                 materials.push({
@@ -478,26 +478,62 @@ export class WorldObjectSystem {
     dropMaterials(materials, x, y, z) {
         const player = this.game.player;
         
+        // Map drop-table display names → component IDs in ContentManager
+        const DROP_NAME_TO_COMPONENT = {
+            'Glass Shards': 'glass_shard',
+            'Glass Shard':  'glass_shard',
+            'Metal Scraps': 'scrap_metal_shard',
+            'Metal Shard':  'scrap_metal_shard',
+            'Wood Plank':   'wood_piece',
+            'Nails':        'nail',
+            'Nail':         'nail',
+            'Screws':       'screw',
+            'Screw':        'screw',
+            'Fabric Panel': 'fabric_panel',
+            'Pipe':         'metal_tube',
+            'Bone Shard':   'bone_shard',
+            'Rubber Piece': 'rubber_piece',
+            'Duct Tape':    'duct_tape',
+            'Cloth Wrap':   'cloth_wrap',
+            'Stone':        'stone'
+        };
+        
         for (const material of materials) {
-            // Create material item object
-            const materialItem = {
-                id: `${material.name.toLowerCase().replace(/\s+/g, '_')}_${Date.now()}_${Math.random()}`,
-                name: material.name,
-                type: 'component',
-                glyph: '*',
-                color: '#ffaa00',
-                weight: material.quantity * 10, // Estimate weight
-                volume: material.quantity * 5,  // Estimate volume
-                quality: material.quality || 100,
-                maxQuality: 100,
-                quantity: material.quantity,
-                stackable: true,
-                tags: ['material', 'salvage'],
-                isComponent: true,
-                x: x,
-                y: y,
-                z: z
-            };
+            // Try to create a proper component via ContentManager
+            const componentId = DROP_NAME_TO_COMPONENT[material.name];
+            let materialItem = null;
+            
+            if (componentId && this.game.content) {
+                materialItem = this.game.content.createComponent(componentId);
+            }
+            
+            if (materialItem) {
+                // Override quantity/quality from the drop table roll
+                materialItem.quantity = material.quantity;
+                materialItem.quality = material.quality || 100;
+                materialItem.maxQuality = 100;
+            } else {
+                // Fallback: create bare item for unknown materials (e.g. Steel Plate)
+                materialItem = {
+                    id: `${material.name.toLowerCase().replace(/\s+/g, '_')}_${Date.now()}_${Math.random()}`,
+                    name: material.name,
+                    type: 'component',
+                    glyph: '*',
+                    color: '#ffaa00',
+                    weight: material.quantity * 10,
+                    volume: material.quantity * 5,
+                    quality: material.quality || 100,
+                    maxQuality: 100,
+                    quantity: material.quantity,
+                    stackable: true,
+                    tags: ['material', 'salvage'],
+                    isComponent: true
+                };
+            }
+            
+            materialItem.x = x;
+            materialItem.y = y;
+            materialItem.z = z;
             
             // Try to add to player inventory first
             const addResult = player.addToInventory(materialItem);

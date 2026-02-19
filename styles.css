@@ -592,6 +592,16 @@ input, select {
         border-color: #00ffff;
     }
 
+    #btn-abilities {
+        background-color: #1a102e;
+        border-color: #8855cc;
+        color: #cc88ff;
+    }
+
+    #btn-abilities:active {
+        background-color: #2a1a4e;
+    }
+
     /* --- Panel Tabs --- */
     #mobile-panel-tabs {
         display: flex;
@@ -670,6 +680,11 @@ input, select {
         margin-bottom: 4px;
         padding-bottom: 2px;
         border-bottom: 1px solid #333;
+    }
+
+    /* --- Stack inventory grid on mobile --- */
+    .modal-content div[style*="grid-template-columns: 1fr 1fr"] {
+        grid-template-columns: 1fr !important;
     }
 
     /* --- Modal Fullscreen on Mobile --- */

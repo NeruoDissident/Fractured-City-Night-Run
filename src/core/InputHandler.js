@@ -27,6 +27,15 @@ export class InputHandler {
     }
     
     handleKeyDown(e) {
+        // Allow typing in input fields (e.g. wiki search) without triggering game keys
+        const tag = document.activeElement?.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA') {
+            if (e.key === 'Escape') {
+                document.activeElement.blur();
+            }
+            return;
+        }
+        
         if (e.key === 'c' || e.key === 'C') {
             e.preventDefault();
             this.game.ui.toggleCharacterScreen();

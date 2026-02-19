@@ -1,6 +1,6 @@
 # Crafting Database - Master Reference
 
-**Last Updated:** February 15, 2026 (v19 Crafting Overhaul)  
+**Last Updated:** February 17, 2026 (v20 Combat & Ability Overhaul)  
 **Status:** Tier gating, craftable intermediates, raw materials, sub-recipe UI
 
 ---
@@ -68,42 +68,42 @@ Tier 0: RAW MATERIALS (found in world)
 └── Can Lid, Screw Cap, Bottle Cap
 
 Tier 1: INTERMEDIATES (crafted from raw materials)
-├── Crude Blade (cutting:2) ← Metal/Glass + Stone [3 turns]
-├── Sharpened Stick (piercing:1) ← Wood + Stone [2 turns]
-├── Wrapped Handle (grip:2) ← Wood/Bone + Cloth/Tape/Leather [1 turn]
-└── Strap (binding:3) ← Fabric/Leather [1 turn]
+├── Crude Blade (→Sharp Edge) ← Crude Edge + Abrasive [3 turns]
+├── Sharpened Stick (→Pointed) ← Flimsy Frame + Abrasive [2 turns]
+├── Wrapped Handle (→Firm Grip) ← Flimsy Frame + Loose Binding [1 turn]
+└── Strap (→Sturdy Strap) ← Thin Padding [1 turn]
 
 Tier 2: BASIC ITEMS (raw materials only)
-├── Shiv (cutting:1 MAX:1, grip:1) [1 turn]
+├── Shiv (Crude Edge only + Rough Grip) [1 turn]
 └── (other simple items)
 
 Tier 3: STANDARD ITEMS (intermediates required)
-├── Knife (cutting:2+, grip:2+, fastening:1 x2) [2 turns]
-├── Canteen (container:1, fastening:1, binding:2) 
-└── Medkit (medical:1 x6)
+├── Knife (Sharp Edge + Firm Grip + Basic Fastener ×2) [2 turns]
+├── Canteen (Small Vessel + Basic Fastener + Simple Strap)
+└── Medkit (Basic Medical ×6)
 
 Tier 4: ADVANCED ITEMS (multiple intermediates + specifics)
-├── Backpack (3x fabric_panel, 2x strap, fastening:2 x2, thread)
-├── Trenchcoat (padding:1 x4, fastening:1 x7, binding:1)
+├── Backpack (3× Fabric Panel, Sturdy Strap ×2, Secure Fastener ×2, Thread)
+├── Trenchcoat (Thin Padding ×4, Basic Fastener ×7, Loose Binding)
 └── Coat, Pants
 ```
 
 ### Tier Gating Examples
 ```
-SHIV requires cutting: 1, maxValue: 1
-  ✓ Metal Shard (cutting: 1)     — cheap, intended
-  ✓ Glass Shard (cutting: 1)     — cheap, intended
-  ✓ Can Lid (cutting: 1)         — cheap, intended
-  ✗ Crude Blade (cutting: 2)     — too good, blocked
-  ✗ Knife Blade (cutting: 3)     — way too good, blocked
-  ✗ Cutting Wheel (cutting: 2)   — too good, blocked
+SHIV requires "Crude Edge" (cutting: 1, maxValue: 1)
+  ✓ Metal Shard (Crude Edge)     — cheap, intended
+  ✓ Glass Shard (Crude Edge)     — cheap, intended
+  ✓ Can Lid (Crude Edge)         — cheap, intended
+  ✗ Crude Blade (Sharp Edge)     — too good, blocked by maxValue
+  ✗ Knife Blade (Fine Edge)      — way too good, blocked
+  ✗ Cutting Wheel (Sharp Edge)   — too good, blocked
 
-KNIFE requires cutting: 2 (no maxValue)
-  ✓ Crude Blade (cutting: 2)     — crafted intermediate
-  ✓ Knife Blade (cutting: 3)     — from disassembly
-  ✓ Cutting Wheel (cutting: 2)   — from disassembly
-  ✗ Metal Shard (cutting: 1)     — too weak
-  ✗ Glass Shard (cutting: 1)     — too weak
+KNIFE requires "Sharp Edge" (cutting: 2+, no maxValue)
+  ✓ Crude Blade (Sharp Edge)     — crafted intermediate
+  ✓ Knife Blade (Fine Edge)      — from disassembly
+  ✓ Cutting Wheel (Sharp Edge)   — from disassembly
+  ✗ Metal Shard (Crude Edge)     — too weak
+  ✗ Glass Shard (Crude Edge)     — too weak
 ```
 
 ### Raw Material Sources
@@ -119,97 +119,40 @@ Disassembly:  All components from breaking down items
 
 ## Component Property System
 
-### Property Categories
+Properties are numeric values (1-3) on components. The UI displays **descriptive tier labels** instead of raw numbers.
+Labels are defined in `PROPERTY_LABELS` in `ContentManager.js`.
 
-#### **Cutting Properties**
-```
-cutting: 1  - Sharp edge (Metal Shard, Can Lid)
-cutting: 2  - Good blade (Scissors blade)
-cutting: 3  - Quality blade (Knife Blade)
-```
+### Material Properties
 
-#### **Piercing Properties**
-```
-piercing: 1  - Sharp point (Metal Shard)
-piercing: 2  - Strong point (Knife Blade, Awl)
-```
+| Property | Tier 1 (UI Label) | Tier 2 (UI Label) | Tier 3 (UI Label) |
+|----------|-------------------|-------------------|-------------------|
+| cutting | Crude Edge | Sharp Edge | Fine Edge |
+| piercing | Pointed | Piercing Tip | Needle Point |
+| grip | Rough Grip | Firm Grip | Ergonomic Grip |
+| fastening | Basic Fastener | Secure Fastener | Precision Fastener |
+| binding | Loose Binding | Firm Binding | Tight Binding |
+| structural | Flimsy Frame | Sturdy Frame | Rigid Frame |
+| padding | Thin Padding | Soft Padding | Thick Padding |
+| insulation | Light Insulation | Good Insulation | Heavy Insulation |
+| container | Small Vessel | Sealed Vessel | Large Vessel |
+| blunt | Blunt Weight | Heavy Weight | Crushing Weight |
+| grinding | Abrasive | Grinding Surface | Fine Grindstone |
+| fuel | Combustible | Fuel Source | High-Energy Fuel |
+| electrical | Conductive Wire | Wiring | Circuit |
+| conductor | Weak Conductor | Conductor | High Conductor |
+| chemical | Mild Chemical | Chemical Agent | Potent Chemical |
+| medical | Basic Medical | Medical Supply | Surgical Grade |
+| harnessing | Simple Strap | Sturdy Strap | Reinforced Strap |
 
-#### **Grip Properties**
-```
-grip: 1  - Basic grip (Cloth Wrap, Metal Tube)
-grip: 2  - Good grip (Rubber grip)
-grip: 3  - Quality grip (Handle, Ergonomic grip)
-```
+### Tool-Action Properties (for disassembly & crafting)
 
-#### **Fastening Properties**
-```
-fastening: 1  - Simple fastener (Rivet, Button, Thread)
-fastening: 2  - Strong fastener (Screw, Zipper, Buckle)
-fastening: 3  - Heavy-duty fastener (Bolt, Industrial buckle)
-```
+| Property | Tier 1 (UI Label) | Tier 2 (UI Label) |
+|----------|-------------------|-------------------|
+| screwdriving | Screwdriver | Precision Driver |
+| prying | Pry Tool | Heavy Pry Bar |
+| bolt_turning | Wrench | Torque Wrench |
 
-#### **Binding Properties**
-```
-binding: 1  - Light binding (Cloth Wrap, Thread, Fabric Panel)
-binding: 2  - Medium binding (Wire, Rope)
-binding: 3  - Strong binding (Strap, Cable)
-```
-
-#### **Structural Properties**
-```
-structural: 1  - Light support (Handle, Strap, Metal Casing)
-structural: 2  - Medium support (Metal Tube, Frame)
-structural: 3  - Heavy support (Beam, Reinforced frame)
-```
-
-#### **Padding Properties**
-```
-padding: 1  - Light padding (Cloth Wrap)
-padding: 2  - Medium padding (Fabric Panel)
-padding: 3  - Heavy padding (Foam, Cushion)
-```
-
-#### **Medical Properties**
-```
-medical: 1  - Basic medical (Bandage)
-medical: 2  - Advanced medical (Antiseptic, Painkiller)
-medical: 3  - Surgical (Suture kit, Scalpel)
-```
-
-#### **Container Properties**
-```
-container: 1  - Small container (Metal Casing, Plastic Case)
-container: 2  - Medium container (Bottle, Can)
-container: 3  - Large container (Barrel, Crate)
-```
-
-#### **Chemical Properties**
-```
-chemical: 1  - Mild chemical (Antiseptic)
-chemical: 2  - Active chemical (Electrolyte Paste, Acid)
-chemical: 3  - Dangerous chemical (Corrosive, Explosive)
-```
-
-#### **Conductor Properties**
-```
-conductor: 1  - Poor conductor (Wire, Carbon)
-conductor: 2  - Good conductor (Carbon Rod, Copper wire)
-conductor: 3  - Excellent conductor (Gold wire, Superconductor)
-```
-
-#### **Electrical Properties**
-```
-electrical: 1  - Basic electrical (Wire, Simple circuit)
-electrical: 2  - Advanced electrical (Circuit board, Capacitor)
-electrical: 3  - Complex electrical (Processor, Advanced circuit)
-```
-
-#### **Insulation Properties**
-```
-insulation: 1  - Light insulation (Fabric Panel)
-insulation: 2  - Medium insulation (Rubber, Foam)
-insulation: 3  - Heavy insulation (Thermal padding)
-```
+Tool properties are checked on equipped items when disassembling. The `knife` disassembly method requires `cutting` property (or any sharp weapon for backward compat).
 
 ---
 

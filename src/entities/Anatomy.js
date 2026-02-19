@@ -34,6 +34,11 @@ const SUFFOCATION_TURNS = 8;
 const SHOCK_THRESHOLD = 80;
 const SHOCK_WINDOW = 5; // turns
 
+// Infection
+const INFECTION_CHANCE_PER_TURN = 0.03;  // 3% per turn per untreated wound
+const INFECTION_DAMAGE_PER_TURN = 0.5;   // HP damage to the wounded region per turn
+const INFECTION_SPREAD_CHANCE = 0.02;    // 2% chance per turn to spread to adjacent region
+
 export class Anatomy {
     constructor(entity) {
         this.entity = entity;
@@ -59,6 +64,10 @@ export class Anatomy {
         // Natural blood recovery (very slow, only after wounds fully closed + cooldown)
         this.clotRate = 0.15;
         this.regenCooldown = 0;  // turns remaining before blood can regenerate
+        
+        // Pain suppression (from painkillers)
+        this.painSuppression = 0;       // turns remaining of pain suppression
+        this.shockThresholdBonus = 0;    // temporary bonus to shock threshold
     }
     
     init() {
@@ -140,7 +149,11 @@ export class Anatomy {
             severity,
             type,
             turnsActive: 0,
-            clotting: false
+            clotting: false,
+            bandaged: false,
+            disinfected: false,
+            infected: false,
+            infectionSeverity: 0
         });
     }
     
@@ -171,8 +184,26 @@ export class Anatomy {
                 case 'cut':       clotDelay = 3;  clotSpeed = 0.10; break;
                 default:          clotDelay = 3;  clotSpeed = 0.08; break;
             }
+            // Bandaged wounds clot faster
+            if (wound.bandaged) {
+                clotDelay = Math.max(1, clotDelay - 2);
+                clotSpeed *= 2.0;
+            }
             if (wound.turnsActive > clotDelay) {
                 wound.severity = Math.max(0, wound.severity - clotSpeed);
+            }
+            
+            // Infection risk: untreated wounds can become infected
+            if (!wound.infected && !wound.disinfected && !wound.bandaged && wound.type !== 'internal') {
+                if (wound.turnsActive > 5 && Math.random() < INFECTION_CHANCE_PER_TURN) {
+                    wound.infected = true;
+                    wound.infectionSeverity = 1;
+                }
+            }
+            
+            // Infection progression
+            if (wound.infected) {
+                wound.infectionSeverity = Math.min(10, wound.infectionSeverity + 0.1);
             }
             
             // Remove fully clotted wounds
@@ -268,13 +299,46 @@ export class Anatomy {
             }
         }
         
+        // ── Infection damage ──
+        for (const wound of this.wounds) {
+            if (wound.infected && wound.infectionSeverity >= 3) {
+                // Infection damages the body — fever, tissue damage
+                this.blood = Math.max(0, this.blood - INFECTION_DAMAGE_PER_TURN * (wound.infectionSeverity / 5));
+                if (Math.random() < 0.15) {
+                    effects.push({ type: 'infection', msg: `Infection in ${wound.part} is getting worse...` });
+                }
+                // Severe infection can cause sepsis (organ damage)
+                if (wound.infectionSeverity >= 7 && Math.random() < 0.1) {
+                    const liver = this.parts.torso.liver;
+                    if (liver.functional) {
+                        liver.hp = Math.max(0, liver.hp - 1);
+                        if (liver.hp <= 0) liver.functional = false;
+                        effects.push({ type: 'infection', msg: 'Sepsis is setting in — organ damage!' });
+                    }
+                }
+            }
+        }
+        
+        // ── Pain suppression tick ──
+        if (this.painSuppression > 0) {
+            this.painSuppression--;
+            if (this.painSuppression <= 0) {
+                this.shockThresholdBonus = 0;
+            }
+        }
+        
         // ── Shock check ──
         this.painHistory = this.painHistory.filter(p => currentTurn - p.turn < SHOCK_WINDOW);
-        const recentPain = this.painHistory.reduce((sum, p) => sum + p.amount, 0);
-        if (recentPain >= SHOCK_THRESHOLD && !this.inShock) {
+        let recentPain = this.painHistory.reduce((sum, p) => sum + p.amount, 0);
+        // Pain suppression reduces effective pain
+        if (this.painSuppression > 0) {
+            recentPain *= 0.4;
+        }
+        const effectiveThreshold = SHOCK_THRESHOLD + this.shockThresholdBonus;
+        if (recentPain >= effectiveThreshold && !this.inShock) {
             this.inShock = true;
             effects.push({ type: 'shock', msg: 'The pain is overwhelming — going into shock!' });
-        } else if (recentPain < SHOCK_THRESHOLD * 0.5) {
+        } else if (recentPain < effectiveThreshold * 0.5) {
             this.inShock = false;
         }
         
@@ -665,6 +729,97 @@ export class Anatomy {
         penalties.damageMod = Math.max(0.2, penalties.damageMod);
         
         return penalties;
+    }
+    
+    // ── Medical Treatment Methods ────────────────────────────────────
+    
+    /**
+     * Apply a bandage to the worst untreated wound.
+     * Halves bleed severity and accelerates clotting.
+     * Returns { success, wound, msg }
+     */
+    bandageWound() {
+        // Find worst unbandaged surface wound
+        const treatable = this.wounds
+            .filter(w => !w.bandaged && w.type !== 'internal')
+            .sort((a, b) => b.severity - a.severity);
+        
+        if (treatable.length === 0) {
+            return { success: false, msg: 'No wounds to bandage.' };
+        }
+        
+        const wound = treatable[0];
+        wound.bandaged = true;
+        wound.severity *= 0.5;  // Immediately halve bleeding
+        
+        return { success: true, wound, msg: `Bandaged ${wound.type} on ${wound.part}. Bleeding reduced.` };
+    }
+    
+    /**
+     * Apply antiseptic to an infected or at-risk wound.
+     * Clears infection or prevents it.
+     * Returns { success, wound, msg }
+     */
+    applyAntiseptic() {
+        // Prioritize infected wounds, then unbandaged untreated wounds
+        const infected = this.wounds.filter(w => w.infected).sort((a, b) => b.infectionSeverity - a.infectionSeverity);
+        const atRisk = this.wounds.filter(w => !w.disinfected && !w.infected && w.type !== 'internal');
+        
+        const target = infected[0] || atRisk[0];
+        if (!target) {
+            return { success: false, msg: 'No wounds need antiseptic.' };
+        }
+        
+        if (target.infected) {
+            target.infected = false;
+            target.infectionSeverity = 0;
+            target.disinfected = true;
+            return { success: true, wound: target, msg: `Treated infection in ${target.part}. Infection cleared.` };
+        } else {
+            target.disinfected = true;
+            return { success: true, wound: target, msg: `Disinfected ${target.type} on ${target.part}. Infection prevented.` };
+        }
+    }
+    
+    /**
+     * Take a painkiller. Suppresses pain for several turns,
+     * raises shock threshold, and can pull out of shock.
+     * Returns { success, msg }
+     */
+    takePainkiller() {
+        this.painSuppression = 20;       // 20 turns of pain suppression
+        this.shockThresholdBonus = 40;   // Effectively raises shock threshold by 40
+        this.painHistory = [];           // Clear accumulated pain
+        
+        // Pull out of shock if currently in it
+        if (this.inShock) {
+            this.inShock = false;
+            return { success: true, msg: 'Painkiller takes effect. Pain fades. Shock subsides.' };
+        }
+        
+        return { success: true, msg: 'Painkiller takes effect. Pain dulled for a while.' };
+    }
+    
+    /**
+     * Get summary of treatable conditions for UI.
+     * Returns { wounds, infections, painLevel }
+     */
+    getMedicalSummary() {
+        const unbandaged = this.wounds.filter(w => !w.bandaged && w.type !== 'internal').length;
+        const infected = this.wounds.filter(w => w.infected).length;
+        const unsterilized = this.wounds.filter(w => !w.disinfected && w.type !== 'internal').length;
+        const recentPain = this.painHistory.reduce((sum, p) => sum + p.amount, 0);
+        
+        return {
+            totalWounds: this.wounds.length,
+            unbandaged,
+            infected,
+            unsterilized,
+            inShock: this.inShock,
+            painSuppressed: this.painSuppression > 0,
+            painLevel: recentPain,
+            bloodPercent: Math.floor(this.getBloodPercent())
+        };
     }
     
     installCybernetic(cyberneticData, slot) {

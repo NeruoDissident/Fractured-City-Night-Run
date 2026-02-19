@@ -1,3 +1,55 @@
+// Descriptive labels for component properties at each tier
+// Used by CraftingUI to show human-readable requirement text
+export const PROPERTY_LABELS = {
+    cutting:     { 1: 'Crude Edge',        2: 'Sharp Edge',         3: 'Fine Edge' },
+    piercing:    { 1: 'Pointed',           2: 'Piercing Tip',       3: 'Needle Point' },
+    grip:        { 1: 'Rough Grip',        2: 'Firm Grip',          3: 'Ergonomic Grip' },
+    fastening:   { 1: 'Basic Fastener',    2: 'Secure Fastener',    3: 'Precision Fastener' },
+    binding:     { 1: 'Loose Binding',     2: 'Firm Binding',       3: 'Tight Binding' },
+    structural:  { 1: 'Flimsy Frame',      2: 'Sturdy Frame',       3: 'Rigid Frame' },
+    padding:     { 1: 'Thin Padding',      2: 'Soft Padding',       3: 'Thick Padding' },
+    insulation:  { 1: 'Light Insulation',  2: 'Good Insulation',    3: 'Heavy Insulation' },
+    container:   { 1: 'Small Vessel',      2: 'Sealed Vessel',      3: 'Large Vessel' },
+    blunt:       { 1: 'Blunt Weight',      2: 'Heavy Weight',       3: 'Crushing Weight' },
+    grinding:    { 1: 'Abrasive',          2: 'Grinding Surface',   3: 'Fine Grindstone' },
+    fuel:        { 1: 'Combustible',       2: 'Fuel Source',        3: 'High-Energy Fuel' },
+    electrical:  { 1: 'Conductive Wire',   2: 'Wiring',             3: 'Circuit' },
+    conductor:   { 1: 'Weak Conductor',    2: 'Conductor',          3: 'High Conductor' },
+    chemical:    { 1: 'Mild Chemical',     2: 'Chemical Agent',     3: 'Potent Chemical' },
+    medical:     { 1: 'Basic Medical',     2: 'Medical Supply',     3: 'Surgical Grade' },
+    harnessing:   { 1: 'Simple Strap',     2: 'Sturdy Strap',       3: 'Reinforced Strap' },
+    // Tool-action properties (for disassembly and crafting tool requirements)
+    screwdriving: { 1: 'Screwdriver',      2: 'Precision Driver' },
+    prying:       { 1: 'Pry Tool',         2: 'Heavy Pry Bar' },
+    bolt_turning: { 1: 'Wrench',           2: 'Torque Wrench' }
+};
+
+/**
+ * Get a human-readable label for a property requirement.
+ * @param {string} property - Property name (e.g., 'cutting')
+ * @param {number} minValue - Minimum required value
+ * @param {number|undefined} maxValue - Maximum allowed value (tier cap)
+ * @returns {string} - Display label (e.g., 'Sharp Edge' or 'Crude Edge only')
+ */
+export function getPropertyLabel(property, minValue, maxValue) {
+    const labels = PROPERTY_LABELS[property];
+    if (!labels) return `${property} +${minValue}`;
+    
+    // If maxValue is set and equals minValue, it's a tier-locked requirement
+    if (maxValue !== undefined && maxValue === minValue) {
+        return labels[minValue] || `${property} ${minValue}`;
+    }
+    
+    // If maxValue is set but different from minValue, show range
+    if (maxValue !== undefined) {
+        const minLabel = labels[minValue] || `${property} ${minValue}`;
+        return `${minLabel} (max tier ${maxValue})`;
+    }
+    
+    // No maxValue — just show the minimum tier label
+    return labels[minValue] || `${property} +${minValue}`;
+}
+
 export class ContentManager {
     constructor() {
         this.materials = {};
@@ -212,7 +264,7 @@ export class ContentManager {
                 tags: ['fabric', 'flexible', 'structural'],
                 stackable: true,
                 properties: {
-                    binding: 3,
+                    harnessing: 2,
                     structural: 1
                 }
             },
@@ -342,6 +394,8 @@ export class ContentManager {
                 volume: 30,
                 tags: ['medical', 'fabric'],
                 stackable: true,
+                actions: ['use'],
+                medicalEffect: 'bandage',
                 properties: {
                     medical: 1
                 }
@@ -354,6 +408,8 @@ export class ContentManager {
                 volume: 50,
                 tags: ['medical', 'liquid', 'chemical'],
                 stackable: true,
+                actions: ['use'],
+                medicalEffect: 'antiseptic',
                 properties: {
                     medical: 2,
                     chemical: 1
@@ -367,6 +423,8 @@ export class ContentManager {
                 volume: 5,
                 tags: ['medical', 'drug'],
                 stackable: true,
+                actions: ['use'],
+                medicalEffect: 'painkiller',
                 properties: {
                     medical: 2
                 }
@@ -555,8 +613,8 @@ export class ContentManager {
                     { id: 'stone', name: 'Stone', quantity: 1, quality: 100, maxQuality: 100, weight: 200, volume: 80 }
                 ],
                 componentRequirements: [
-                    { property: 'cutting', minValue: 1, quantity: 1, name: 'Metal/Glass (sharp edge to grind)' },
-                    { property: 'grinding', minValue: 1, quantity: 1, name: 'Stone (grinding surface)' }
+                    { property: 'cutting', minValue: 1, quantity: 1, name: 'Sharp Material' },
+                    { property: 'grinding', minValue: 1, quantity: 1, name: 'Abrasive Surface' }
                 ],
                 craftTime: 3,
                 disassemblyMethods: {
@@ -586,8 +644,8 @@ export class ContentManager {
                     { id: 'stone', name: 'Stone', quantity: 1, quality: 100, maxQuality: 100, weight: 200, volume: 80 }
                 ],
                 componentRequirements: [
-                    { property: 'structural', minValue: 1, quantity: 1, name: 'Wood Piece' },
-                    { property: 'grinding', minValue: 1, quantity: 1, name: 'Stone (carving tool)' }
+                    { property: 'structural', minValue: 1, quantity: 1, name: 'Rigid Material' },
+                    { property: 'grinding', minValue: 1, quantity: 1, name: 'Abrasive Surface' }
                 ],
                 craftTime: 2,
                 disassemblyMethods: {
@@ -617,8 +675,8 @@ export class ContentManager {
                     { id: 'cloth_wrap', name: 'Cloth Wrap', quantity: 1, quality: 100, maxQuality: 100, weight: 20, volume: 30 }
                 ],
                 componentRequirements: [
-                    { property: 'structural', minValue: 1, quantity: 1, name: 'Wood/Bone (handle core)' },
-                    { property: 'binding', minValue: 1, quantity: 1, name: 'Cloth/Tape/Leather (wrapping)' }
+                    { property: 'structural', minValue: 1, quantity: 1, name: 'Handle Core' },
+                    { property: 'binding', minValue: 1, quantity: 1, name: 'Wrapping' }
                 ],
                 craftTime: 1,
                 disassemblyMethods: {
@@ -636,12 +694,12 @@ export class ContentManager {
                 volume: 80,
                 isComponent: true,
                 craftedComponentId: 'strap',
-                craftedProperties: { binding: 3, structural: 1 },
+                craftedProperties: { harnessing: 2, structural: 1 },
                 components: [
                     { id: 'fabric_panel', name: 'Fabric Panel', quantity: 1, quality: 100, maxQuality: 100, weight: 100, volume: 200 }
                 ],
                 componentRequirements: [
-                    { property: 'padding', minValue: 1, quantity: 1, name: 'Fabric/Leather' }
+                    { property: 'padding', minValue: 1, quantity: 1, name: 'Flexible Material' }
                 ],
                 craftTime: 1,
                 disassemblyMethods: {
@@ -667,8 +725,8 @@ export class ContentManager {
                     { id: 'cloth_wrap', name: 'Cloth Wrap', quantity: 1, quality: 100, maxQuality: 100, weight: 20, volume: 30 }
                 ],
                 componentRequirements: [
-                    { property: 'cutting', minValue: 1, maxValue: 1, quantity: 1, name: 'Sharp Edge (shard/glass/lid)' },
-                    { property: 'grip', minValue: 1, quantity: 1, name: 'Grip (cloth/tape/leather)' }
+                    { property: 'cutting', minValue: 1, maxValue: 1, quantity: 1, name: 'Small Sharp Edge' },
+                    { property: 'grip', minValue: 1, quantity: 1, name: 'Grip Wrap' }
                 ],
                 craftTime: 1,
                 disassemblyMethods: {
@@ -702,9 +760,9 @@ export class ContentManager {
                     { id: 'rivet', name: 'Rivet', quantity: 2, quality: 100, maxQuality: 100, weight: 5, volume: 2 }
                 ],
                 componentRequirements: [
-                    { property: 'cutting', minValue: 2, quantity: 1, name: 'Blade (crude blade/knife blade)' },
-                    { property: 'grip', minValue: 2, quantity: 1, name: 'Handle (wrapped handle/rubber grip)' },
-                    { property: 'fastening', minValue: 1, quantity: 2, name: 'Fasteners (rivets/nails/tape)' }
+                    { property: 'cutting', minValue: 2, quantity: 1, name: 'Blade' },
+                    { property: 'grip', minValue: 2, quantity: 1, name: 'Handle' },
+                    { property: 'fastening', minValue: 1, quantity: 2, name: 'Fasteners' }
                 ],
                 craftTime: 2,
                 disassemblyMethods: {
@@ -769,9 +827,9 @@ export class ContentManager {
                     { id: 'zipper', name: 'Zipper', quantity: 1, quality: 100, maxQuality: 100, weight: 15, volume: 20 }
                 ],
                 componentRequirements: [
-                    { property: 'padding', minValue: 1, quantity: 4, name: 'Fabric Panel' },
-                    { property: 'fastening', minValue: 1, quantity: 7, name: 'Fasteners (buttons/zipper)' },
-                    { property: 'binding', minValue: 1, quantity: 1, name: 'Thread' }
+                    { property: 'padding', minValue: 1, quantity: 4, name: 'Fabric Panels' },
+                    { property: 'fastening', minValue: 1, quantity: 7, name: 'Fasteners' },
+                    { component: 'thread', quantity: 1, name: 'Thread' }
                 ],
                 disassemblyMethods: {
                     hand: { componentYield: 0.75, qualityMod: 0.5, timeRequired: 3, excludeComponents: ['thread'] },
@@ -781,27 +839,26 @@ export class ContentManager {
             },
             medkit: {
                 name: 'Medkit',
-                type: 'consumable',
-                healAmount: 20,
-                healDuration: 4,
+                type: 'container',
                 glyph: '+',
                 slots: ['hand'],
-                tags: ['medical', 'consumable'],
-                actions: ['use'],
-                weight: 300,
-                volume: 400,
+                tags: ['medical', 'container'],
+                actions: ['treat'],
+                isContainer: true,
+                isMedkit: true,
+                pockets: [
+                    { name: 'Medical Supplies', maxWeight: 500, maxVolume: 400, contents: [] }
+                ],
+                weight: 100,
+                volume: 200,
                 components: [
-                    { id: 'bandage', name: 'Bandage', quantity: 3, quality: 100, maxQuality: 100, weight: 20, volume: 30 },
-                    { id: 'antiseptic', name: 'Antiseptic', quantity: 1, quality: 100, maxQuality: 100, weight: 50, volume: 50 },
-                    { id: 'painkiller', name: 'Painkiller', quantity: 2, quality: 100, maxQuality: 100, weight: 10, volume: 5 },
                     { id: 'plastic_case', name: 'Plastic Case', quantity: 1, quality: 100, maxQuality: 100, weight: 80, volume: 150 }
                 ],
                 componentRequirements: [
-                    { property: 'medical', minValue: 1, quantity: 6, name: 'Medical Supplies' }
+                    { property: 'container', minValue: 1, quantity: 1, name: 'Case' }
                 ],
                 disassemblyMethods: {
-                    hand: { componentYield: 1.0, qualityMod: 0.8, timeRequired: 1 },
-                    knife: { componentYield: 1.0, qualityMod: 0.9, timeRequired: 1 }
+                    hand: { componentYield: 1.0, qualityMod: 0.8, timeRequired: 1 }
                 },
                 weaponStats: {
                     damage: '1d2',
@@ -850,9 +907,9 @@ export class ContentManager {
                     { id: 'carbon_rod', name: 'Carbon Rod', quantity: 1, quality: 100, maxQuality: 100, weight: 5, volume: 3 }
                 ],
                 componentRequirements: [
-                    { property: 'container', minValue: 1, quantity: 1, name: 'Metal Casing' },
-                    { property: 'chemical', minValue: 1, quantity: 1, name: 'Electrolyte Paste' },
-                    { property: 'conductor', minValue: 1, quantity: 1, name: 'Carbon Rod' }
+                    { property: 'container', minValue: 1, quantity: 1, name: 'Casing' },
+                    { property: 'chemical', minValue: 1, quantity: 1, name: 'Chemical Agent' },
+                    { property: 'conductor', minValue: 1, quantity: 1, name: 'Conductor' }
                 ],
                 disassemblyMethods: {
                     hand: { componentYield: 0.66, qualityMod: 0.5, timeRequired: 2 },
@@ -1037,9 +1094,9 @@ export class ContentManager {
                     { id: 'zipper', name: 'Zipper', quantity: 1, quality: 100, maxQuality: 100, weight: 15, volume: 20 }
                 ],
                 componentRequirements: [
-                    { property: 'padding', minValue: 1, quantity: 3, name: 'Fabric Panel' },
-                    { property: 'fastening', minValue: 1, quantity: 6, name: 'Fasteners (buttons/zipper)' },
-                    { property: 'binding', minValue: 1, quantity: 1, name: 'Thread' }
+                    { property: 'padding', minValue: 1, quantity: 3, name: 'Fabric Panels' },
+                    { property: 'fastening', minValue: 1, quantity: 6, name: 'Fasteners' },
+                    { component: 'thread', quantity: 1, name: 'Thread' }
                 ],
                 disassemblyMethods: {
                     hand: { componentYield: 0.75, qualityMod: 0.5, timeRequired: 3, excludeComponents: ['thread'] },
@@ -1069,9 +1126,9 @@ export class ContentManager {
                     { id: 'zipper', name: 'Zipper', quantity: 1, quality: 100, maxQuality: 100, weight: 15, volume: 20 }
                 ],
                 componentRequirements: [
-                    { property: 'padding', minValue: 1, quantity: 2, name: 'Fabric Panel' },
-                    { property: 'fastening', minValue: 1, quantity: 3, name: 'Fasteners (buttons/zipper)' },
-                    { property: 'binding', minValue: 1, quantity: 1, name: 'Thread' }
+                    { property: 'padding', minValue: 1, quantity: 2, name: 'Fabric Panels' },
+                    { property: 'fastening', minValue: 1, quantity: 3, name: 'Fasteners' },
+                    { component: 'thread', quantity: 1, name: 'Thread' }
                 ],
                 disassemblyMethods: {
                     hand: { componentYield: 0.75, qualityMod: 0.5, timeRequired: 2, excludeComponents: ['thread'] },
@@ -1097,9 +1154,9 @@ export class ContentManager {
                     { id: 'strap', name: 'Strap', quantity: 1, quality: 100, maxQuality: 100, weight: 50, volume: 80 }
                 ],
                 componentRequirements: [
-                    { property: 'container', minValue: 1, quantity: 1, name: 'Metal Bottle' },
-                    { property: 'fastening', minValue: 1, quantity: 1, name: 'Screw Cap' },
-                    { property: 'binding', minValue: 2, quantity: 1, name: 'Strap' }
+                    { property: 'container', minValue: 1, quantity: 1, name: 'Vessel' },
+                    { property: 'fastening', minValue: 1, quantity: 1, name: 'Seal' },
+                    { property: 'harnessing', minValue: 1, quantity: 1, name: 'Carry Strap' }
                 ],
                 disassemblyMethods: {
                     hand: { componentYield: 1.0, qualityMod: 0.7, timeRequired: 1 },
@@ -1135,8 +1192,8 @@ export class ContentManager {
                 ],
                 componentRequirements: [
                     { component: 'fabric_panel', quantity: 3, name: 'Fabric Panel' },
-                    { component: 'strap', quantity: 2, name: 'Strap' },
-                    { property: 'fastening', minValue: 2, quantity: 2, name: 'Fasteners (buckles/zippers)' },
+                    { property: 'harnessing', minValue: 2, quantity: 2, name: 'Shoulder Straps' },
+                    { property: 'fastening', minValue: 2, quantity: 2, name: 'Secure Fasteners' },
                     { component: 'thread', quantity: 1, name: 'Thread' }
                 ],
                 disassemblyMethods: {
@@ -1171,9 +1228,9 @@ export class ContentManager {
                     { id: 'screw', name: 'Screw', quantity: 2, quality: 100, maxQuality: 100, weight: 3, volume: 1 }
                 ],
                 componentRequirements: [
-                    { property: 'container', minValue: 1, quantity: 1, name: 'Plastic Case' },
+                    { property: 'container', minValue: 1, quantity: 1, name: 'Casing' },
                     { property: 'electrical', minValue: 1, quantity: 2, name: 'Wiring' },
-                    { property: 'fastening', minValue: 1, quantity: 2, name: 'Screws' }
+                    { property: 'fastening', minValue: 1, quantity: 2, name: 'Fasteners' }
                 ],
                 disassemblyMethods: {
                     hand: { componentYield: 0.66, qualityMod: 0.5, timeRequired: 2 },
@@ -1211,8 +1268,8 @@ export class ContentManager {
                     { id: 'handle', name: 'Handle', quantity: 1, quality: 100, maxQuality: 100, weight: 40, volume: 60 }
                 ],
                 componentRequirements: [
-                    { property: 'container', minValue: 1, quantity: 2, name: 'Metal Casing' },
-                    { property: 'electrical', minValue: 1, quantity: 1, name: 'Wick/Wire' },
+                    { property: 'container', minValue: 1, quantity: 2, name: 'Casing' },
+                    { property: 'electrical', minValue: 1, quantity: 1, name: 'Wick' },
                     { property: 'grip', minValue: 1, quantity: 1, name: 'Handle' }
                 ],
                 disassemblyMethods: {
@@ -1394,7 +1451,7 @@ export class ContentManager {
         const template = this.components[componentId];
         if (!template) return null;
         
-        return {
+        const comp = {
             id: `${componentId}_${Date.now()}_${Math.random()}`,
             componentId: componentId,
             name: template.name,
@@ -1409,6 +1466,12 @@ export class ContentManager {
             properties: { ...(template.properties || {}) },
             isComponent: true
         };
+        
+        // Copy optional fields from template
+        if (template.actions) comp.actions = [...template.actions];
+        if (template.medicalEffect) comp.medicalEffect = template.medicalEffect;
+        
+        return comp;
     }
     
     createItem(familyId, materialId = null, modifierId = null) {
@@ -1492,6 +1555,24 @@ export class ContentManager {
             // Lantern spawns with fuel inside
             const fuel = this.createItem('lantern_fuel');
             item.contents = [fuel];
+        } else if (familyId === 'medkit') {
+            // Medkit spawns with randomized medical supplies
+            const pocket = item.pockets[0];
+            // Bandages: 1-4
+            const bandageCount = 1 + Math.floor(Math.random() * 4);
+            for (let i = 0; i < bandageCount; i++) {
+                pocket.contents.push(this.createComponent('bandage'));
+            }
+            // Antiseptic: 0-2
+            const antisepticCount = Math.floor(Math.random() * 3);
+            for (let i = 0; i < antisepticCount; i++) {
+                pocket.contents.push(this.createComponent('antiseptic'));
+            }
+            // Painkillers: 0-3
+            const painkillerCount = Math.floor(Math.random() * 4);
+            for (let i = 0; i < painkillerCount; i++) {
+                pocket.contents.push(this.createComponent('painkiller'));
+            }
         }
         
         // Deep copy state object to avoid shared references

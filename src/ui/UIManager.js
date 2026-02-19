@@ -2,6 +2,7 @@ import { showDisassembleModal } from './DisassembleModal.js';
 import { showCraftingUI } from './CraftingUI.js';
 import { showWorldObjectModal, showFurnitureContentsModal } from './WorldObjectModal.js';
 import { Anatomy } from '../entities/Anatomy.js';
+import { getPropertyLabel, PROPERTY_LABELS } from '../content/ContentManager.js';
 
 export class UIManager {
     constructor(game) {
@@ -801,9 +802,16 @@ export class UIManager {
         if (player.anatomy.wounds.length > 0) {
             html += `<div class="stat-line"><span class="stat-label">Wounds:</span> <span class="stat-value" style="color: #ff4444;">${player.anatomy.wounds.length} active</span></div>`;
             for (const wound of player.anatomy.wounds) {
-                const wColor = wound.type === 'arterial' ? '#ff0000' : '#ff6644';
-                html += `<div style="margin-left: 15px; font-size: 13px; color: ${wColor};">• ${wound.part} — ${wound.type} (${wound.severity.toFixed(1)}/turn)</div>`;
+                const wColor = wound.infected ? '#ff00ff' : wound.type === 'arterial' ? '#ff0000' : '#ff6644';
+                let tags = '';
+                if (wound.bandaged) tags += ' [bandaged]';
+                if (wound.infected) tags += ' [INFECTED]';
+                if (wound.disinfected && !wound.infected) tags += ' [clean]';
+                html += `<div style="margin-left: 15px; font-size: 13px; color: ${wColor};">• ${wound.part} — ${wound.type} (${wound.severity.toFixed(1)}/turn)${tags}</div>`;
             }
+        }
+        if (player.anatomy.painSuppression > 0) {
+            html += `<div class="stat-line"><span class="stat-label">Painkiller:</span> <span class="stat-value" style="color: #44ff44;">${player.anatomy.painSuppression} turns</span></div>`;
         }
         
         const hungerColor = player.hunger < 20 ? '#ff4444' : player.hunger < 50 ? '#ffaa00' : '#00ff00';
@@ -1396,20 +1404,23 @@ export class UIManager {
         const content = document.getElementById('detailed-inventory-content');
         const containerSys = player.containerSystem;
         
+        // Remember active filter for re-renders
+        this._invFilter = this._invFilter || 'all';
+        
         let html = '';
         
         // Side-by-side layout: Inventory on left, Ground on right
-        html += '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">';
+        html += '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; height: 100%;">';
         
         // Left column: Inventory
-        html += '<div style="border-right: 2px solid #333; padding-right: 15px;">';
-        html += '<h3 style="color: #00ffff; margin-bottom: 15px; font-size: 20px;">Inventory</h3>';
+        html += '<div style="border-right: 2px solid #333; padding-right: 10px; display: flex; flex-direction: column; min-height: 0;">';
+        html += '<h3 style="color: #00ffff; margin-bottom: 8px; font-size: 18px;">Inventory</h3>';
         html += this.renderInventoryTab(player, containerSys);
         html += '</div>';
         
         // Right column: Ground
-        html += '<div style="padding-left: 15px;">';
-        html += '<h3 style="color: #00ffff; margin-bottom: 15px; font-size: 20px;">Ground</h3>';
+        html += '<div style="padding-left: 10px; display: flex; flex-direction: column; min-height: 0;">';
+        html += '<h3 style="color: #00ffff; margin-bottom: 8px; font-size: 18px;">Ground</h3>';
         html += this.renderGroundTab(player, containerSys);
         html += '</div>';
         
@@ -1420,266 +1431,256 @@ export class UIManager {
         this.attachInventoryEventListeners();
     }
     
+    /**
+     * Categorize an item for filter tabs
+     */
+    getItemCategory(item) {
+        if (item.type === 'weapon') return 'weapons';
+        if (item.isComponent || item.type === 'component') return 'components';
+        if (item.tags && (item.tags.includes('medical') || item.medicalEffect || item.isMedkit)) return 'medical';
+        if (item.type === 'food' || item.type === 'drink' || item.nutrition) return 'consumables';
+        if (item.isContainer || (item.pockets && item.pockets.length > 0)) return 'containers';
+        if (item.type === 'armor' || item.defense) return 'armor';
+        return 'misc';
+    }
+    
+    /**
+     * Get dynamic display name for an item. For containers, reflects actual contents.
+     */
+    getDisplayName(item) {
+        // Only apply dynamic naming to food/drink containers (bottles, cans)
+        // NOT to flashlights, lanterns, backpacks, etc.
+        if (!item.isContainer || !item.contents) return item.name;
+        
+        const isFoodContainer = item.name.includes('Bottle') || item.name.includes('Can');
+        if (!isFoodContainer) return item.name;
+        
+        const prefix = (item.state && item.state.opened) ? 'Opened' : 'Sealed';
+        let baseType = item.name.includes('Bottle') ? 'Bottle' : 'Can';
+        
+        if (item.contents.length === 0) {
+            return `${prefix} ${baseType} (Empty)`;
+        }
+        
+        const contentName = item.contents[0].name;
+        return `${prefix} ${baseType} (${contentName})`;
+    }
+    
+    /**
+     * Render a compact single-line item row with inline quick buttons
+     */
+    renderCompactItemRow(item, actionType, actionData, containerSys, options = {}) {
+        const w = item.weight ? (item.weight >= 1000 ? `${(item.weight/1000).toFixed(1)}kg` : `${item.weight}g`) : '';
+        const isEquippable = item.slots && item.slots.length > 0;
+        const cat = this.getItemCategory(item);
+        
+        // Color-code by category
+        const catColors = { weapons: '#ff6666', components: '#ffaa00', medical: '#44ff88', consumables: '#88ccff', containers: '#ffaa00', armor: '#aaaaff', misc: '#aaaaaa' };
+        const borderColor = catColors[cat] || '#555';
+        
+        let html = `<div class="inv-row" data-category="${cat}" style="display: flex; align-items: center; gap: 4px; margin-bottom: 3px; padding: 4px 6px; background: #111; border-left: 3px solid ${borderColor};">`;
+        
+        // Item name (clickable for full actions)
+        const dataAttrs = Object.entries(actionData).map(([k,v]) => `data-${k}="${v}"`).join(' ');
+        html += `<button class="small-btn" data-action="${actionType}" ${dataAttrs} style="flex: 1; text-align: left; padding: 4px 6px; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 13px;">`;
+        html += `<span style="color: ${item.color || '#fff'};">${item.glyph || '*'}</span> `;
+        html += `<span style="color: #ddd;">${this.getDisplayName(item)}</span>`;
+        
+        // Inline hints
+        if (item.type === 'weapon' && item.weaponStats && item.weaponStats.damage) {
+            html += ` <span style="color: #ff6666; font-size: 11px;">⚔${item.weaponStats.damage}</span>`;
+        }
+        if (item.durability !== undefined && item.durability < 100) {
+            const durColor = item.durability > 50 ? '#888' : item.durability > 25 ? '#ff8800' : '#ff4444';
+            const durLabel = item.tags && item.tags.includes('power') ? '⚡' : '';
+            html += ` <span style="color: ${durColor}; font-size: 11px;">${durLabel}${Math.floor(item.durability)}%</span>`;
+        }
+        if (item.lightRadius) {
+            const isOn = !item.state || item.state.active !== false;
+            html += ` <span style="color: ${isOn ? '#44ff44' : '#ff4444'}; font-size: 11px;">[${isOn ? 'ON' : 'OFF'}]</span>`;
+        }
+        if (item.quantity && item.stackable) {
+            html += ` <span style="color: #888; font-size: 11px;">x${item.quantity}</span>`;
+        }
+        
+        if (w) html += `<span style="color: #555; font-size: 11px; margin-left: auto; padding-left: 8px;">${w}</span>`;
+        html += `</button>`;
+        
+        // Quick action buttons (only for stored/ground items, not equipped)
+        if (options.showDrop) {
+            html += `<button class="small-btn inv-quick-drop" data-action="${actionType}" ${dataAttrs} style="padding: 4px 6px; font-size: 10px; background: #442222; color: #ff8888;" title="Drop">Drop</button>`;
+        }
+        if (options.showEquip && isEquippable) {
+            html += `<button class="small-btn inv-quick-equip" data-action="${actionType}" ${dataAttrs} style="padding: 4px 6px; font-size: 10px; background: #224422; color: #88ff88;" title="Equip">Equip</button>`;
+        }
+        if (options.showStore) {
+            html += `<button class="small-btn inv-quick-store" data-action="${actionType}" ${dataAttrs} style="padding: 4px 6px; font-size: 10px; background: #223344; color: #88ccff;" title="Store">Store</button>`;
+        }
+        
+        html += `</div>`;
+        return html;
+    }
+    
     renderInventoryTab(player, containerSys) {
         let html = '';
         
-        // Encumbrance display
+        // Compact encumbrance bar
         const currentWeight = player.getCurrentCarryWeight();
         const maxWeight = player.maxWeight;
         const encumbrance = player.getEncumbranceLevel();
-        const encumbranceColors = {
-            light: '#00ff00',
-            medium: '#ffaa00',
-            heavy: '#ff8800',
-            overencumbered: '#ff4444'
-        };
+        const encColors = { light: '#00ff00', medium: '#ffaa00', heavy: '#ff8800', overencumbered: '#ff4444' };
+        const pct = Math.min(100, Math.round((currentWeight / maxWeight) * 100));
         
-        html += '<div style="margin-bottom: 20px; padding: 10px; background: #1a1a1a; border: 2px solid ' + encumbranceColors[encumbrance] + ';">';
-        html += '<h4 style="color: #00ffff; margin-bottom: 8px;">Carry Weight</h4>';
-        html += `<div style="font-size: 14px;"><span style="color: ${encumbranceColors[encumbrance]}; font-weight: bold;">${containerSys.formatWeight(currentWeight)}</span> / ${containerSys.formatWeight(maxWeight)}</div>`;
-        html += `<div style="font-size: 15px; color: ${encumbranceColors[encumbrance]}; margin-top: 5px;">Status: ${encumbrance.toUpperCase()}</div>`;
-        if (encumbrance !== 'light') {
-            const penalty = player.getEncumbrancePenalty();
-            html += `<div style="font-size: 15px; color: #ff8800; margin-top: 3px;">Movement penalty: +${penalty}% action cost</div>`;
+        html += `<div style="margin-bottom: 8px; padding: 6px 8px; background: #111; border: 1px solid ${encColors[encumbrance]};">`;
+        html += `<div style="display: flex; justify-content: space-between; font-size: 12px;">`;
+        html += `<span style="color: ${encColors[encumbrance]}; font-weight: bold;">${containerSys.formatWeight(currentWeight)} / ${containerSys.formatWeight(maxWeight)}</span>`;
+        html += `<span style="color: ${encColors[encumbrance]};">${encumbrance.toUpperCase()}</span>`;
+        html += `</div>`;
+        html += `<div style="margin-top: 3px; height: 3px; background: #333; border-radius: 2px;">`;
+        html += `<div style="height: 100%; width: ${pct}%; background: ${encColors[encumbrance]}; border-radius: 2px;"></div>`;
+        html += `</div>`;
+        html += `</div>`;
+        
+        // Category filter tabs
+        const filters = [
+            { id: 'all', label: 'All' },
+            { id: 'weapons', label: 'Weapons' },
+            { id: 'armor', label: 'Armor' },
+            { id: 'components', label: 'Components' },
+            { id: 'medical', label: 'Medical' },
+            { id: 'consumables', label: 'Food' },
+            { id: 'containers', label: 'Containers' },
+            { id: 'misc', label: 'Misc' }
+        ];
+        
+        html += `<div style="display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: 8px;">`;
+        for (const f of filters) {
+            const active = this._invFilter === f.id;
+            const style = active 
+                ? 'background: #00ffff; color: #000; font-weight: bold;' 
+                : 'background: #222; color: #888;';
+            html += `<button class="small-btn inv-filter-btn" data-filter="${f.id}" style="padding: 3px 8px; font-size: 11px; ${style}">${f.label}</button>`;
         }
-        html += '</div>';
+        html += `</div>`;
         
-        // Equipment section
-        html += '<div style="margin-bottom: 20px;">';
-        html += '<h4 style="color: #00ffff; margin-bottom: 8px;">Equipment</h4>';
+        // Scrollable content area
+        html += `<div style="flex: 1; overflow-y: auto; min-height: 0;">`;
+        
+        // ── Equipment section (collapsible) ──
+        html += `<div style="margin-bottom: 6px;">`;
+        html += `<button class="small-btn inv-section-toggle" data-section="equip-section" style="width: 100%; text-align: left; padding: 4px 8px; background: #1a1a1a; border-left: 3px solid #88aaff; font-size: 12px; color: #88aaff;">`;
+        html += `▼ Equipment</button>`;
+        html += `<div id="equip-section" style="margin-top: 2px;">`;
         
         const slots = [
             { key: 'head', label: 'Head' },
             { key: 'torso', label: 'Torso' },
             { key: 'legs', label: 'Legs' },
             { key: 'back', label: 'Back' },
-            { key: 'leftHand', label: 'Left Hand' },
-            { key: 'rightHand', label: 'Right Hand' }
+            { key: 'leftHand', label: 'L.Hand' },
+            { key: 'rightHand', label: 'R.Hand' }
         ];
         
         for (const slot of slots) {
             const item = player.equipment[slot.key];
+            if (slot.key === 'rightHand' && item && player.equipment.leftHand === item) continue;
             
-            // Skip right hand if it's the same item as left hand (2H grip)
-            if (slot.key === 'rightHand' && item && player.equipment.leftHand === item) {
-                continue;
-            }
+            html += `<div style="display: flex; align-items: center; gap: 4px; padding: 3px 6px; background: #0a0a0a; margin-bottom: 2px;">`;
+            html += `<span style="color: #556; font-size: 11px; width: 50px; flex-shrink: 0;">${slot.label}</span>`;
             
-            html += `<div style="margin-bottom: 8px; padding: 8px; background: #1a1a1a; border: 1px solid #333;">`;
-            html += `<div style="margin-bottom: 5px;"><span class="stat-label">${slot.label}:</span> `;
             if (item) {
-                html += `<span class="stat-value" style="color: ${item.color};">${item.name}</span>`;
-                const weight = containerSys.formatWeight(containerSys.getItemWeight(item));
-                html += ` <span style="color: #aaa; font-size: 14px;">(${weight})</span>`;
-                
-                // Show 2H indicator
-                if (item.twoHandGrip || (slot.key === 'leftHand' && player.equipment.rightHand === item)) {
-                    html += ` <span style="color: #ffaa00; font-size: 14px;">[2H]</span>`;
-                }
-                
-                if (item.isContainer && item.pockets) {
-                    html += ` <span style="color: #ffaa00; font-size: 14px;">[${item.pockets.length} pockets]</span>`;
-                }
-                
-                // Show on/off status for light-emitting items
+                const twoH = item.twoHandGrip || (slot.key === 'leftHand' && player.equipment.rightHand === item);
+                html += `<button class="small-btn" data-action="actions-equipped" data-slot="${slot.key}" style="flex: 1; text-align: left; padding: 3px 6px; font-size: 12px; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;">`;
+                html += `<span style="color: ${item.color};">${item.glyph || '*'} ${item.name}</span>`;
+                if (twoH) html += ` <span style="color: #ffaa00; font-size: 10px;">[2H]</span>`;
+                if (item.type === 'weapon' && item.weaponStats && item.weaponStats.damage) html += ` <span style="color: #ff6666; font-size: 10px;">⚔${item.weaponStats.damage}</span>`;
                 if (item.lightRadius) {
                     const isOn = !item.state || item.state.active !== false;
-                    const statusColor = isOn ? '#44ff44' : '#ff4444';
-                    const statusText = isOn ? 'ON' : 'OFF';
-                    html += ` <span style="color: ${statusColor}; font-size: 14px; font-weight: bold;">[${statusText}]</span>`;
+                    html += ` <span style="color: ${isOn ? '#44ff44' : '#ff4444'}; font-size: 10px;">[${isOn ? 'ON' : 'OFF'}]</span>`;
                 }
+                html += `</button>`;
                 
-                html += `</div>`;
-                
-                // Weapon stats inline for equipped items
-                if (item.weaponStats && item.weaponStats.damage) {
-                    html += `<div style="font-size: 11px; color: #ff6666; margin-top: 2px;">⚔ ${item.weaponStats.damage} ${item.weaponStats.attackType || 'blunt'}`;
-                    if (item.weaponStats.bleedChance) html += ` | bleed ${Math.round(item.weaponStats.bleedChance * 100)}%`;
-                    if (item.weaponStats.stunChance) html += ` | stun ${Math.round(item.weaponStats.stunChance * 100)}%`;
-                    html += `</div>`;
-                }
-                html += `<div style="margin-top: 5px; display: flex; gap: 5px;">`;
-                html += `<button class="small-btn" data-action="actions-equipped" data-slot="${slot.key}">Actions</button>`;
-                
-                // Toggle button for light-emitting items
                 if (item.lightRadius) {
                     const isOn = !item.state || item.state.active !== false;
-                    const toggleLabel = isOn ? 'Turn Off' : 'Turn On';
-                    const toggleColor = isOn ? '#ff4444' : '#44ff44';
-                    html += `<button class="small-btn" data-action="toggle-light" data-slot="${slot.key}" style="background: ${toggleColor}; color: #000;">${toggleLabel}</button>`;
-                }
-                html += `</div>`;
-                
-                // Show contents for light-source containers (batteries, fuel)
-                if (item.isContainer && item.contents && item.contents.length > 0 && item.lightRadius) {
-                    html += `<div style="margin-top: 8px; padding: 6px; background: #0a0a0a; border-left: 2px solid ${item.color};">`;
-                    for (let ci = 0; ci < item.contents.length; ci++) {
-                        const contentItem = item.contents[ci];
-                        html += `<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;">`;
-                        html += `<span style="font-size: 13px; color: ${contentItem.color};">• ${contentItem.name}`;
-                        if (contentItem.quantity) html += ` (${Math.floor(contentItem.quantity)}${contentItem.quantityUnit || ''})`;
-                        if (contentItem.tags && contentItem.tags.includes('power') && contentItem.durability !== undefined) {
-                            html += ` [Charge: ${Math.floor(contentItem.durability)}%]`;
-                        } else if (contentItem.durability !== undefined) {
-                            html += ` [${Math.floor(contentItem.durability)}%]`;
-                        }
-                        html += `</span>`;
-                        html += `<button class="small-btn" data-action="actions-container-item" data-container-id="${item.id}" data-item-index="${ci}" style="font-size: 11px; padding: 2px 6px;">Actions</button>`;
-                        html += `</div>`;
-                    }
-                    html += `</div>`;
+                    html += `<button class="small-btn" data-action="toggle-light" data-slot="${slot.key}" style="padding: 3px 6px; font-size: 10px; background: ${isOn ? '#442222' : '#224422'}; color: ${isOn ? '#ff8888' : '#88ff88'};">${isOn ? 'Off' : 'On'}</button>`;
                 }
             } else {
-                html += `<span class="stat-value" style="color: #666;">Empty</span></div>`;
+                html += `<span style="color: #333; font-size: 12px; font-style: italic;">empty</span>`;
             }
             html += `</div>`;
         }
-        html += '</div>';
+        html += `</div></div>`;
         
-        // Carried items section
-        html += '<div style="margin-bottom: 20px;">';
-        html += '<h4 style="color: #ffaa00; margin-bottom: 8px;">Carrying</h4>';
-        
-        // Initialize carrying if it doesn't exist (for old save games)
-        if (!player.carrying) {
-            player.carrying = { leftHand: null, rightHand: null };
-        }
-        
-        console.log('Player carrying:', player.carrying);
+        // ── Carrying section (only if carrying something) ──
+        if (!player.carrying) player.carrying = { leftHand: null, rightHand: null };
         const leftCarried = player.carrying.leftHand;
         const rightCarried = player.carrying.rightHand;
-        console.log('Left carried:', leftCarried, 'Right carried:', rightCarried);
         
-        if (!leftCarried && !rightCarried) {
-            html += '<div style="color: #666;">Hands are free</div>';
-        } else {
+        if (leftCarried || rightCarried) {
+            html += `<div style="margin-bottom: 6px;">`;
+            html += `<div style="padding: 4px 8px; background: #1a1a1a; border-left: 3px solid #ffaa00; font-size: 12px; color: #ffaa00; margin-bottom: 2px;">Carrying</div>`;
+            
             if (leftCarried && leftCarried === rightCarried) {
-                // Two-handed carry
-                const itemWeight = containerSys.getItemWeight(leftCarried);
-                html += `<div style="padding: 8px; background: #1a1a1a; border: 1px solid #333; border-left: 3px solid #ffaa00; margin-bottom: 5px;">`;
-                html += `<div style="color: ${leftCarried.color}; font-weight: bold;">${leftCarried.name}</div>`;
-                html += `<div style="font-size: 14px; color: #ffaa00;">🤲 Both Hands | ${containerSys.formatWeight(itemWeight)}</div>`;
-                html += `<div style="margin-top: 5px; display: flex; gap: 5px;">`;
-                html += `<button class="small-btn" data-action="actions-carried" data-hand="both">Actions</button>`;
-                html += `</div>`;
-                html += `</div>`;
+                html += this.renderCompactItemRow(leftCarried, 'actions-carried', { hand: 'both' }, containerSys, { showDrop: true });
             } else {
-                if (leftCarried) {
-                    const itemWeight = containerSys.getItemWeight(leftCarried);
-                    html += `<div style="padding: 8px; background: #1a1a1a; border: 1px solid #333; border-left: 3px solid #ffaa00; margin-bottom: 5px;">`;
-                    html += `<div style="color: ${leftCarried.color}; font-weight: bold;">${leftCarried.name}</div>`;
-                    html += `<div style="font-size: 14px; color: #ffaa00;">👈 Left Hand | ${containerSys.formatWeight(itemWeight)}</div>`;
-                    html += `<div style="margin-top: 5px; display: flex; gap: 5px;">`;
-                    html += `<button class="small-btn" data-action="actions-carried" data-hand="left">Actions</button>`;
-                    html += `</div>`;
-                    html += `</div>`;
-                }
-                if (rightCarried) {
-                    const itemWeight = containerSys.getItemWeight(rightCarried);
-                    html += `<div style="padding: 8px; background: #1a1a1a; border: 1px solid #333; border-left: 3px solid #ffaa00; margin-bottom: 5px;">`;
-                    html += `<div style="color: ${rightCarried.color}; font-weight: bold;">${rightCarried.name}</div>`;
-                    html += `<div style="font-size: 14px; color: #ffaa00;">👉 Right Hand | ${containerSys.formatWeight(itemWeight)}</div>`;
-                    html += `<div style="margin-top: 5px; display: flex; gap: 5px;">`;
-                    html += `<button class="small-btn" data-action="actions-carried" data-hand="right">Actions</button>`;
-                    html += `</div>`;
-                    html += `</div>`;
-                }
+                if (leftCarried) html += this.renderCompactItemRow(leftCarried, 'actions-carried', { hand: 'left' }, containerSys, { showDrop: true });
+                if (rightCarried) html += this.renderCompactItemRow(rightCarried, 'actions-carried', { hand: 'right' }, containerSys, { showDrop: true });
             }
+            html += `</div>`;
         }
-        html += '</div>';
         
-        // Inventory section - show all stored items with locations
-        html += '<div style="margin-bottom: 20px;">';
-        html += `<h4 style="color: #00ffff; margin-bottom: 8px;">Stored Items</h4>`;
-        
-        const storedItems = containerSys.getAllStoredItems(player);
+        // ── Stored Items (grouped by container) ──
+        // Filter out sub-container contents (fuel in flashlights, food in cans, etc.)
+        // Those are only accessible via Inspect on the parent item
+        const storedItems = containerSys.getAllStoredItems(player)
+            .filter(s => s.type !== 'container');
+        const activeFilter = this._invFilter;
         
         if (storedItems.length === 0) {
-            html += '<div style="color: #666;">No items stored. You need pockets or containers to carry items!</div>';
+            html += '<div style="color: #444; font-size: 12px; padding: 8px;">No items stored.</div>';
         } else {
+            // Group items by container location
+            const groups = {};
             for (let i = 0; i < storedItems.length; i++) {
                 const stored = storedItems[i];
-                const item = stored.item;
+                const loc = stored.location;
+                if (!groups[loc]) groups[loc] = [];
+                groups[loc].push({ stored, index: i });
+            }
+            
+            for (const [location, items] of Object.entries(groups)) {
+                // Filter by category
+                const filteredItems = activeFilter === 'all' 
+                    ? items 
+                    : items.filter(({ stored }) => this.getItemCategory(stored.item) === activeFilter);
                 
-                const itemWeight = containerSys.getItemWeight(item);
-                const itemVolume = containerSys.getItemVolume(item);
+                if (filteredItems.length === 0) continue;
                 
-                html += `<div class="inventory-item" data-stored-index="${i}" style="margin-bottom: 10px; padding: 8px; background: #1a1a1a; border: 1px solid #333; border-left: 3px solid #00ffff;">`;
-                html += `<div style="color: ${item.color}; font-weight: bold; margin-bottom: 3px;">${item.name}</div>`;
-                html += `<div style="font-size: 10px; color: #00ffff; margin-bottom: 5px;">📍 ${stored.location}</div>`;
-                html += `<div style="font-size: 11px; color: #888;">Type: ${item.type} | ${containerSys.formatWeight(itemWeight)} | ${containerSys.formatVolume(itemVolume)}</div>`;
+                html += `<div style="margin-bottom: 4px;">`;
+                html += `<div style="padding: 3px 8px; background: #0d0d0d; font-size: 11px; color: #00aaaa; border-bottom: 1px solid #222;">${location} (${filteredItems.length})</div>`;
                 
-                if (item.material) {
-                    html += `<div style="font-size: 10px; color: #888;">Material: ${this.game.content.materials[item.material].name}</div>`;
+                for (const { stored, index } of filteredItems) {
+                    html += this.renderCompactItemRow(
+                        stored.item, 
+                        'actions-stored', 
+                        { 'stored-index': index }, 
+                        containerSys, 
+                        { showDrop: true, showEquip: true }
+                    );
                 }
-                
-                if (item.durability !== undefined) {
-                    const durLabel = item.tags && item.tags.includes('power') ? 'Charge' : 'Durability';
-                    html += `<div style="font-size: 10px; color: #888;">${durLabel}: ${Math.floor(item.durability)}%</div>`;
-                }
-                
-                // Inline weapon stats
-                if (item.weaponStats && item.weaponStats.damage) {
-                    html += `<div style="font-size: 10px; color: #ff6666;">⚔ ${item.weaponStats.damage} ${item.weaponStats.attackType || 'blunt'}`;
-                    if (item.weaponStats.bleedChance) html += ` | bleed ${Math.round(item.weaponStats.bleedChance * 100)}%`;
-                    if (item.weaponStats.stunChance) html += ` | stun ${Math.round(item.weaponStats.stunChance * 100)}%`;
-                    html += `</div>`;
-                }
-                
-                html += `<div style="margin-top: 8px; display: flex; gap: 5px;">`;
-                html += `<button class="small-btn" data-action="actions-stored" data-stored-index="${i}">Actions</button>`;
-                html += `</div>`;
-                
-                // Display opened container contents inline (also show for light-source containers)
-                const showContents = (item.state && item.state.opened && item.contents && item.contents.length > 0) ||
-                                     (item.lightRadius && item.contents && item.contents.length > 0);
-                if (showContents) {
-                    html += `<div style="margin-top: 10px; padding: 8px; background: #0a0a0a; border-left: 2px solid #00ffff;">`;
-                    html += `<div style="color: #00ffff; font-size: 12px; font-weight: bold; margin-bottom: 5px;">Contents:</div>`;
-                    
-                    for (let ci = 0; ci < item.contents.length; ci++) {
-                        const contentItem = item.contents[ci];
-                        html += `<div style="margin-top: 5px; padding: 5px; background: #000; border-left: 2px solid ${contentItem.color};">`;
-                        html += `<div style="font-size: 14px; color: ${contentItem.color}; margin-bottom: 3px;">• ${contentItem.name}</div>`;
-                        
-                        if (contentItem.quantity) {
-                            html += `<div style="font-size: 12px; color: #888; margin-bottom: 3px;">${contentItem.quantity}${contentItem.quantityUnit}</div>`;
-                        }
-                        
-                        // Show freshness indicator for food items
-                        if (contentItem.type === 'food' && contentItem.state && contentItem.state.contaminationLevel !== undefined) {
-                            const freshness = 1 - (contentItem.state.contaminationLevel / 0.3);
-                            let freshnessText = '';
-                            let freshnessColor = '';
-                            
-                            if (freshness > 0.66) {
-                                freshnessText = '✓ Fresh';
-                                freshnessColor = '#44ff44';
-                            } else if (freshness > 0.33) {
-                                freshnessText = '⚠ Aging';
-                                freshnessColor = '#ffaa00';
-                            } else {
-                                freshnessText = '⚠ Spoiling';
-                                freshnessColor = '#ff8800';
-                            }
-                            
-                            html += `<div style="font-size: 12px; color: ${freshnessColor}; margin-bottom: 3px;">${freshnessText}</div>`;
-                        }
-                        
-                        if (contentItem.state && contentItem.state.contaminated) {
-                            html += `<div style="font-size: 12px; color: #ff8800; margin-bottom: 3px;">⚠ Contaminated</div>`;
-                        }
-                        
-                        html += `<button class="small-btn" data-action="actions-container-item" data-container-id="${item.id}" data-item-index="${ci}" style="margin-top: 3px;">Actions</button>`;
-                        html += `</div>`;
-                    }
-                    html += `</div>`;
-                }
-                
                 html += `</div>`;
             }
+            
+            // Show message if filter hides everything
+            const totalVisible = activeFilter === 'all' 
+                ? storedItems.length 
+                : storedItems.filter(s => this.getItemCategory(s.item) === activeFilter).length;
+            if (totalVisible === 0) {
+                html += `<div style="color: #444; font-size: 12px; padding: 8px; text-align: center;">No ${activeFilter} items stored.</div>`;
+            }
         }
-        html += '</div>';
+        
+        html += `</div>`; // end scrollable area
         
         return html;
     }
@@ -1689,38 +1690,26 @@ export class UIManager {
         
         const groundItems = this.game.world.getItemsAt(player.x, player.y, player.z);
         
-        html += '<div style="margin-bottom: 20px;">';
-        html += '<h4 style="color: #00ffff; margin-bottom: 8px;">Items on Ground</h4>';
-        
         if (groundItems.length === 0) {
-            html += '<div style="color: #666;">Nothing here.</div>';
+            html += '<div style="color: #444; font-size: 12px; padding: 8px;">Nothing here.</div>';
         } else {
+            // Grab All button
+            html += `<div style="margin-bottom: 8px;">`;
+            html += `<button class="small-btn" id="inv-grab-all" style="width: 100%; padding: 6px; font-size: 12px; background: #224422; color: #88ff88;">Grab All (${groundItems.length})</button>`;
+            html += `</div>`;
+            
+            html += `<div style="flex: 1; overflow-y: auto; min-height: 0;">`;
             for (let i = 0; i < groundItems.length; i++) {
-                const item = groundItems[i];
-                const itemWeight = containerSys.getItemWeight(item);
-                const itemVolume = containerSys.getItemVolume(item);
-                
-                html += `<div class="inventory-item" data-ground-index="${i}" style="margin-bottom: 10px; padding: 8px; background: #1a1a1a; border: 1px solid #333;">`;
-                html += `<div style="color: ${item.color}; font-weight: bold; margin-bottom: 3px;">${item.name}</div>`;
-                html += `<div style="font-size: 15px; color: #aaa;">Type: ${item.type} | ${containerSys.formatWeight(itemWeight)} | ${containerSys.formatVolume(itemVolume)}</div>`;
-                
-                if (item.material) {
-                    html += `<div style="font-size: 15px; color: #aaa;">Material: ${this.game.content.materials[item.material].name}</div>`;
-                }
-                
-                if (item.durability !== undefined) {
-                    const durLabel = item.tags && item.tags.includes('power') ? 'Charge' : 'Durability';
-                    html += `<div style="font-size: 15px; color: #aaa;">${durLabel}: ${Math.floor(item.durability)}%</div>`;
-                }
-                
-                html += `<div style="margin-top: 8px; display: flex; gap: 5px; flex-wrap: wrap;">`;
-                html += `<button class="small-btn" data-action="actions-ground" data-ground-index="${i}">Actions</button>`;
-                html += `</div>`;
-                
-                html += `</div>`;
+                html += this.renderCompactItemRow(
+                    groundItems[i],
+                    'actions-ground',
+                    { 'ground-index': i },
+                    containerSys,
+                    { showStore: true, showEquip: true }
+                );
             }
+            html += `</div>`;
         }
-        html += '</div>';
         
         return html;
     }
@@ -1880,70 +1869,40 @@ export class UIManager {
     }
     
     attachInventoryEventListeners() {
-        const equipButtons = document.querySelectorAll('button[data-action="equip"]');
-        equipButtons.forEach(btn => {
+        const player = this.game.player;
+        
+        // ── Category filter tabs ──
+        const filterBtns = document.querySelectorAll('.inv-filter-btn');
+        filterBtns.forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                const index = parseInt(btn.dataset.index);
-                const slot = btn.dataset.slot;
-                this.handleEquipItem(index, slot);
+                this._invFilter = btn.dataset.filter;
+                this.showDetailedInventory();
             });
         });
         
-        const equipStoredButtons = document.querySelectorAll('button[data-action="equip-stored"]');
-        equipStoredButtons.forEach(btn => {
+        // ── Section collapse/expand toggles ──
+        const toggleBtns = document.querySelectorAll('.inv-section-toggle');
+        toggleBtns.forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                const index = parseInt(btn.dataset.storedIndex);
-                const slot = btn.dataset.slot;
-                this.handleEquipStoredItem(index, slot);
+                const sectionId = btn.dataset.section;
+                const section = document.getElementById(sectionId);
+                if (section) {
+                    const hidden = section.style.display === 'none';
+                    section.style.display = hidden ? '' : 'none';
+                    btn.textContent = btn.textContent.replace(/^[▼▶]/, hidden ? '▼' : '▶');
+                }
             });
         });
         
-        const equipGroundButtons = document.querySelectorAll('button[data-action="equip-ground"]');
-        equipGroundButtons.forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const index = parseInt(btn.dataset.groundIndex);
-                const slot = btn.dataset.slot;
-                this.handleEquipGroundItem(index, slot);
-            });
-        });
-        
-        const unequipButtons = document.querySelectorAll('button[data-action="unequip"]');
-        unequipButtons.forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const slot = btn.dataset.slot;
-                this.handleUnequipItem(slot);
-            });
-        });
-        
-        const dropButtons = document.querySelectorAll('button[data-action="drop"]');
-        dropButtons.forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const index = parseInt(btn.dataset.index);
-                this.handleDropItem(index);
-            });
-        });
-        
-        const dropStoredButtons = document.querySelectorAll('button[data-action="drop-stored"]');
-        dropStoredButtons.forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const index = parseInt(btn.dataset.storedIndex);
-                this.handleDropStoredItem(index);
-            });
-        });
-        
-        // Toggle light on/off button listeners
+        // ── Toggle light on/off ──
         const toggleLightButtons = document.querySelectorAll('button[data-action="toggle-light"]');
         toggleLightButtons.forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const slot = btn.dataset.slot;
-                const item = this.game.player.equipment[slot];
+                const item = player.equipment[slot];
                 if (item && item.lightRadius) {
                     if (!item.state) item.state = {};
                     item.state.active = item.state.active === false ? true : false;
@@ -1955,13 +1914,82 @@ export class UIManager {
             });
         });
         
-        // Actions button listeners
-        const actionsButtons = document.querySelectorAll('button[data-action^="actions-"]');
-        actionsButtons.forEach(btn => {
+        // ── Grab All button (ground) ──
+        document.getElementById('inv-grab-all')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            player.grabAll();
+            this.showDetailedInventory();
+            this.updatePanels();
+        });
+        
+        // ── Quick Drop buttons (stored items) ──
+        document.querySelectorAll('.inv-quick-drop').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const actionType = btn.dataset.action;
-                const player = this.game.player;
+                
+                if (actionType === 'actions-stored') {
+                    const index = parseInt(btn.dataset.storedIndex);
+                    this.handleDropStoredItem(index);
+                } else if (actionType === 'actions-carried') {
+                    const hand = btn.dataset.hand;
+                    this.handleDropCarriedItem(hand);
+                }
+            });
+        });
+        
+        // ── Quick Equip buttons (stored/ground items → move modal for slot selection) ──
+        document.querySelectorAll('.inv-quick-equip').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const actionType = btn.dataset.action;
+                
+                if (actionType === 'actions-stored') {
+                    const index = parseInt(btn.dataset.storedIndex);
+                    this.showMoveModal('stored', { index });
+                } else if (actionType === 'actions-ground') {
+                    const index = parseInt(btn.dataset.groundIndex);
+                    this.showMoveModal('ground', { index });
+                }
+            });
+        });
+        
+        // ── Quick Store buttons (ground items → auto-store) ──
+        document.querySelectorAll('.inv-quick-store').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const actionType = btn.dataset.action;
+                
+                if (actionType === 'actions-ground') {
+                    const index = parseInt(btn.dataset.groundIndex);
+                    const groundItems = this.game.world.getItemsAt(player.x, player.y, player.z);
+                    const item = groundItems[index];
+                    if (item) {
+                        const result = player.addToInventory(item);
+                        if (result.success) {
+                            this.game.world.removeItem(item);
+                            this.game.ui.log(`Took ${item.name} → ${result.location}.`, 'info');
+                        } else {
+                            this.game.ui.log(`No space for ${item.name}.`, 'warning');
+                        }
+                        this.showDetailedInventory();
+                        this.updatePanels();
+                    }
+                }
+            });
+        });
+        
+        // ── Actions button listeners (item name click → full actions modal) ──
+        const actionsButtons = document.querySelectorAll('button[data-action^="actions-"]');
+        actionsButtons.forEach(btn => {
+            // Skip quick-action buttons (they have their own handlers above)
+            if (btn.classList.contains('inv-quick-drop') || 
+                btn.classList.contains('inv-quick-equip') || 
+                btn.classList.contains('inv-quick-store')) return;
+            
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const actionType = btn.dataset.action;
                 let item = null;
                 let sourceData = {};
                 
@@ -1989,17 +2017,13 @@ export class UIManager {
                     const itemIndex = parseInt(btn.dataset.itemIndex);
                     const container = this.findContainerById(containerId);
                     if (container && container.pockets && container.pockets[pocketIndex]) {
-                        const pocket = container.pockets[pocketIndex];
-                        item = pocket.contents[itemIndex];
+                        item = container.pockets[pocketIndex].contents[itemIndex];
                     }
                     sourceData = { containerId, pocketIndex, itemIndex };
                 } else if (actionType === 'actions-container-item') {
                     const containerId = btn.dataset.containerId;
                     const itemIndex = parseInt(btn.dataset.itemIndex);
-                    
-                    // Check all locations: inventory, equipment, carrying, and ground
-                    let container = this.findContainerById(containerId);
-                    
+                    const container = this.findContainerById(containerId);
                     if (container && container.contents && container.contents[itemIndex]) {
                         item = container.contents[itemIndex];
                     }
@@ -2009,33 +2033,6 @@ export class UIManager {
                 if (item) {
                     this.showActionsModal(item, actionType, sourceData);
                 }
-            });
-        });
-        
-        const pickupGroundButtons = document.querySelectorAll('button[data-action="pickup-ground"]');
-        pickupGroundButtons.forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const index = parseInt(btn.dataset.groundIndex);
-                this.handlePickupGroundItem(index);
-            });
-        });
-        
-        const carryGroundButtons = document.querySelectorAll('button[data-action="carry-ground"]');
-        carryGroundButtons.forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const index = parseInt(btn.dataset.groundIndex);
-                this.handleCarryGroundItem(index);
-            });
-        });
-        
-        const dropCarriedButtons = document.querySelectorAll('button[data-action="drop-carried"]');
-        dropCarriedButtons.forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const hand = btn.dataset.hand;
-                this.handleDropCarriedItem(hand);
             });
         });
     }
@@ -2250,7 +2247,7 @@ export class UIManager {
         
         let html = '<div style="padding: 20px;">';
         html += `<button id="close-move-modal" class="small-btn" style="margin-bottom: 15px;">← Back</button>`;
-        html += `<h3 style="color: #4488ff; margin-bottom: 15px;">Move: ${item.name}</h3>`;
+        html += `<h3 style="color: #4488ff; margin-bottom: 15px;">Move: ${this.getDisplayName(item)}</h3>`;
         
         html += `<div style="padding: 15px; background: #1a1a1a; border: 2px solid #4488ff; margin-bottom: 15px;">`;
         html += `<div style="color: #888; margin-bottom: 10px;">Choose where to move this item:</div>`;
@@ -2301,7 +2298,15 @@ export class UIManager {
                 html += `<div style="display: flex; flex-direction: column; gap: 5px;">`;
                 for (let i = 0; i < storageOptions.length; i++) {
                     const storage = storageOptions[i];
-                    html += `<button class="small-btn" data-move-action="store" data-storage-index="${i}" style="background: #00ffff; color: #000; text-align: left;">${storage.location}</button>`;
+                    // Use dynamic display name for the container portion
+                    let label = storage.location;
+                    if (storage.item) {
+                        const displayName = this.getDisplayName(storage.item);
+                        if (displayName !== storage.item.name) {
+                            label = label.replace(storage.item.name, displayName);
+                        }
+                    }
+                    html += `<button class="small-btn" data-move-action="store" data-storage-index="${i}" style="background: #00ffff; color: #000; text-align: left;">${label}</button>`;
                 }
                 html += `</div>`;
                 html += `</div>`;
@@ -2345,7 +2350,11 @@ export class UIManager {
         
         // Attach event listeners
         document.getElementById('close-move-modal')?.addEventListener('click', () => {
-            this.showDetailedInventory('inventory');
+            if (sourceType === 'furniture' && this.furnitureContext) {
+                showFurnitureContentsModal(this, this.furnitureContext);
+            } else {
+                this.showDetailedInventory('inventory');
+            }
         });
         
         const moveActionButtons = document.querySelectorAll('button[data-move-action]');
@@ -2443,9 +2452,15 @@ export class UIManager {
             this.game.ui.log(`Dropped ${item.name}.`, 'info');
         }
         
+        const wasFurniture = sourceType === 'furniture' && this.furnitureContext;
         this.moveContext = null;
-        this.showDetailedInventory('inventory');
         this.updatePanels();
+        
+        if (wasFurniture) {
+            showFurnitureContentsModal(this, this.furnitureContext);
+        } else {
+            this.showDetailedInventory('inventory');
+        }
     }
     
     showOccupiedSlotPrompt(newItemIndex, targetSlot, occupiedItem) {
@@ -2604,7 +2619,7 @@ export class UIManager {
         html += '<h3 style="color: #00ffff; margin-bottom: 15px;">Item Inspection</h3>';
         
         html += `<div style="padding: 15px; background: #1a1a1a; border: 2px solid ${item.color}; margin-bottom: 15px;">`;
-        html += `<h4 style="color: ${item.color}; margin-bottom: 10px;">${item.name}</h4>`;
+        html += `<h4 style="color: ${item.color}; margin-bottom: 10px;">${this.getDisplayName(item)}</h4>`;
         html += `<div style="color: #888; margin-bottom: 5px;">Type: ${item.type}</div>`;
         
         if (item.material) {
@@ -2698,8 +2713,21 @@ export class UIManager {
                             const pocketItem = pocket.contents[pi];
                             html += `<div style="margin-bottom: 8px; padding: 8px; background: #000; border-left: 2px solid ${pocketItem.color};">`;
                             html += `<div style="color: ${pocketItem.color}; font-size: 16px; margin-bottom: 5px;">• ${pocketItem.name}</div>`;
-                            html += `<button class="small-btn" data-action="actions-pocket-item" data-container-id="${item.id}" data-pocket-index="${i}" data-item-index="${pi}">Actions</button>`;
-                            html += `</div>`;
+                            html += `<div style="display: flex; gap: 5px; flex-wrap: wrap;">`;
+                            // Direct consume button for food/drink
+                            if ((pocketItem.type === 'food' || pocketItem.type === 'drink') && pocketItem.nutrition) {
+                                const warn = pocketItem.state && pocketItem.state.contaminated ? ' ⚠' : '';
+                                html += `<button class="small-btn" data-inspect-action="consume" data-container-id="${item.id}" data-pocket-index="${i}" data-item-index="${pi}" style="flex: 1; background: #226622; color: #44ff44;">Consume${warn}</button>`;
+                            }
+                            // Direct use button for medical items
+                            if (pocketItem.medicalEffect) {
+                                html += `<button class="small-btn" data-inspect-action="use" data-container-id="${item.id}" data-pocket-index="${i}" data-item-index="${pi}" style="flex: 1; background: #226622; color: #44ff44;">Apply</button>`;
+                            }
+                            // Take out
+                            html += `<button class="small-btn" data-inspect-action="take" data-container-id="${item.id}" data-pocket-index="${i}" data-item-index="${pi}" style="flex: 1;">Take</button>`;
+                            // Full actions fallback
+                            html += `<button class="small-btn" data-action="actions-pocket-item" data-container-id="${item.id}" data-pocket-index="${i}" data-item-index="${pi}" style="flex: 1; opacity: 0.7;">More...</button>`;
+                            html += `</div></div>`;
                         }
                         html += `</div>`;
                     } else {
@@ -2710,10 +2738,12 @@ export class UIManager {
                 }
                 html += `</div>`;
             } else if (item.contents) {
-                const contWeight = containerSys.getTotalWeight(item);
-                const contVolume = containerSys.getTotalVolume(item);
-                html += `<div style="color: #888; margin-bottom: 5px;">Weight: ${containerSys.formatWeight(contWeight)} / ${containerSys.formatWeight(item.maxWeight)}</div>`;
-                html += `<div style="color: #888; margin-bottom: 5px;">Volume: ${containerSys.formatVolume(contVolume)} / ${containerSys.formatVolume(item.maxVolume)}</div>`;
+                if (item.maxWeight !== undefined && item.maxVolume !== undefined) {
+                    const contWeight = containerSys.getTotalWeight(item);
+                    const contVolume = containerSys.getTotalVolume(item);
+                    html += `<div style="color: #888; margin-bottom: 5px;">Weight: ${containerSys.formatWeight(contWeight)} / ${containerSys.formatWeight(item.maxWeight)}</div>`;
+                    html += `<div style="color: #888; margin-bottom: 5px;">Volume: ${containerSys.formatVolume(contVolume)} / ${containerSys.formatVolume(item.maxVolume)}</div>`;
+                }
                 html += `<div style="color: #888; margin-bottom: 10px;">Items: ${item.contents.length}</div>`;
                 
                 if (item.contents.length > 0) {
@@ -2753,7 +2783,21 @@ export class UIManager {
                             html += `<div style="font-size: 13px; color: #ff8800; margin-bottom: 3px;">⚠ Contaminated</div>`;
                         }
                         
-                        html += `<button class="small-btn" data-action="actions-container-item" data-container-id="${item.id}" data-item-index="${ci}">Actions</button>`;
+                        html += `<div style="display: flex; gap: 5px; flex-wrap: wrap;">`;
+                        // Direct consume button for food/drink
+                        if ((containedItem.type === 'food' || containedItem.type === 'drink') && containedItem.nutrition) {
+                            const warn = containedItem.state && containedItem.state.contaminated ? ' ⚠' : '';
+                            html += `<button class="small-btn" data-inspect-action="consume" data-container-id="${item.id}" data-item-index="${ci}" style="flex: 1; background: #226622; color: #44ff44;">Consume${warn}</button>`;
+                        }
+                        // Direct use button for medical items
+                        if (containedItem.medicalEffect) {
+                            html += `<button class="small-btn" data-inspect-action="use" data-container-id="${item.id}" data-item-index="${ci}" style="flex: 1; background: #226622; color: #44ff44;">Apply</button>`;
+                        }
+                        // Take out
+                        html += `<button class="small-btn" data-inspect-action="take" data-container-id="${item.id}" data-item-index="${ci}" style="flex: 1;">Take</button>`;
+                        // Full actions fallback
+                        html += `<button class="small-btn" data-action="actions-container-item" data-container-id="${item.id}" data-item-index="${ci}" style="flex: 1; opacity: 0.7;">More...</button>`;
+                        html += `</div>`;
                         html += `</div>`;
                     }
                     html += `</div>`;
@@ -2769,6 +2813,59 @@ export class UIManager {
         
         document.getElementById('close-inspect')?.addEventListener('click', () => {
             this.showDetailedInventory('inventory');
+        });
+        
+        // Direct action buttons on container contents (Consume/Use/Take)
+        const inspectActionBtns = document.querySelectorAll('button[data-inspect-action]');
+        inspectActionBtns.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const action = btn.dataset.inspectAction;
+                const containerId = btn.dataset.containerId;
+                const pocketIndex = btn.dataset.pocketIndex !== undefined ? parseInt(btn.dataset.pocketIndex) : null;
+                const itemIndex = parseInt(btn.dataset.itemIndex);
+                
+                const container = this.findContainerById(containerId);
+                if (!container) return;
+                
+                let contentItem = null;
+                let sourceType, sourceData;
+                
+                if (pocketIndex !== null && container.pockets && container.pockets[pocketIndex]) {
+                    contentItem = container.pockets[pocketIndex].contents[itemIndex];
+                    sourceType = 'actions-pocket-item';
+                    sourceData = { containerId, pocketIndex, itemIndex };
+                } else if (container.contents) {
+                    contentItem = container.contents[itemIndex];
+                    sourceType = 'actions-container-item';
+                    sourceData = { containerId, itemIndex };
+                }
+                
+                if (!contentItem) return;
+                
+                if (action === 'consume') {
+                    this.actionsContext = { item: contentItem, sourceType, sourceData };
+                    this.handleConsumeAction(contentItem, sourceType, sourceData);
+                } else if (action === 'use') {
+                    this.actionsContext = { item: contentItem, sourceType, sourceData };
+                    this.handleUseAction(contentItem, sourceType, sourceData);
+                } else if (action === 'take') {
+                    const player = this.game.player;
+                    const result = player.addToInventory(contentItem);
+                    if (result.success) {
+                        if (pocketIndex !== null && container.pockets && container.pockets[pocketIndex]) {
+                            container.pockets[pocketIndex].contents.splice(itemIndex, 1);
+                        } else if (container.contents) {
+                            container.contents.splice(itemIndex, 1);
+                        }
+                        this.game.ui.log(`Took ${contentItem.name} from ${container.name}.`, 'info');
+                    } else {
+                        this.game.ui.log(`No space for ${contentItem.name}.`, 'warning');
+                    }
+                    // Refresh inspect modal
+                    this.showInspectModal(item);
+                }
+            });
         });
         
         // Attach all inventory event listeners (includes actions-pocket-item and actions-container-item)
@@ -3168,16 +3265,69 @@ export class UIManager {
         if (!this.helpModal) return;
         
         if (this.helpModal.classList.contains('hidden')) {
-            this.showHelp();
+            this._helpActiveTab = this._helpActiveTab || 'controls';
+            this.showHelpTab(this._helpActiveTab);
             this.helpModal.classList.remove('hidden');
         } else {
             this.helpModal.classList.add('hidden');
         }
     }
     
-    showHelp() {
+    showHelpTab(tabId) {
+        this._helpActiveTab = tabId;
         const content = document.getElementById('help-content');
+        const tabBar = document.getElementById('help-tabs');
+        const searchBox = document.getElementById('help-search');
+        const searchInput = document.getElementById('help-search-input');
         
+        // Render tab bar
+        const tabs = [
+            { id: 'controls', label: 'Controls' },
+            { id: 'recipes', label: 'Crafting Wiki' },
+            { id: 'materials', label: 'Materials' }
+        ];
+        tabBar.innerHTML = tabs.map(t => {
+            const active = t.id === tabId;
+            return `<button class="small-btn help-tab-btn" data-help-tab="${t.id}" style="padding: 5px 14px; font-size: 13px; ${active ? 'background: #00ffff; color: #000; font-weight: bold;' : ''}">${t.label}</button>`;
+        }).join('');
+        
+        // Tab click handlers
+        tabBar.querySelectorAll('.help-tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => this.showHelpTab(btn.dataset.helpTab));
+        });
+        
+        // Show/hide search
+        const showSearch = tabId === 'recipes' || tabId === 'materials';
+        searchBox.style.display = showSearch ? 'block' : 'none';
+        if (showSearch && searchInput) {
+            searchInput.value = '';
+            // Remove old listener
+            if (this._helpSearchHandler) searchInput.removeEventListener('input', this._helpSearchHandler);
+            this._helpSearchHandler = () => this._filterHelpWiki(tabId, searchInput.value);
+            searchInput.addEventListener('input', this._helpSearchHandler);
+            setTimeout(() => searchInput.focus(), 50);
+        }
+        
+        // Render content
+        if (tabId === 'controls') {
+            content.innerHTML = this._buildControlsTab();
+        } else if (tabId === 'recipes') {
+            content.innerHTML = this._buildRecipesTab('');
+        } else if (tabId === 'materials') {
+            content.innerHTML = this._buildMaterialsTab('');
+        }
+    }
+    
+    _filterHelpWiki(tabId, query) {
+        const content = document.getElementById('help-content');
+        if (tabId === 'recipes') {
+            content.innerHTML = this._buildRecipesTab(query);
+        } else if (tabId === 'materials') {
+            content.innerHTML = this._buildMaterialsTab(query);
+        }
+    }
+    
+    _buildControlsTab() {
         let html = '';
         
         // Movement
@@ -3265,7 +3415,172 @@ export class UIManager {
         html += '• Use the right tool for disassembly to preserve quality';
         html += '</div></div>';
         
-        content.innerHTML = html;
+        return html;
+    }
+    
+    _buildRecipesTab(query) {
+        const game = this.game;
+        const q = query.toLowerCase().trim();
+        let html = '';
+        
+        // Gather all craftable items (those with componentRequirements)
+        const recipes = [];
+        for (const [famId, fam] of Object.entries(game.content.itemFamilies)) {
+            if (!fam.componentRequirements || fam.componentRequirements.length === 0) continue;
+            recipes.push({ id: famId, ...fam });
+        }
+        
+        // Sort alphabetically
+        recipes.sort((a, b) => a.name.localeCompare(b.name));
+        
+        // Filter by search query
+        const filtered = q ? recipes.filter(r => {
+            if (r.name.toLowerCase().includes(q)) return true;
+            if (r.type && r.type.toLowerCase().includes(q)) return true;
+            // Search in requirement labels
+            for (const req of r.componentRequirements) {
+                if (req.name && req.name.toLowerCase().includes(q)) return true;
+                if (req.property) {
+                    const label = getPropertyLabel(req.property, req.minValue, req.maxValue);
+                    if (label.toLowerCase().includes(q)) return true;
+                }
+            }
+            return false;
+        }) : recipes;
+        
+        html += `<div style="color: #888; font-size: 11px; margin-bottom: 10px;">${filtered.length} of ${recipes.length} recipes</div>`;
+        
+        for (const recipe of filtered) {
+            // Header row
+            const typeColor = recipe.type === 'weapon' ? '#ff6666' : recipe.type === 'armor' ? '#6688ff' : recipe.type === 'consumable' ? '#66ff66' : recipe.type === 'light_source' ? '#ffcc55' : '#aaa';
+            html += `<div style="background: #1a1a1a; border: 1px solid #333; border-left: 3px solid ${typeColor}; padding: 10px 12px; margin-bottom: 6px;">`;
+            html += `<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">`;
+            html += `<span style="color: #fff; font-weight: bold; font-size: 14px;">${recipe.name}</span>`;
+            html += `<span style="color: ${typeColor}; font-size: 11px; text-transform: uppercase;">${recipe.type || 'item'}`;
+            if (recipe.craftTime) html += ` · ${recipe.craftTime} turn${recipe.craftTime > 1 ? 's' : ''}`;
+            html += `</span></div>`;
+            
+            // Weapon stats
+            if (recipe.weaponStats && recipe.weaponStats.damage) {
+                html += `<div style="color: #ff8888; font-size: 11px; margin-bottom: 4px;">Damage: ${recipe.weaponStats.damage} (${recipe.weaponStats.attackType})</div>`;
+            }
+            
+            // Crafted properties (what this item provides as an intermediate)
+            if (recipe.craftedProperties) {
+                const props = Object.entries(recipe.craftedProperties).map(([k, v]) => getPropertyLabel(k, v));
+                html += `<div style="color: #00ffff; font-size: 11px; margin-bottom: 4px;">Provides: ${props.join(', ')}</div>`;
+            }
+            
+            // Requirements
+            html += `<div style="margin-top: 4px;">`;
+            for (const req of recipe.componentRequirements) {
+                if (req.component) {
+                    // Specific component
+                    html += `<div style="color: #ccc; font-size: 12px; padding: 2px 0;">`;
+                    html += `<span style="color: #ffaa00;">&#9679;</span> ${req.name}`;
+                    if (req.quantity > 1) html += ` <span style="color: #888;">×${req.quantity}</span>`;
+                    html += `</div>`;
+                } else if (req.property) {
+                    // Property-based
+                    const label = getPropertyLabel(req.property, req.minValue, req.maxValue);
+                    html += `<div style="color: #ccc; font-size: 12px; padding: 2px 0;">`;
+                    html += `<span style="color: #00ffff;">&#9679;</span> <span style="color: #00ffff;">${label}</span>`;
+                    if (req.quantity > 1) html += ` <span style="color: #888;">×${req.quantity}</span>`;
+                    html += ` <span style="color: #555; font-size: 10px;">(${req.name})</span>`;
+                    html += `</div>`;
+                }
+            }
+            html += `</div>`;
+            
+            // Disassembly methods
+            if (recipe.disassemblyMethods) {
+                const methods = Object.keys(recipe.disassemblyMethods).join(', ');
+                html += `<div style="color: #666; font-size: 10px; margin-top: 4px;">Disassembly: ${methods}</div>`;
+            }
+            
+            html += `</div>`;
+        }
+        
+        if (filtered.length === 0) {
+            html += `<div style="color: #666; text-align: center; padding: 30px;">No recipes match "${query}"</div>`;
+        }
+        
+        return html;
+    }
+    
+    _buildMaterialsTab(query) {
+        const game = this.game;
+        const q = query.toLowerCase().trim();
+        let html = '';
+        
+        // Gather all base components
+        const materials = [];
+        for (const [compId, comp] of Object.entries(game.content.components)) {
+            materials.push({ id: compId, ...comp });
+        }
+        
+        // Sort alphabetically
+        materials.sort((a, b) => a.name.localeCompare(b.name));
+        
+        // Filter by search query
+        const filtered = q ? materials.filter(m => {
+            if (m.name.toLowerCase().includes(q)) return true;
+            if (m.id.toLowerCase().includes(q)) return true;
+            // Search in property labels
+            if (m.properties) {
+                for (const [prop, val] of Object.entries(m.properties)) {
+                    if (prop.toLowerCase().includes(q)) return true;
+                    const label = getPropertyLabel(prop, val);
+                    if (label.toLowerCase().includes(q)) return true;
+                }
+            }
+            if (m.tags) {
+                for (const tag of m.tags) {
+                    if (tag.toLowerCase().includes(q)) return true;
+                }
+            }
+            return false;
+        }) : materials;
+        
+        html += `<div style="color: #888; font-size: 11px; margin-bottom: 10px;">${filtered.length} of ${materials.length} materials</div>`;
+        
+        for (const mat of filtered) {
+            html += `<div style="background: #1a1a1a; border: 1px solid #333; border-left: 3px solid #888; padding: 10px 12px; margin-bottom: 6px;">`;
+            html += `<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">`;
+            html += `<span style="color: #fff; font-weight: bold; font-size: 13px;">${mat.name}</span>`;
+            if (mat.tags && mat.tags.length > 0) {
+                html += `<span style="color: #555; font-size: 10px;">${mat.tags.join(', ')}</span>`;
+            }
+            html += `</div>`;
+            
+            // Properties
+            if (mat.properties) {
+                const propEntries = Object.entries(mat.properties).filter(([, v]) => v > 0);
+                if (propEntries.length > 0) {
+                    html += `<div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px;">`;
+                    for (const [prop, val] of propEntries) {
+                        const label = getPropertyLabel(prop, val);
+                        // Color code by tier
+                        const tierColor = val >= 3 ? '#ff6666' : val >= 2 ? '#ffaa00' : '#66cc66';
+                        html += `<span style="background: #222; border: 1px solid ${tierColor}; color: ${tierColor}; padding: 2px 8px; border-radius: 3px; font-size: 11px;">${label}</span>`;
+                    }
+                    html += `</div>`;
+                }
+            } else {
+                html += `<div style="color: #555; font-size: 11px; font-style: italic;">No properties</div>`;
+            }
+            
+            // Weight/volume
+            html += `<div style="color: #555; font-size: 10px; margin-top: 4px;">Weight: ${mat.weight || '?'}g · Volume: ${mat.volume || '?'}ml</div>`;
+            
+            html += `</div>`;
+        }
+        
+        if (filtered.length === 0) {
+            html += `<div style="color: #666; text-align: center; padding: 30px;">No materials match "${query}"</div>`;
+        }
+        
+        return html;
     }
     
     showGameOver(victory, causeOfDeath = null) {
@@ -3372,7 +3687,7 @@ export class UIManager {
         
         let html = '<div style="padding: 20px;">';
         html += `<button id="close-actions-modal" class="small-btn" style="margin-bottom: 15px;">← Back</button>`;
-        html += `<h3 style="color: #00ffff; margin-bottom: 15px;">Actions: ${item.name}</h3>`;
+        html += `<h3 style="color: #00ffff; margin-bottom: 15px;">Actions: ${this.getDisplayName(item)}</h3>`;
         
         html += `<div style="padding: 15px; background: #1a1a1a; border: 2px solid #444; margin-bottom: 15px;">`;
         
@@ -3432,16 +3747,59 @@ export class UIManager {
             html += `<button class="small-btn" data-item-action="consume" style="width: 100%; margin-bottom: 5px;">Consume${quantityText}${contaminatedWarning}</button>`;
         }
         
-        // Legacy consumable actions
+        // Item actions (use, treat, etc.)
         if (item.actions && item.actions.length > 0) {
             for (const action of item.actions) {
-                if (action === 'use' && item.type === 'consumable') {
+                if (action === 'use' && (item.type === 'consumable' || item.medicalEffect)) {
                     if (!hasContextActions) {
                         html += `<div style="border-top: 1px solid #333; padding-top: 10px; margin-top: 10px;">`;
                         html += `<div style="color: #888; font-size: 12px; margin-bottom: 8px; text-transform: uppercase;">Item Specific:</div>`;
                         hasContextActions = true;
                     }
-                    html += `<button class="small-btn" data-item-action="use" style="width: 100%; margin-bottom: 5px;">Use ${item.name}</button>`;
+                    const btnColor = item.medicalEffect ? 'background: #226622; color: #44ff44;' : '';
+                    const label = item.medicalEffect ? `Apply ${item.name}` : `Use ${item.name}`;
+                    html += `<button class="small-btn" data-item-action="use" style="width: 100%; margin-bottom: 5px; ${btnColor}">${label}</button>`;
+                }
+                if (action === 'treat' && item.isMedkit) {
+                    if (!hasContextActions) {
+                        html += `<div style="border-top: 1px solid #333; padding-top: 10px; margin-top: 10px;">`;
+                        html += `<div style="color: #888; font-size: 12px; margin-bottom: 8px; text-transform: uppercase;">Item Specific:</div>`;
+                        hasContextActions = true;
+                    }
+                    const supplyCount = item.pockets ? item.pockets[0].contents.length : 0;
+                    html += `<button class="small-btn" data-item-action="treat" style="width: 100%; margin-bottom: 5px; background: #226622; color: #44ff44;">Treat Wounds (${supplyCount} supplies)</button>`;
+                }
+            }
+        }
+        
+        // Inline container contents for opened containers
+        if (item.isContainer && item.state && item.state.opened) {
+            const allContents = item.contents || (item.pockets ? item.pockets.flatMap(p => p.contents || []) : []);
+            if (allContents.length > 0) {
+                if (!hasContextActions) {
+                    html += `<div style="border-top: 1px solid #333; padding-top: 10px; margin-top: 10px;">`;
+                    html += `<div style="color: #888; font-size: 12px; margin-bottom: 8px; text-transform: uppercase;">Item Specific:</div>`;
+                    hasContextActions = true;
+                }
+                html += `<div style="color: #ffaa00; font-size: 13px; margin-bottom: 8px;">Contents:</div>`;
+                for (let ci = 0; ci < allContents.length; ci++) {
+                    const cItem = allContents[ci];
+                    const qtyText = cItem.quantity ? ` (${cItem.quantity}${cItem.quantityUnit || ''})` : '';
+                    html += `<div style="padding: 8px; background: #0a0a0a; border-left: 3px solid ${cItem.color || '#ffaa00'}; margin-bottom: 6px;">`;
+                    html += `<div style="color: ${cItem.color || '#ffaa00'}; font-size: 15px; margin-bottom: 5px;">${cItem.name}${qtyText}</div>`;
+                    html += `<div style="display: flex; gap: 5px; flex-wrap: wrap;">`;
+                    // Direct consume button for food/drink
+                    if ((cItem.type === 'food' || cItem.type === 'drink') && cItem.nutrition) {
+                        const warn = cItem.state && cItem.state.contaminated ? ' ⚠' : '';
+                        html += `<button class="small-btn" data-inline-action="consume" data-inline-index="${ci}" style="flex: 1; background: #226622; color: #44ff44;">Consume${warn}</button>`;
+                    }
+                    // Direct use button for medical/usable items
+                    if (cItem.medicalEffect) {
+                        html += `<button class="small-btn" data-inline-action="use" data-inline-index="${ci}" style="flex: 1; background: #226622; color: #44ff44;">Apply ${cItem.name}</button>`;
+                    }
+                    // Take out of container
+                    html += `<button class="small-btn" data-inline-action="take" data-inline-index="${ci}" style="flex: 1;">Take</button>`;
+                    html += `</div></div>`;
                 }
             }
         }
@@ -3489,6 +3847,55 @@ export class UIManager {
                 this.handleItemAction(action);
             });
         });
+        
+        // Inline container content action buttons (Consume/Use/Take)
+        const inlineButtons = document.querySelectorAll('button[data-inline-action]');
+        inlineButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const action = btn.dataset.inlineAction;
+                const idx = parseInt(btn.dataset.inlineIndex);
+                const allContents = item.contents || (item.pockets ? item.pockets.flatMap(p => p.contents || []) : []);
+                const contentItem = allContents[idx];
+                if (!contentItem) return;
+                
+                if (action === 'consume') {
+                    // Determine the correct source type for the content item
+                    const contentSourceType = item.contents ? 'actions-container-item' : 'actions-pocket-item';
+                    const contentSourceData = item.contents 
+                        ? { containerId: item.id, itemIndex: idx }
+                        : { containerId: item.id, pocketIndex: 0, itemIndex: idx };
+                    this.actionsContext = { item: contentItem, sourceType: contentSourceType, sourceData: contentSourceData };
+                    this.handleConsumeAction(contentItem, contentSourceType, contentSourceData);
+                } else if (action === 'use') {
+                    const contentSourceType = item.contents ? 'actions-container-item' : 'actions-pocket-item';
+                    const contentSourceData = item.contents 
+                        ? { containerId: item.id, itemIndex: idx }
+                        : { containerId: item.id, pocketIndex: 0, itemIndex: idx };
+                    this.actionsContext = { item: contentItem, sourceType: contentSourceType, sourceData: contentSourceData };
+                    this.handleUseAction(contentItem, contentSourceType, contentSourceData);
+                } else if (action === 'take') {
+                    const player = this.game.player;
+                    const result = player.addToInventory(contentItem);
+                    if (result.success) {
+                        // Remove from container
+                        if (item.contents) {
+                            item.contents.splice(idx, 1);
+                        } else if (item.pockets) {
+                            for (const pocket of item.pockets) {
+                                const pi = pocket.contents ? pocket.contents.indexOf(contentItem) : -1;
+                                if (pi !== -1) { pocket.contents.splice(pi, 1); break; }
+                            }
+                        }
+                        this.game.ui.log(`Took ${contentItem.name} from ${item.name}.`, 'info');
+                    } else {
+                        this.game.ui.log(`No space for ${contentItem.name}.`, 'warning');
+                    }
+                    // Refresh the actions modal to show updated contents
+                    this.showActionsModal(item, sourceType, sourceData);
+                }
+            });
+        });
     }
     
     handleItemAction(action) {
@@ -3512,6 +3919,8 @@ export class UIManager {
             this.handleThrowAction(item, sourceType, sourceData);
         } else if (action === 'use') {
             this.handleUseAction(item, sourceType, sourceData);
+        } else if (action === 'treat') {
+            this.handleTreatAction(item, sourceType, sourceData);
         } else if (action === 'open') {
             this.showOpenToolSelection(item, sourceType, sourceData);
         } else if (action === 'consume') {
@@ -3596,19 +4005,82 @@ export class UIManager {
         this.game.ui.log('Throwing not yet implemented.', 'info');
     }
     
+    removeItemFromSource(item, sourceType, sourceData) {
+        const player = this.game.player;
+        
+        if (sourceType === 'actions-equipped') {
+            player.equipment[sourceData.slot] = null;
+        } else if (sourceType === 'actions-stored') {
+            const storedItems = player.containerSystem.getAllStoredItems(player);
+            const stored = storedItems[sourceData.index];
+            if (stored) {
+                player.containerSystem.removeItem(stored.container, item, stored.pocketIndex);
+                const invIndex = player.inventory.indexOf(item);
+                if (invIndex !== -1) player.inventory.splice(invIndex, 1);
+            }
+        } else if (sourceType === 'actions-ground' || sourceType === 'actions-ground-interact') {
+            this.game.world.removeItem(item);
+        } else if (sourceType === 'actions-furniture') {
+            const furniture = this.game.world.worldObjects.find(o => o.id === sourceData.furnitureId);
+            if (furniture && furniture.pockets && furniture.pockets[sourceData.pocketIndex]) {
+                furniture.pockets[sourceData.pocketIndex].contents.splice(sourceData.itemIndex, 1);
+            }
+        } else if (sourceType === 'actions-pocket-item') {
+            const container = this.findContainerById(sourceData.containerId);
+            if (container && container.pockets && container.pockets[sourceData.pocketIndex]) {
+                const pocket = container.pockets[sourceData.pocketIndex];
+                pocket.contents.splice(sourceData.itemIndex, 1);
+            }
+            const invIndex = player.inventory.indexOf(item);
+            if (invIndex !== -1) player.inventory.splice(invIndex, 1);
+        }
+    }
+    
     handleUseAction(item, sourceType, sourceData) {
         const player = this.game.player;
         
+        // Medical component use
+        if (item.medicalEffect) {
+            const anatomy = player.anatomy;
+            let result;
+            
+            switch (item.medicalEffect) {
+                case 'bandage':
+                    result = anatomy.bandageWound();
+                    break;
+                case 'antiseptic':
+                    result = anatomy.applyAntiseptic();
+                    break;
+                case 'painkiller':
+                    result = anatomy.takePainkiller();
+                    break;
+                default:
+                    result = { success: false, msg: `Unknown medical effect: ${item.medicalEffect}` };
+            }
+            
+            if (result.success) {
+                this.game.ui.log(result.msg, 'info');
+                this.removeItemFromSource(item, sourceType, sourceData);
+                // Medical actions cost a turn
+                this.game.processTurn({ type: 'wait' });
+            } else {
+                this.game.ui.log(result.msg, 'warning');
+            }
+            
+            this.actionsContext = null;
+            this.showDetailedInventory();
+            this.updatePanels();
+            return;
+        }
+        
+        // Legacy consumable heal (food/drink items with healAmount)
         if (item.type === 'consumable' && item.healAmount) {
-            // Calculate heal per turn
             let healPerTurn = Math.floor(item.healAmount / item.healDuration);
             
-            // Apply slowHealer trait modifier
             if (player.traitEffects && player.traitEffects.healingMod) {
                 healPerTurn = Math.floor(healPerTurn * player.traitEffects.healingMod);
             }
             
-            // Add heal-over-time effect
             player.addStatusEffect({
                 type: 'heal',
                 value: healPerTurn,
@@ -3616,38 +4088,91 @@ export class UIManager {
                 name: item.name
             });
             
-            this.game.ui.log(`Used ${item.name}. Healing ${healPerTurn}/turn for ${item.healDuration} turns (restores blood, patches wounds).`, 'info');
-            
-            // Remove item from source
-            if (sourceType === 'actions-stored') {
-                const storedItems = player.containerSystem.getAllStoredItems(player);
-                const stored = storedItems[sourceData.index];
-                if (stored) {
-                    player.containerSystem.removeItem(stored.container, item, stored.pocketIndex);
-                    const invIndex = player.inventory.indexOf(item);
-                    if (invIndex !== -1) player.inventory.splice(invIndex, 1);
-                }
-            } else if (sourceType === 'actions-ground' || sourceType === 'actions-ground-interact') {
-                this.game.world.removeItem(item);
-            } else if (sourceType === 'actions-furniture') {
-                const furniture = this.game.world.worldObjects.find(o => o.id === sourceData.furnitureId);
-                if (furniture && furniture.pockets && furniture.pockets[sourceData.pocketIndex]) {
-                    furniture.pockets[sourceData.pocketIndex].contents.splice(sourceData.itemIndex, 1);
-                }
-            } else if (sourceType === 'actions-pocket-item') {
-                const container = this.findContainerById(sourceData.containerId);
-                if (container && container.pockets && container.pockets[sourceData.pocketIndex]) {
-                    const pocket = container.pockets[sourceData.pocketIndex];
-                    pocket.contents.splice(sourceData.itemIndex, 1);
-                }
-                const invIndex = player.inventory.indexOf(item);
-                if (invIndex !== -1) player.inventory.splice(invIndex, 1);
-            }
+            this.game.ui.log(`Used ${item.name}. Healing ${healPerTurn}/turn for ${item.healDuration} turns.`, 'info');
+            this.removeItemFromSource(item, sourceType, sourceData);
             
             this.actionsContext = null;
             this.showDetailedInventory();
             this.updatePanels();
         }
+    }
+    
+    handleTreatAction(item, sourceType, sourceData) {
+        const player = this.game.player;
+        const anatomy = player.anatomy;
+        
+        if (!item.isMedkit || !item.pockets) {
+            this.game.ui.log('This item cannot be used for treatment.', 'warning');
+            return;
+        }
+        
+        const pocket = item.pockets[0];
+        if (!pocket || pocket.contents.length === 0) {
+            this.game.ui.log(`${item.name} is empty.`, 'warning');
+            return;
+        }
+        
+        const summary = anatomy.getMedicalSummary();
+        let treated = false;
+        const messages = [];
+        
+        // Auto-apply relevant meds in priority order:
+        // 1. Painkiller if in shock
+        if (summary.inShock && !summary.painSuppressed) {
+            const pkIdx = pocket.contents.findIndex(c => c.medicalEffect === 'painkiller');
+            if (pkIdx !== -1) {
+                const result = anatomy.takePainkiller();
+                pocket.contents.splice(pkIdx, 1);
+                messages.push(result.msg);
+                treated = true;
+            }
+        }
+        
+        // 2. Bandage worst unbandaged wound
+        if (summary.unbandaged > 0) {
+            const bIdx = pocket.contents.findIndex(c => c.medicalEffect === 'bandage');
+            if (bIdx !== -1) {
+                const result = anatomy.bandageWound();
+                if (result.success) {
+                    pocket.contents.splice(bIdx, 1);
+                    messages.push(result.msg);
+                    treated = true;
+                }
+            }
+        }
+        
+        // 3. Antiseptic on infected or at-risk wounds
+        if (summary.infected > 0 || summary.unsterilized > 0) {
+            const aIdx = pocket.contents.findIndex(c => c.medicalEffect === 'antiseptic');
+            if (aIdx !== -1) {
+                const result = anatomy.applyAntiseptic();
+                if (result.success) {
+                    pocket.contents.splice(aIdx, 1);
+                    messages.push(result.msg);
+                    treated = true;
+                }
+            }
+        }
+        
+        if (treated) {
+            for (const msg of messages) {
+                this.game.ui.log(msg, 'info');
+            }
+            // Treatment costs a turn
+            this.game.processTurn({ type: 'wait' });
+        } else {
+            // Check if we have supplies but nothing to treat
+            const hasSupplies = pocket.contents.some(c => c.medicalEffect);
+            if (!hasSupplies) {
+                this.game.ui.log(`${item.name} has no medical supplies left.`, 'warning');
+            } else {
+                this.game.ui.log('No treatable conditions right now.', 'info');
+            }
+        }
+        
+        this.actionsContext = null;
+        this.showDetailedInventory();
+        this.updatePanels();
     }
     
     showOpenToolSelection(item, sourceType, sourceData) {
@@ -3657,7 +4182,7 @@ export class UIManager {
         
         let html = '<div style="padding: 20px;">';
         html += `<button id="close-tool-selection" class="small-btn" style="margin-bottom: 15px;">← Back</button>`;
-        html += `<h3 style="color: #00ffff; margin-bottom: 15px;">Open: ${item.name}</h3>`;
+        html += `<h3 style="color: #00ffff; margin-bottom: 15px;">Open: ${this.getDisplayName(item)}</h3>`;
         
         html += `<div style="padding: 15px; background: #1a1a1a; border: 2px solid #444; margin-bottom: 15px;">`;
         html += `<div style="color: #888; margin-bottom: 10px;">Choose tool to open:</div>`;
@@ -3707,9 +4232,9 @@ export class UIManager {
                 }
             }
             
-            this.actionsContext = null;
-            this.showDetailedInventory();
             this.updatePanels();
+            // Stay on the actions modal so user sees the now-opened container with inline contents
+            this.showActionsModal(item, sourceType, sourceData);
         } else {
             this.game.ui.log(result.message, 'warning');
         }
@@ -3838,19 +4363,61 @@ export class UIManager {
      */
     findContainerById(containerId) {
         const player = this.game.player;
+        
+        // Check top-level inventory
         let container = player.inventory.find(i => i.id === containerId);
-        if (!container && player.equipment.head?.id === containerId) container = player.equipment.head;
-        if (!container && player.equipment.torso?.id === containerId) container = player.equipment.torso;
-        if (!container && player.equipment.legs?.id === containerId) container = player.equipment.legs;
-        if (!container && player.equipment.back?.id === containerId) container = player.equipment.back;
-        if (!container && player.equipment.rightHand?.id === containerId) container = player.equipment.rightHand;
-        if (!container && player.equipment.leftHand?.id === containerId) container = player.equipment.leftHand;
+        
+        // Check equipment slots
+        if (!container) {
+            for (const slot of Object.values(player.equipment)) {
+                if (slot && slot.id === containerId) { container = slot; break; }
+            }
+        }
+        
+        // Check carried items
         if (!container && player.carrying?.leftHand?.id === containerId) container = player.carrying.leftHand;
         if (!container && player.carrying?.rightHand?.id === containerId) container = player.carrying.rightHand;
+        
+        // Check nested: items inside pockets of equipped items (e.g. medkit in backpack)
+        if (!container) {
+            for (const slot of Object.values(player.equipment)) {
+                if (slot && slot.pockets) {
+                    for (const pocket of slot.pockets) {
+                        if (pocket.contents) {
+                            const found = pocket.contents.find(i => i.id === containerId);
+                            if (found) { container = found; break; }
+                        }
+                    }
+                    if (container) break;
+                }
+            }
+        }
+        
+        // Check nested: items inside inventory containers
+        if (!container) {
+            for (const invItem of player.inventory) {
+                if (invItem.isContainer && invItem.contents) {
+                    const found = invItem.contents.find(i => i.id === containerId);
+                    if (found) { container = found; break; }
+                }
+                if (invItem.pockets) {
+                    for (const pocket of invItem.pockets) {
+                        if (pocket.contents) {
+                            const found = pocket.contents.find(i => i.id === containerId);
+                            if (found) { container = found; break; }
+                        }
+                    }
+                    if (container) break;
+                }
+            }
+        }
+        
+        // Check ground
         if (!container) {
             const groundItems = this.game.world.getItemsAt(player.x, player.y, player.z);
             container = groundItems.find(i => i.id === containerId);
         }
+        
         return container;
     }
     

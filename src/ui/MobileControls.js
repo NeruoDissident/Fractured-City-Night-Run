@@ -134,7 +134,9 @@ export class MobileControls {
     handleMove(dx, dy) {
         if (!this.game.isRunning) return;
 
-        if (this.game.inspectMode) {
+        if (this.game.interactMode) {
+            this.game.interactInDirection(dx, dy);
+        } else if (this.game.inspectMode) {
             this.game.moveInspectCursor(dx, dy);
         } else if (this.game.gameState === 'playing') {
             this.game.processTurn({ type: 'move', dx, dy });
@@ -213,9 +215,32 @@ export class MobileControls {
                 this.game.ui.toggleCraftingScreen();
                 break;
 
+            case 'grab_all':
+                if (this.game.gameState === 'playing' && !this.game.inspectMode) {
+                    this.game.player.grabAll();
+                    this.game.render();
+                    this.updateHUD();
+                }
+                break;
+
+            case 'abilities':
+                this.game.ui.toggleAbilityPanel();
+                break;
+
             case 'help':
                 this.game.ui.toggleHelpScreen();
                 break;
+
+            case 'more_menu':
+                this.toggleMoreMenu();
+                break;
+        }
+    }
+
+    toggleMoreMenu() {
+        const moreRow = document.getElementById('mobile-more-row');
+        if (moreRow) {
+            moreRow.classList.toggle('hidden');
         }
     }
 

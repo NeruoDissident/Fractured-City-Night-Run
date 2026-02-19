@@ -3,6 +3,8 @@
  * Split panel: Left = items to disassemble, Right = recipes to craft
  */
 
+import { getPropertyLabel } from '../content/ContentManager.js';
+
 export function showCraftingUI(uiManager) {
     const game = uiManager.game;
     const player = game.player;
@@ -207,12 +209,17 @@ function renderRecipeList(game, player) {
                 );
             } else if (requirement.property) {
                 // Property-based requirement with maxValue support
+                // Exclude the recipe's own output to prevent self-crafting display
+                const selfId = family.craftedComponentId || null;
                 matchingComponents = availableComponents.filter(comp => 
-                    game.craftingSystem.matchesRequirement(comp, requirement)
+                    game.craftingSystem.matchesRequirement(comp, requirement) &&
+                    comp.componentId !== selfId
                 );
             }
             
-            const totalQuantity = matchingComponents.reduce((sum, c) => sum + (c.quantity || 1), 0);
+            // Filter out ghost items with quantity 0
+            const validComps = matchingComponents.filter(c => c.quantity === undefined || c.quantity > 0);
+            const totalQuantity = validComps.reduce((sum, c) => sum + (c.quantity || 1), 0);
             if (totalQuantity >= requirement.quantity) haveCount++;
         }
         
@@ -245,10 +252,12 @@ function renderRecipeList(game, player) {
     let html = `<div style="max-height: 500px; overflow-y: auto;">`;
     
     for (const recipe of recipes) {
+        const family = game.content.itemFamilies[recipe.id];
         html += `<button class="small-btn" data-recipe-id="${recipe.id}" style="width: 100%; margin-bottom: 8px; text-align: left; padding: 10px; border-left: 4px solid ${recipe.color};">`;
         html += `<div style="font-weight: bold; color: ${recipe.color}; margin-bottom: 3px;">${recipe.name}</div>`;
         html += `<div style="font-size: 12px; color: #888;">`;
-        html += `${recipe.haveCount}/${recipe.componentCount} components`;
+        html += `${recipe.haveCount}/${recipe.componentCount} requirements`;
+        if (family && family.craftTime) html += ` • ${family.craftTime} turn(s)`;
         html += `</div>`;
         html += `</button>`;
     }
@@ -469,6 +478,17 @@ function showRecipeDetails(uiManager, recipeId, parentRecipeId = null) {
     
     let html = '<div style="padding: 20px;">';
     html += `<button id="back-to-crafting-recipe" class="small-btn" style="margin-bottom: 15px;">← Back</button>`;
+    
+    // Breadcrumb trail when viewing a sub-recipe
+    if (parentRecipeId) {
+        const parentFamily = game.content.itemFamilies[parentRecipeId];
+        if (parentFamily) {
+            html += `<div style="color: #888; font-size: 12px; margin-bottom: 8px;">`;
+            html += `<span style="color: #00ffff;">${parentFamily.name}</span> → <span style="color: #fff;">${itemFamily.name}</span>`;
+            html += `</div>`;
+        }
+    }
+    
     html += `<h3 style="color: #00ff00; margin-bottom: 15px;">⚒️ Craft: ${itemFamily.name}</h3>`;
     
     // Recipe info
@@ -479,7 +499,7 @@ function showRecipeDetails(uiManager, recipeId, parentRecipeId = null) {
         html += `<div style="color: #aaa; margin-bottom: 5px;">Damage: ${itemFamily.weaponStats.damage} (${itemFamily.weaponStats.attackType})</div>`;
     }
     if (itemFamily.craftedProperties) {
-        const props = Object.entries(itemFamily.craftedProperties).map(([k,v]) => `${k}: ${v}`).join(', ');
+        const props = Object.entries(itemFamily.craftedProperties).map(([k,v]) => getPropertyLabel(k, v)).join(', ');
         html += `<div style="color: #00ffff; margin-bottom: 5px;">Provides: ${props}</div>`;
     }
     if (itemFamily.craftTime) {
@@ -487,28 +507,31 @@ function showRecipeDetails(uiManager, recipeId, parentRecipeId = null) {
     }
     html += `</div>`;
     
-    // Component requirements (property-based)
+    // Component requirements
     html += `<div style="padding: 15px; background: #1a1a1a; border: 2px solid ${availability.canCraft ? '#00ff00' : '#ff8800'}; margin-bottom: 15px;">`;
     html += `<h4 style="color: ${availability.canCraft ? '#00ff00' : '#ff8800'}; margin-bottom: 10px;">Required Components</h4>`;
     
     const availableComponents = game.craftingSystem.getPlayerComponents(player);
+    const selfId = itemFamily.craftedComponentId || null;
     
     for (const requirement of itemFamily.componentRequirements) {
         let matchingComponents = [];
         
         if (requirement.component) {
-            // Specific component requirement - match by componentId or id prefix
             matchingComponents = availableComponents.filter(comp => 
                 comp.componentId === requirement.component || 
                 (comp.id && comp.id.startsWith(requirement.component))
             );
         } else if (requirement.property) {
-            // Property-based requirement with maxValue support
+            // Exclude the recipe's own output to prevent self-crafting display
             matchingComponents = availableComponents.filter(comp => 
-                game.craftingSystem.matchesRequirement(comp, requirement)
+                game.craftingSystem.matchesRequirement(comp, requirement) &&
+                comp.componentId !== selfId
             );
         }
         
+        // Filter out ghost items with quantity 0 (consumed but not removed)
+        matchingComponents = matchingComponents.filter(c => c.quantity === undefined || c.quantity > 0);
         const totalQuantity = matchingComponents.reduce((sum, c) => sum + (c.quantity || 1), 0);
         const hasEnough = totalQuantity >= requirement.quantity;
         const statusColor = hasEnough ? '#00ff00' : '#ff4444';
@@ -520,53 +543,67 @@ function showRecipeDetails(uiManager, recipeId, parentRecipeId = null) {
         html += `</div>`;
         
         if (requirement.component) {
-            // Show specific component requirement
             html += `<div style="color: #aaa; font-size: 13px; margin-bottom: 5px;">`;
             html += `Requires: ${requirement.name} (x${requirement.quantity})`;
             html += `</div>`;
         } else if (requirement.property) {
-            // Show property-based requirement
-            const rangeText = requirement.maxValue !== undefined 
-                ? `${requirement.property} ${requirement.minValue}-${requirement.maxValue}` 
-                : `${requirement.property} +${requirement.minValue}`;
+            const label = getPropertyLabel(requirement.property, requirement.minValue, requirement.maxValue);
             html += `<div style="color: #aaa; font-size: 13px; margin-bottom: 5px;">`;
-            html += `Requires: ${rangeText} (x${requirement.quantity})`;
+            html += `Requires: <span style="color: #00ffff;">${label}</span>`;
+            if (requirement.quantity > 1) html += ` ×${requirement.quantity}`;
             html += `</div>`;
-            
-            // List all base components that match this property
-            const allMatchingItems = [];
-            for (const [compId, compDef] of Object.entries(game.content.components)) {
-                if (compDef.properties && compDef.properties[requirement.property] >= requirement.minValue) {
-                    if (requirement.maxValue !== undefined && compDef.properties[requirement.property] > requirement.maxValue) continue;
-                    allMatchingItems.push(`${compDef.name} (${requirement.property}: ${compDef.properties[requirement.property]})`);
-                }
+        }
+        
+        // Show what items you actually have that match
+        const realMatches = matchingComponents.filter(c => !c.isSurface);
+        const surfaceMatch = matchingComponents.find(c => c.isSurface);
+        
+        if (realMatches.length > 0) {
+            // Deduplicate by name and show counts
+            const nameCounts = {};
+            for (const comp of realMatches) {
+                const qty = comp.quantity || 1;
+                nameCounts[comp.name] = (nameCounts[comp.name] || 0) + qty;
             }
-            // Also check craftable intermediates
+            const sourceList = Object.entries(nameCounts).map(([name, qty]) => 
+                qty > 1 ? `${name} ×${qty}` : name
+            ).join(', ');
+            html += `<div style="color: #44cc44; font-size: 12px; margin-bottom: 3px;">✦ You have: ${sourceList}</div>`;
+        }
+        
+        // Show surface indicator
+        if (surfaceMatch) {
+            html += `<div style="color: #88aaff; font-size: 12px; margin-bottom: 3px;">⬇ Ground: ${surfaceMatch.name}</div>`;
+        }
+        
+        // Surface hint when requirement is grinding and no surface or item match
+        if (!hasEnough && requirement.property === 'grinding' && !surfaceMatch) {
+            html += `<div style="color: #666; font-size: 11px; font-style: italic; margin-bottom: 3px;">Tip: Stand on concrete or pavement, or find a Stone</div>`;
+        }
+        
+        // Sub-recipes: craftable intermediates that satisfy this requirement
+        // Filter out self-referential recipes (don't suggest crafting X to craft X)
+        if (requirement.property) {
             const subRecipes = [];
             for (const [famId, fam] of Object.entries(game.content.itemFamilies)) {
+                if (famId === recipeId) continue; // Skip self
                 if (fam.craftedProperties && fam.craftedProperties[requirement.property] >= requirement.minValue) {
                     if (requirement.maxValue !== undefined && fam.craftedProperties[requirement.property] > requirement.maxValue) continue;
-                    subRecipes.push({ id: famId, name: fam.name, value: fam.craftedProperties[requirement.property] });
+                    subRecipes.push({ id: famId, name: fam.name });
                 }
             }
-            
-            if (allMatchingItems.length > 0) {
-                html += `<div style="color: #666; font-size: 11px; margin-top: 5px; font-style: italic;">`;
-                html += `Sources: ${allMatchingItems.join(', ')}`;
-                html += `</div>`;
-            }
-            if (subRecipes.length > 0) {
+            if (subRecipes.length > 0 && !hasEnough) {
                 html += `<div style="margin-top: 4px;">`;
                 for (const sub of subRecipes) {
                     html += `<button class="small-btn sub-recipe-btn" data-sub-recipe="${sub.id}" style="font-size: 11px; padding: 3px 8px; margin: 2px 4px 2px 0; border-left: 3px solid #00ffff;">`;
-                    html += `⚒ Craft ${sub.name} (${requirement.property}: ${sub.value})`;
+                    html += `⚒ Craft ${sub.name}`;
                     html += `</button>`;
                 }
                 html += `</div>`;
             }
         }
         
-        html += `<div style="color: #888; font-size: 12px; margin-bottom: 3px;">Have: ${totalQuantity} | Need: ${requirement.quantity}</div>`;
+        html += `<div style="color: #888; font-size: 12px; margin-top: 4px;">Have: ${totalQuantity} | Need: ${requirement.quantity}</div>`;
         html += `</div>`;
     }
     

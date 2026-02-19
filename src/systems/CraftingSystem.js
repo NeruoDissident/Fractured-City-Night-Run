@@ -1,6 +1,52 @@
+// Ground surfaces that provide crafting properties when standing on them
+// The player can grind/sharpen items on concrete, stone, asphalt, etc.
+const SURFACE_PROPERTIES = {
+    // Concrete/paved surfaces provide grinding
+    'Paved Ground':     { grinding: 1 },
+    'Concrete Floor':   { grinding: 2 },
+    'Sidewalk':         { grinding: 1 },
+    'City Street':      { grinding: 1 },
+    'Side Street':      { grinding: 1 },
+    'Paved Road':       { grinding: 1 },
+    'Asphalt Street':   { grinding: 1 },
+    'Cracked Floor':    { grinding: 1 },
+    'Cracked Pavement': { grinding: 1 },
+    'Floor':            { grinding: 1 },
+    // Stone/brick surfaces
+    'Pristine Road':    { grinding: 1 },
+    'Private Drive':    { grinding: 1 },
+    'Suburban Road':    { grinding: 1 },
+    'Residential Street': { grinding: 1 },
+    'Manicured Ground': { grinding: 1 }
+};
+
 export class CraftingSystem {
     constructor(game) {
         this.game = game;
+    }
+    
+    /**
+     * Get crafting properties provided by the ground surface under the player.
+     * Returns a virtual component object or null if the surface has no properties.
+     */
+    getSurfaceProperties(player) {
+        const tile = this.game.world.getTile(player.x, player.y, player.z);
+        if (!tile || !tile.name) return null;
+        
+        const props = SURFACE_PROPERTIES[tile.name];
+        if (!props) return null;
+        
+        return {
+            id: '__surface__',
+            componentId: '__surface__',
+            name: tile.name,
+            type: 'component',
+            isComponent: true,
+            isSurface: true,
+            quantity: 999,
+            properties: { ...props },
+            tags: ['surface']
+        };
     }
     
     /**
@@ -25,19 +71,25 @@ export class CraftingSystem {
             });
         }
         
-        // Check for knife (excluding the item being disassembled)
-        if (methods.knife) {
-            const leftHandTool = player.equipment.leftHand;
-            const rightHandTool = player.equipment.rightHand;
+        // Check for tool-based disassembly methods (knife, screwdriver, prybar, etc.)
+        // Each method type maps to a required property on an equipped item
+        const TOOL_PROPERTY_MAP = {
+            knife:       { property: 'cutting',      minValue: 1, name: 'Sharp Tool' },
+            screwdriver: { property: 'screwdriving',  minValue: 1, name: 'Screwdriver' },
+            prybar:      { property: 'prying',        minValue: 1, name: 'Pry Tool' },
+            wrench:      { property: 'bolt_turning',  minValue: 1, name: 'Wrench' }
+        };
+        
+        for (const [toolType, toolReq] of Object.entries(TOOL_PROPERTY_MAP)) {
+            if (!methods[toolType]) continue;
             
-            const hasKnife = (leftHandTool?.tags?.includes('sharp') && leftHandTool !== item) ||
-                           (rightHandTool?.tags?.includes('sharp') && rightHandTool !== item);
+            const hasTool = this.playerHasToolProperty(player, toolReq.property, toolReq.minValue, item);
             
             tools.push({
-                type: 'knife',
-                name: 'Knife/Sharp Tool',
-                ...methods.knife,
-                available: hasKnife
+                type: toolType,
+                name: toolReq.name,
+                ...methods[toolType],
+                available: hasTool
             });
         }
         
@@ -182,10 +234,36 @@ export class CraftingSystem {
     }
     
     /**
-     * Check if player can disassemble (has free hands, etc.)
+     * Check if player has an equipped/carried item with a specific tool property.
      * @param {Object} player - Player object
-     * @returns {Object} - { canDisassemble, reason }
+     * @param {string} property - Property name to check (e.g., 'cutting', 'screwdriving')
+     * @param {number} minValue - Minimum property value required
+     * @param {Object} excludeItem - Item to exclude (the item being disassembled)
+     * @returns {boolean}
      */
+    playerHasToolProperty(player, property, minValue, excludeItem = null) {
+        const candidates = [
+            player.equipment.leftHand,
+            player.equipment.rightHand
+        ];
+        
+        for (const item of candidates) {
+            if (!item || item === excludeItem) continue;
+            
+            // Check item properties (components have these)
+            if (item.properties && item.properties[property] >= minValue) return true;
+            
+            // Check craftedProperties (crafted intermediates)
+            if (item.craftedProperties && item.craftedProperties[property] >= minValue) return true;
+            
+            // Backward compat: sharp weapons satisfy 'cutting' even without explicit property
+            if (property === 'cutting' && item.weaponStats?.attackType === 'sharp') return true;
+            if (property === 'cutting' && item.tags?.includes('sharp')) return true;
+        }
+        
+        return false;
+    }
+    
     canPlayerDisassemble(player) {
         // Check if hands are free (both equipment AND carrying)
         const leftBusy = player.equipment.leftHand || player.carrying.leftHand;
@@ -235,6 +313,8 @@ export class CraftingSystem {
         
         const missingComponents = [];
         const availableComponents = this.getPlayerComponents(player);
+        // Prevent items from being used to craft themselves
+        const selfId = itemFamily.craftedComponentId || null;
         
         for (const requirement of itemFamily.componentRequirements) {
             let matchingComponents = [];
@@ -247,12 +327,16 @@ export class CraftingSystem {
                 );
             } else if (requirement.property) {
                 // Property-based requirement with optional maxValue cap
+                // Exclude the recipe's own output type to prevent self-crafting loops
                 matchingComponents = availableComponents.filter(comp => 
-                    this.matchesRequirement(comp, requirement)
+                    this.matchesRequirement(comp, requirement) &&
+                    comp.componentId !== selfId
                 );
             }
             
-            const totalQuantity = matchingComponents.reduce((sum, c) => sum + (c.quantity || 1), 0);
+            // Skip ghost items with quantity 0 (consumed but not removed)
+            const validComponents = matchingComponents.filter(c => c.quantity === undefined || c.quantity > 0);
+            const totalQuantity = validComponents.reduce((sum, c) => sum + (c.quantity || 1), 0);
             
             if (totalQuantity < requirement.quantity) {
                 missingComponents.push({
@@ -312,6 +396,12 @@ export class CraftingSystem {
             }
         }
         
+        // 5. Check ground surface properties (concrete provides grinding, etc.)
+        const surface = this.getSurfaceProperties(player);
+        if (surface) {
+            components.push(surface);
+        }
+        
         return components;
     }
     
@@ -338,6 +428,9 @@ export class CraftingSystem {
             let remaining = requirement.quantity;
             let available = [];
             
+            // Prevent items from being used to craft themselves
+            const selfId = itemFamily.craftedComponentId || null;
+            
             if (requirement.component) {
                 // Specific component requirement - match by componentId or id prefix
                 available = this.getPlayerComponents(player).filter(comp => 
@@ -346,25 +439,36 @@ export class CraftingSystem {
                 );
             } else if (requirement.property) {
                 // Property-based requirement with maxValue support
+                // Exclude the recipe's own output type to prevent self-crafting loops
                 available = this.getPlayerComponents(player).filter(comp => 
-                    this.matchesRequirement(comp, requirement)
+                    this.matchesRequirement(comp, requirement) &&
+                    comp.componentId !== selfId
                 );
             }
             
-            for (const comp of available) {
+            // Skip ghost items with quantity 0
+            const validAvailable = available.filter(c => c.quantity === undefined || c.quantity > 0);
+            
+            for (const comp of validAvailable) {
                 if (remaining <= 0) break;
+                if (comp.isSurface) {
+                    // Surface is infinite, just count it as satisfying the requirement
+                    componentsUsed.push({ ...comp, consumed: remaining });
+                    remaining = 0;
+                    break;
+                }
                 
-                const compQuantity = comp.quantity || 1;
+                const compQuantity = comp.quantity !== undefined ? comp.quantity : 1;
                 const toConsume = Math.min(compQuantity, remaining);
                 
-                if (comp.quantity) {
+                if (comp.quantity !== undefined) {
                     comp.quantity -= toConsume;
                 }
                 remaining -= toConsume;
                 componentsUsed.push({ ...comp, consumed: toConsume });
                 
                 // Remove component if fully consumed
-                if (!comp.quantity || comp.quantity <= 0) {
+                if (comp.quantity === undefined || comp.quantity <= 0) {
                     this.removeComponentFromLocation(player, comp);
                 }
             }

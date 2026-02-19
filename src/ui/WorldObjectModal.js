@@ -303,6 +303,7 @@ function handleWorldObjectAction(uiManager, worldObject, action) {
 
 /**
  * Show furniture contents modal - transfer UI for storage furniture
+ * Each item has inline Store/Equip quick buttons for fast looting
  */
 export function showFurnitureContentsModal(uiManager, furniture) {
     const game = uiManager.game;
@@ -315,13 +316,26 @@ export function showFurnitureContentsModal(uiManager, furniture) {
     };
     const icon = furnitureIcons[furniture.furnitureType] || '📦';
     
+    // Count total items for Take All button
+    let totalItems = 0;
+    if (furniture.pockets) {
+        for (const pocket of furniture.pockets) {
+            if (pocket.contents) totalItems += pocket.contents.length;
+        }
+    }
+    
     let html = '<div style="padding: 15px;">';
     html += `<button id="close-furniture-contents" class="small-btn" style="margin-bottom: 10px;">← Close</button>`;
     html += `<h3 style="color: #ff8800; margin-bottom: 10px;">${icon} ${furniture.name}</h3>`;
     
     // Furniture contents section
-    html += `<div style="padding: 10px; background: #1a1a1a; border: 2px solid #ff8800; margin-bottom: 10px; max-height: 35vh; overflow-y: auto;">`;
-    html += `<h4 style="color: #ff8800; margin-bottom: 8px;">Contents</h4>`;
+    html += `<div style="padding: 10px; background: #1a1a1a; border: 2px solid #ff8800; margin-bottom: 10px; max-height: 45vh; overflow-y: auto;">`;
+    html += `<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">`;
+    html += `<h4 style="color: #ff8800; margin: 0;">Contents</h4>`;
+    if (totalItems > 0) {
+        html += `<button id="take-all-btn" class="small-btn" style="font-size: 11px; padding: 4px 10px; background: #44aa44; color: #000;">Take All</button>`;
+    }
+    html += `</div>`;
     
     if (furniture.pockets) {
         let hasItems = false;
@@ -329,16 +343,31 @@ export function showFurnitureContentsModal(uiManager, furniture) {
             const pocket = furniture.pockets[pi];
             if (pocket.contents && pocket.contents.length > 0) {
                 hasItems = true;
-                html += `<div style="color: #888; font-size: 12px; margin-bottom: 4px;">${pocket.name}:</div>`;
+                if (furniture.pockets.length > 1) {
+                    html += `<div style="color: #888; font-size: 12px; margin-bottom: 4px;">${pocket.name}:</div>`;
+                }
                 for (let ii = 0; ii < pocket.contents.length; ii++) {
                     const item = pocket.contents[ii];
-                    html += `<button class="small-btn" data-take-pocket="${pi}" data-take-item="${ii}" style="width: 100%; margin-bottom: 4px; text-align: left; padding: 6px 8px;">`;
+                    const isEquippable = item.slots && item.slots.length > 0;
+                    const w = item.weight ? (item.weight >= 1000 ? `${(item.weight/1000).toFixed(1)}kg` : `${item.weight}g`) : '';
+                    
+                    html += `<div style="display: flex; align-items: center; gap: 4px; margin-bottom: 4px;">`;
+                    
+                    // Item name button (opens full actions modal)
+                    html += `<button class="small-btn" data-details-pocket="${pi}" data-details-item="${ii}" style="flex: 1; text-align: left; padding: 6px 8px; min-width: 0;">`;
                     html += `<span style="color: ${item.color || '#fff'};">${item.glyph || '*'} ${item.name}</span>`;
-                    if (item.weight) {
-                        const w = item.weight >= 1000 ? `${(item.weight/1000).toFixed(1)}kg` : `${item.weight}g`;
-                        html += `<span style="color: #666; font-size: 11px; float: right;">${w}</span>`;
-                    }
+                    if (w) html += `<span style="color: #666; font-size: 11px; float: right;">${w}</span>`;
                     html += `</button>`;
+                    
+                    // Quick Store button (auto-store like G key)
+                    html += `<button class="small-btn" data-quick-store-pocket="${pi}" data-quick-store-item="${ii}" style="padding: 6px 8px; font-size: 11px; background: #226644; color: #44ff88; white-space: nowrap;" title="Auto-store in your inventory">Store</button>`;
+                    
+                    // Quick Equip button (only for equippable items)
+                    if (isEquippable) {
+                        html += `<button class="small-btn" data-quick-equip-pocket="${pi}" data-quick-equip-item="${ii}" style="padding: 6px 8px; font-size: 11px; background: #446622; color: #88ff88; white-space: nowrap;" title="Equip this item">Equip</button>`;
+                    }
+                    
+                    html += `</div>`;
                 }
             }
         }
@@ -348,7 +377,7 @@ export function showFurnitureContentsModal(uiManager, furniture) {
     }
     html += `</div>`;
     
-    // Player inventory section - items that can be stored
+    // Player inventory section - items that can be stored in furniture
     html += `<div style="padding: 10px; background: #1a1a1a; border: 2px solid #4488ff; max-height: 25vh; overflow-y: auto;">`;
     html += `<h4 style="color: #4488ff; margin-bottom: 8px;">Your Items (tap to store)</h4>`;
     
@@ -382,29 +411,102 @@ export function showFurnitureContentsModal(uiManager, furniture) {
     // Store furniture reference for back-navigation from actions modal
     uiManager.furnitureContext = furniture;
     
-    // Take item buttons - open actions modal for the item
-    const takeButtons = document.querySelectorAll('button[data-take-pocket]');
-    takeButtons.forEach(btn => {
+    // --- Take All button ---
+    document.getElementById('take-all-btn')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        let picked = 0;
+        let failed = 0;
+        
+        // Iterate backwards so splice doesn't shift indices
+        for (let pi = 0; pi < furniture.pockets.length; pi++) {
+            const pocket = furniture.pockets[pi];
+            if (!pocket.contents) continue;
+            for (let ii = pocket.contents.length - 1; ii >= 0; ii--) {
+                const item = pocket.contents[ii];
+                const result = player.addToInventory(item);
+                if (result.success) {
+                    pocket.contents.splice(ii, 1);
+                    picked++;
+                } else {
+                    failed++;
+                }
+            }
+        }
+        
+        if (picked > 0) game.ui.log(`Took ${picked} item(s) from ${furniture.name}.`, 'success');
+        if (failed > 0) game.ui.log(`${failed} item(s) wouldn't fit.`, 'warning');
+        
+        uiManager.updatePanels();
+        showFurnitureContentsModal(uiManager, furniture);
+    });
+    
+    // --- Quick Store buttons (auto-store into player inventory) ---
+    const quickStoreButtons = document.querySelectorAll('button[data-quick-store-pocket]');
+    quickStoreButtons.forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
-            const pocketIndex = parseInt(btn.dataset.takePocket);
-            const itemIndex = parseInt(btn.dataset.takeItem);
+            const pi = parseInt(btn.dataset.quickStorePocket);
+            const ii = parseInt(btn.dataset.quickStoreItem);
             
-            const pocket = furniture.pockets[pocketIndex];
-            if (!pocket || !pocket.contents || !pocket.contents[itemIndex]) return;
+            const pocket = furniture.pockets[pi];
+            if (!pocket || !pocket.contents || !pocket.contents[ii]) return;
+            const item = pocket.contents[ii];
             
-            const item = pocket.contents[itemIndex];
+            const result = player.addToInventory(item);
+            if (result.success) {
+                pocket.contents.splice(ii, 1);
+                game.ui.log(`Took ${item.name} → ${result.location}.`, 'info');
+            } else {
+                game.ui.log(`No space for ${item.name}.`, 'warning');
+            }
             
-            // Open the standard item actions modal with furniture source
-            uiManager.showActionsModal(item, 'actions-furniture', { 
-                furnitureId: furniture.id, 
-                pocketIndex, 
-                itemIndex 
+            uiManager.updatePanels();
+            showFurnitureContentsModal(uiManager, furniture);
+        });
+    });
+    
+    // --- Quick Equip buttons (open hand selection via move modal) ---
+    const quickEquipButtons = document.querySelectorAll('button[data-quick-equip-pocket]');
+    quickEquipButtons.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const pi = parseInt(btn.dataset.quickEquipPocket);
+            const ii = parseInt(btn.dataset.quickEquipItem);
+            
+            const pocket = furniture.pockets[pi];
+            if (!pocket || !pocket.contents || !pocket.contents[ii]) return;
+            const item = pocket.contents[ii];
+            
+            // Use the existing move modal which shows equip slot selection
+            uiManager.showMoveModal('furniture', {
+                furnitureId: furniture.id,
+                pocketIndex: pi,
+                itemIndex: ii
             });
         });
     });
     
-    // Store item buttons
+    // --- Item name buttons (open full actions modal for inspect/drop/etc) ---
+    const detailButtons = document.querySelectorAll('button[data-details-pocket]');
+    detailButtons.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const pi = parseInt(btn.dataset.detailsPocket);
+            const ii = parseInt(btn.dataset.detailsItem);
+            
+            const pocket = furniture.pockets[pi];
+            if (!pocket || !pocket.contents || !pocket.contents[ii]) return;
+            const item = pocket.contents[ii];
+            
+            uiManager.showActionsModal(item, 'actions-furniture', {
+                furnitureId: furniture.id,
+                pocketIndex: pi,
+                itemIndex: ii
+            });
+        });
+    });
+    
+    // --- Store player items into furniture ---
     const storeButtons = document.querySelectorAll('button[data-store-index]');
     storeButtons.forEach(btn => {
         btn.addEventListener('click', (e) => {
@@ -445,7 +547,6 @@ export function showFurnitureContentsModal(uiManager, furniture) {
                 game.ui.log(`${furniture.name} is full.`, 'warning');
             }
             
-            // Refresh the modal
             showFurnitureContentsModal(uiManager, furniture);
         });
     });
