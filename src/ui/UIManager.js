@@ -554,6 +554,14 @@ export class UIManager {
         html += '<div class="form-group" style="margin-top: 20px;">';
         html += '<label style="color: #00ffff; font-size: 16px; margin-bottom: 10px; display: block;">Background:</label>';
         const backgrounds = charSys.getAllBackgrounds();
+        const GEAR_LABELS = {
+            streetKid: 'Shiv (equipped), Flashlight',
+            corpo: 'Flashlight, Lantern',
+            nomad: 'Knife (equipped), Canteen',
+            scavenger: 'Shiv (equipped), Flashlight, Lantern',
+            raiderDefector: 'Knife (equipped), Pipe',
+            medic: 'Medkit, Flashlight',
+        };
         for (const bg of backgrounds) {
             html += '<div class="background-option" style="margin-bottom: 15px; padding: 10px; background: #1a1a1a; border: 2px solid #333; cursor: pointer;" data-bg-id="' + bg.id + '">';
             html += '<div style="color: #ffaa00; font-weight: bold; font-size: 14px;">' + bg.name + '</div>';
@@ -566,6 +574,10 @@ export class UIManager {
             }
             html += statMods.join(', ');
             html += '</div>';
+            const gearLabel = GEAR_LABELS[bg.id] || '';
+            if (gearLabel) {
+                html += '<div style="color: #88cc88; font-size: 13px; margin-top: 3px;">Gear: ' + gearLabel + '</div>';
+            }
             html += '</div>';
         }
         html += '</div>';
@@ -1195,6 +1207,11 @@ export class UIManager {
                     }
                 }
                 
+                // Stagger
+                if (evt.staggered) {
+                    html += `<br><span style="color: #ffaa00; font-weight: bold; margin-left: 10px;">⚡ STAGGERED — ${evt.targetName} loses next turn</span>`;
+                }
+                
                 // Part destroyed
                 if (evt.partDestroyed) {
                     html += `<br><span style="color: #ff8800; font-weight: bold; margin-left: 10px;">${evt.bodyPart} DESTROYED</span>`;
@@ -1205,6 +1222,15 @@ export class UIManager {
                     html += `<br><span style="color: #ff0000; font-weight: bold; margin-left: 10px;">${evt.targetName} KILLED</span>`;
                 }
                 
+                html += `</div>`;
+            } else if (evt.type === 'parry') {
+                html += `<div class="combat-feed-entry miss">`;
+                html += `<span style="color: #888;">[${evt.turn}]</span> `;
+                html += `<span style="color: #4488ff; font-weight: bold;">PARRY!</span> `;
+                html += `<span style="color: #aaa;">${evt.targetName}</span> deflects <span style="color: #aaa;">${evt.attackerName}</span>'s <span style="color: #ccc;">${evt.weaponName}</span> with their <span style="color: #88bbff;">${evt.parryWeapon}</span>`;
+                if (evt.hitChance !== undefined) {
+                    html += ` <span style="color: #555; font-size: 10px;">(${evt.hitChance}% hit negated)</span>`;
+                }
                 html += `</div>`;
             } else if (evt.type === 'ability_miss') {
                 html += `<div class="combat-feed-entry miss">`;

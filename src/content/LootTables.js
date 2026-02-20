@@ -214,6 +214,7 @@ export const ROOM_LOOT_TABLES = {
             { componentId: 'wire',        weight: 6 },
             { componentId: 'duct_tape',   weight: 6 },
             { componentId: 'wood_piece',  weight: 8 },
+            { componentId: 'wood_plank',  weight: 5 },
             { componentId: 'rubber_piece', weight: 4 }
         ]
     },
@@ -236,7 +237,8 @@ export const ROOM_LOOT_TABLES = {
             { componentId: 'nail',        weight: 10 },
             { componentId: 'wire',        weight: 6 },
             { componentId: 'duct_tape',   weight: 8 },
-            { componentId: 'wood_piece',  weight: 5 }
+            { componentId: 'wood_piece',  weight: 5 },
+            { componentId: 'wood_plank',  weight: 6 }
         ]
     },
     
@@ -256,6 +258,7 @@ export const ROOM_LOOT_TABLES = {
             { familyId: 'coat',           weight: 3 },
             { componentId: 'scrap_metal_shard', weight: 8 },
             { componentId: 'wood_piece',  weight: 8 },
+            { componentId: 'wood_plank',  weight: 6 },
             { componentId: 'nail',        weight: 6 },
             { componentId: 'wire',        weight: 4 }
         ]

@@ -141,7 +141,10 @@ export class World {
     spawnInitialNPCs() {
         const npcTypes = [
             { type: 'scavenger', count: 8 },
-            { type: 'raider', count: 6 }
+            { type: 'raider', count: 5 },
+            { type: 'armed_raider', count: 3 },
+            { type: 'brute', count: 2 },
+            { type: 'stalker', count: 2 },
         ];
         
         for (const npcDef of npcTypes) {
@@ -374,12 +377,16 @@ export class World {
         if (entity.glyph === '@') {
             return { sheet: 'player', index: 0 };
         }
-        // NPCs by type
-        if (entity.type === 'raider') {
-            return { sheet: 'npcs', index: 0 };
-        }
-        if (entity.type === 'scavenger') {
-            return { sheet: 'npcs', index: 1 };
+        // NPCs by type — indices match npc.png spritesheet order
+        const NPC_SPRITE_INDEX = {
+            raider: 0,
+            scavenger: 1,
+            armed_raider: 2,
+            brute: 3,
+            stalker: 4,     // row 1, col 0
+        };
+        if (entity.type && NPC_SPRITE_INDEX[entity.type] !== undefined) {
+            return { sheet: 'npcs', index: NPC_SPRITE_INDEX[entity.type] };
         }
         return null;
     }

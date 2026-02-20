@@ -8,6 +8,8 @@ const NPC_TYPES = {
         name: 'Scavenger',
         glyph: 's',
         color: '#888888',
+        // Stats (same scale as player: 10 = average human)
+        stats: { strength: 7, agility: 8, endurance: 8, intelligence: 8, perception: 8 },
         // Speed & energy
         speed: 70,              // energy gained per game tick (100 = player walk baseline)
         attackCost: 100,        // energy cost to attack
@@ -29,6 +31,7 @@ const NPC_TYPES = {
         name: 'Raider',
         glyph: 'R',
         color: '#ff4444',
+        stats: { strength: 11, agility: 10, endurance: 10, intelligence: 8, perception: 9 },
         speed: 85,
         attackCost: 100,
         moveCost: 100,
@@ -41,10 +44,77 @@ const NPC_TYPES = {
         giveUpTurns: 15,
         wanderChance: 0.3,
         weaponTable: [
-            { weight: 30, weapon: { name: 'Shiv', type: 'weapon', baseDamage: '1d4', weaponStats: { attackType: 'sharp', bleedChance: 0.30 } } },
-            { weight: 30, weapon: { name: 'Pipe', type: 'weapon', baseDamage: '1d8', weaponStats: { attackType: 'blunt', stunChance: 0.10 } } },
-            { weight: 20, weapon: { name: 'Knife', type: 'weapon', baseDamage: '1d6', weaponStats: { attackType: 'sharp', bleedChance: 0.40 } } },
+            { weight: 30, weapon: { name: 'Shiv', type: 'weapon', baseDamage: '1d4', weaponStats: { attackType: 'sharp', bleedChance: 0.30, accuracy: 5, parryBonus: 0.05 } } },
+            { weight: 30, weapon: { name: 'Pipe', type: 'weapon', baseDamage: '1d8', weaponStats: { attackType: 'blunt', staggerChance: 0.20, accuracy: -5 } } },
+            { weight: 20, weapon: { name: 'Knife', type: 'weapon', baseDamage: '1d6', weaponStats: { attackType: 'sharp', bleedChance: 0.40, accuracy: 10, critBonus: 3, parryBonus: 0.12 } } },
             { weight: 20, weapon: null },  // unarmed
+        ],
+    },
+    armed_raider: {
+        name: 'Armed Raider',
+        glyph: 'A',
+        color: '#ff6644',
+        stats: { strength: 12, agility: 11, endurance: 11, intelligence: 9, perception: 10 },
+        speed: 90,
+        attackCost: 100,
+        moveCost: 100,
+        visionRange: 9,
+        hearingRange: 14,
+        hostile: true,
+        aggression: 0.9,
+        courage: 0.25,          // braver than regular raiders
+        leashRange: 30,
+        giveUpTurns: 20,
+        wanderChance: 0.2,
+        weaponTable: [
+            { weight: 40, weapon: { name: 'Knife', type: 'weapon', baseDamage: '1d6', weaponStats: { attackType: 'sharp', bleedChance: 0.40, accuracy: 10, critBonus: 3, parryBonus: 0.12 } } },
+            { weight: 35, weapon: { name: 'Pipe', type: 'weapon', baseDamage: '1d8', weaponStats: { attackType: 'blunt', staggerChance: 0.20, accuracy: -5 } } },
+            { weight: 25, weapon: { name: 'Shiv', type: 'weapon', baseDamage: '1d4', weaponStats: { attackType: 'sharp', bleedChance: 0.30, accuracy: 5, parryBonus: 0.05 } } },
+            // no unarmed — always armed
+        ],
+    },
+    brute: {
+        name: 'Brute',
+        glyph: 'B',
+        color: '#cc6600',
+        stats: { strength: 15, agility: 7, endurance: 14, intelligence: 6, perception: 7 },
+        speed: 70,              // slow and lumbering
+        attackCost: 120,        // heavy swings take longer
+        moveCost: 100,
+        visionRange: 6,
+        hearingRange: 10,
+        hostile: true,
+        aggression: 1.0,        // always attacks on sight
+        courage: 0.15,          // nearly fearless — fights to the death
+        leashRange: 20,
+        giveUpTurns: 10,        // gives up quickly if can't find you
+        wanderChance: 0.15,
+        weaponTable: [
+            { weight: 40, weapon: { name: 'Pipe', type: 'weapon', baseDamage: '1d8', weaponStats: { attackType: 'blunt', staggerChance: 0.30, accuracy: -5 } } },
+            { weight: 30, weapon: { name: 'Spiked Club', type: 'weapon', baseDamage: '1d10', weaponStats: { attackType: 'blunt', bleedChance: 0.20, staggerChance: 0.25, accuracy: -8 } } },
+            { weight: 30, weapon: null },  // unarmed — still dangerous with STR 15
+        ],
+    },
+    stalker: {
+        name: 'Stalker',
+        glyph: 'S',
+        color: '#8844cc',
+        stats: { strength: 9, agility: 14, endurance: 9, intelligence: 11, perception: 13 },
+        speed: 100,             // matches player walk speed
+        attackCost: 90,         // quick strikes
+        moveCost: 90,           // nimble movement
+        visionRange: 11,
+        hearingRange: 18,       // excellent hearing
+        hostile: true,
+        aggression: 0.6,        // picks fights carefully
+        courage: 0.50,          // flees at half blood — hit and run
+        leashRange: 35,         // will chase far
+        giveUpTurns: 25,        // patient hunter
+        wanderChance: 0.4,
+        weaponTable: [
+            { weight: 60, weapon: { name: 'Knife', type: 'weapon', baseDamage: '1d6', weaponStats: { attackType: 'sharp', bleedChance: 0.40, accuracy: 10, critBonus: 3, parryBonus: 0.12 } } },
+            { weight: 40, weapon: { name: 'Shiv', type: 'weapon', baseDamage: '1d4', weaponStats: { attackType: 'sharp', bleedChance: 0.30, accuracy: 5, parryBonus: 0.05 } } },
+            // always has a blade
         ],
     },
 };
@@ -77,6 +147,9 @@ export class NPC extends Entity {
         this.glyph = this.profile.glyph;
         this.color = this.profile.color;
         this.hostile = this.profile.hostile;
+        
+        // Stats (same structure as player)
+        this.stats = this.profile.stats ? { ...this.profile.stats } : null;
         
         // Energy / speed system
         this.energy = 0;

@@ -55,7 +55,7 @@ export class Game {
         await this.spriteManager.loadSheet('ground', 'assets/ground/ground.png', 8, 32);
         await this.spriteManager.loadSheet('objects', 'assets/objects/objects.png', 8, 32);
         await this.spriteManager.loadSheet('player', 'assets/entites/player_characters/player_characers.png', 1, 32);
-        await this.spriteManager.loadSheet('npcs', 'assets/entites/npcs/npc.png', 2, 32);
+        await this.spriteManager.loadSheet('npcs', 'assets/entites/npcs/npc.png', 4, 32);
         
         this.renderer = new Renderer();
         this.renderer.init();
@@ -244,36 +244,69 @@ export class Game {
         const p = this.player;
         const c = this.content;
         
-        // Clothing
+        // ── Base gear (everyone) ──
         const coat = c.createItem('coat');
         if (coat) p.equipment.torso = coat;
         
         const pants = c.createItem('pants');
         if (pants) p.equipment.legs = pants;
         
-        // Backpack
         const backpack = c.createItem('backpack');
         if (backpack) p.equipment.back = backpack;
         
-        // Flashlight stored in a pocket, turned off (comes pre-loaded with batteries)
-        const flashlight = c.createItem('flashlight');
-        if (flashlight) {
-            if (!flashlight.state) flashlight.state = {};
-            flashlight.state.active = false;
-            const flResult = p.addToInventory(flashlight);
-            console.log(`[Loadout] Flashlight: ${flResult.message}`);
+        // ── Background-specific gear ──
+        const bg = p.backgroundId || 'streetKid';
+        
+        const LOADOUTS = {
+            streetKid: {
+                equip: { rightHand: 'shiv' },
+                inventory: ['flashlight'],
+            },
+            corpo: {
+                equip: {},
+                inventory: ['flashlight', 'lantern'],
+            },
+            nomad: {
+                equip: { rightHand: 'knife' },
+                inventory: ['canteen'],
+            },
+            scavenger: {
+                equip: { rightHand: 'shiv' },
+                inventory: ['flashlight', 'lantern'],
+            },
+            raiderDefector: {
+                equip: { rightHand: 'knife' },
+                inventory: ['pipe'],
+            },
+            medic: {
+                equip: {},
+                inventory: ['medkit', 'flashlight'],
+            },
+        };
+        
+        const loadout = LOADOUTS[bg] || LOADOUTS.streetKid;
+        
+        // Equip weapons/items to slots
+        for (const [slot, itemId] of Object.entries(loadout.equip)) {
+            const item = c.createItem(itemId);
+            if (item) {
+                p.equipment[slot] = item;
+            }
         }
         
-        // Lantern stored in a pocket, turned off (comes pre-loaded with fuel)
-        const lantern = c.createItem('lantern');
-        if (lantern) {
-            if (!lantern.state) lantern.state = {};
-            lantern.state.active = false;
-            const lnResult = p.addToInventory(lantern);
-            console.log(`[Loadout] Lantern: ${lnResult.message}`);
+        // Add inventory items
+        for (const itemId of loadout.inventory) {
+            const item = c.createItem(itemId);
+            if (item) {
+                if (item.state && (itemId === 'flashlight' || itemId === 'lantern')) {
+                    item.state.active = false;
+                }
+                const result = p.addToInventory(item);
+                console.log(`[Loadout] ${item.name}: ${result.message}`);
+            }
         }
         
-        console.log('[Loadout] Starting gear equipped:', {
+        console.log(`[Loadout] Background: ${bg}`, {
             torso: p.equipment.torso?.name,
             legs: p.equipment.legs?.name,
             back: p.equipment.back?.name,

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fractured-city-v30';
+const CACHE_NAME = 'fractured-city-v38';
 const ASSETS = [
     '/',
     '/index.html',

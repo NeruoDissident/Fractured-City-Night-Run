@@ -158,6 +158,20 @@ const BLOCK_TEMPLATES = [
     'The hit glances off {t}\'s {armor} — {blocked} damage mitigated.',
 ];
 
+const STAGGER_TEMPLATES = [
+    'The blow staggers {t} — they lose their footing!',
+    '{t} reels from the impact, stunned!',
+    'A bone-rattling hit leaves {t} dazed!',
+    '{t} stumbles, knocked off balance by the force!',
+];
+
+const PARRY_TEMPLATES = [
+    '{t} deflects the blow with their {w}!',
+    '{t} parries with their {w} — the attack glances off!',
+    'Steel meets steel as {t} blocks with their {w}!',
+    '{t}\'s {w} catches the strike and turns it aside!',
+];
+
 const CRITICAL_TEMPLATES = [
     'Critical hit! {a} {verb} {t} square in the {p} with {w} — {d} damage!',
     'A devastating blow! {a} {verb} {t}\'s {p} with {w} for {d} damage!',
@@ -310,6 +324,34 @@ export class CombatSystem {
         
         const isCritical = Math.random() * 100 < critChance;
         
+        // ── Weapon parry: sharp weapons in defensive stance can fully deflect ──
+        // Parry replaces arm intercept — if parry succeeds, attack is negated entirely
+        let parried = false;
+        if ((location.region === 'head' || location.region === 'torso') && !isCritical) {
+            const parryResult = this.checkParry(target);
+            if (parryResult.success) {
+                parried = true;
+                this.logParry(targetName, parryResult.weaponName);
+                if (this.game.combatEffects) {
+                    this.game.combatEffects.addFloatingText(target.x, target.y, 'PARRY', '#4488ff', 1000);
+                }
+                // Track engagement and record event
+                this.trackEngagement(attacker);
+                this.trackEngagement(target);
+                this.addCombatEvent({
+                    type: 'parry',
+                    attackerName, targetName,
+                    attacker, target,
+                    weaponName: weapon ? weapon.name : 'bare fists',
+                    parryWeapon: parryResult.weaponName,
+                    hitChance: Math.round(hitChance),
+                    attackerPenalties,
+                    targetPenalties
+                });
+                return { hit: false, damage: 0, bodyPart: null, critical: false, killed: false, parried: true };
+            }
+        }
+        
         // ── Arm intercept: instinctive block ──
         // When hit targets head or torso, functional arms may intercept
         if ((location.region === 'head' || location.region === 'torso') && target.anatomy && !isCritical) {
@@ -415,6 +457,15 @@ export class CombatSystem {
             target.anatomy.addPain(finalDamage, currentTurn);
         }
         
+        // ── Stagger check (blunt weapons can stun for 1 turn) ──
+        let staggered = false;
+        if (attackType === 'blunt' && !killed) {
+            staggered = this.checkStagger(attacker, target, weapon, finalDamage, isCritical);
+            if (staggered) {
+                this.logStagger(targetName);
+            }
+        }
+        
         // ── Generate combat log ──
         const weaponName = weapon ? weapon.name : null;
         
@@ -492,6 +543,7 @@ export class CombatSystem {
             blocked,
             armorName: armorResult.armorName,
             critical: isCritical,
+            staggered,
             partDestroyed: partResult.destroyed,
             woundsInflicted,
             killed,
@@ -508,32 +560,39 @@ export class CombatSystem {
             region: location.region,
             critical: isCritical,
             killed,
-            blocked
+            blocked,
+            staggered
         };
     }
     
     // ── Hit chance ──────────────────────────────────────────────────────
     
     calculateHitChance(attacker, target, weapon) {
-        // Base 75% hit chance
-        let chance = 75;
+        // Base 55% — stats and gear push this up or down significantly
+        let chance = 55;
         
-        // Attacker agility bonus
+        // Attacker stats: STR helps land heavy blows, AGI helps accuracy
         if (attacker.stats) {
-            chance += (attacker.stats.agility - 10) * 2;
+            chance += (attacker.stats.strength - 10) * 1.5;  // STR: strong hits are hard to dodge
+            chance += (attacker.stats.agility - 10) * 1.0;   // AGI: fast = accurate
         }
         
-        // Target agility dodge bonus
+        // Target stats: AGI is primary dodge stat, STR helps resist stagger
         if (target.stats) {
-            chance -= (target.stats.agility - 10);
+            chance -= (target.stats.agility - 10) * 2.0;     // AGI: agile targets dodge more
         }
+        
+        // Weapon accuracy bonus (good weapons are easier to hit with)
+        if (weapon && weapon.weaponStats && weapon.weaponStats.accuracy !== undefined) {
+            chance += weapon.weaponStats.accuracy;
+        }
+        
+        // Unarmed heavy penalty — fists are desperate and inaccurate
+        if (!weapon) chance -= 20;
         
         // Stance modifier (attacker)
         const attackerStance = this.getEntityStance(attacker);
         if (attackerStance) chance += (attackerStance.hitMod || 0);
-        
-        // Unarmed penalty
-        if (!weapon) chance -= 10;
         
         // Attacker injury penalties (arm/hand damage, blood loss, shock)
         if (attacker.anatomy) {
@@ -553,14 +612,21 @@ export class CombatSystem {
             chance += (proneEffect && proneEffect.data.dodgePenalty) || 15;
         }
         
-        return Math.max(20, Math.min(95, chance));
+        return Math.max(15, Math.min(95, chance));
     }
     
     calculateCritChance(attacker, weapon) {
         let chance = 5; // Base 5%
         
         if (attacker.stats) {
-            chance += Math.floor((attacker.stats.perception - 10) / 2);
+            // PER: spot openings. AGI: exploit them quickly
+            chance += (attacker.stats.perception - 10) * 1.0;
+            chance += (attacker.stats.agility - 10) * 0.5;
+        }
+        
+        // Weapon crit bonus (precise weapons crit more)
+        if (weapon && weapon.weaponStats && weapon.weaponStats.critBonus) {
+            chance += weapon.weaponStats.critBonus;
         }
         
         // Stance modifier
@@ -576,7 +642,7 @@ export class CombatSystem {
             chance += penalties.critChanceMod;
         }
         
-        return Math.max(1, Math.min(25, chance));
+        return Math.max(1, Math.min(30, chance));
     }
     
     /**
@@ -676,6 +742,114 @@ export class CombatSystem {
         return { region: armRegion, subPart: armSubPart };
     }
     
+    // ── Stagger check ────────────────────────────────────────────────
+    
+    /**
+     * Check if a blunt weapon hit staggers the target (stun for 1 turn).
+     * Chance = weapon staggerChance + attacker STR bonus - target END resistance.
+     * Crits always stagger. Uses AbilitySystem.applyStun().
+     */
+    checkStagger(attacker, target, weapon, damage, isCritical) {
+        if (!this.game.abilitySystem) return false;
+        
+        // Crits with blunt weapons always stagger
+        if (isCritical) {
+            this.game.abilitySystem.applyStun(target, 1);
+            if (this.game.combatEffects) {
+                this.game.combatEffects.addFloatingText(target.x, target.y - 0.5, 'STAGGERED', '#ffaa00', 1200);
+            }
+            return true;
+        }
+        
+        // Base stagger chance from weapon (default 15% for blunt)
+        let chance = (weapon && weapon.weaponStats && weapon.weaponStats.staggerChance)
+            ? weapon.weaponStats.staggerChance
+            : 0.15;
+        
+        // Attacker STR increases stagger chance (+3% per point above 10)
+        if (attacker.stats) {
+            chance += (attacker.stats.strength - 10) * 0.03;
+        }
+        
+        // Target END resists stagger (-3% per point above 10)
+        if (target.stats) {
+            chance -= (target.stats.endurance - 10) * 0.03;
+        }
+        
+        // High damage hits stagger more (+5% per point above 5 damage)
+        if (damage > 5) {
+            chance += (damage - 5) * 0.05;
+        }
+        
+        chance = Math.max(0.05, Math.min(0.50, chance));
+        
+        if (Math.random() < chance) {
+            this.game.abilitySystem.applyStun(target, 1);
+            if (this.game.combatEffects) {
+                this.game.combatEffects.addFloatingText(target.x, target.y - 0.5, 'STAGGERED', '#ffaa00', 1200);
+            }
+            return true;
+        }
+        
+        return false;
+    }
+    
+    // ── Parry check ─────────────────────────────────────────────────
+    
+    /**
+     * Check if the target parries the incoming attack.
+     * Requires: target has a weapon with parryBonus, and is in defensive stance.
+     * Parry chance = parryBonus + target AGI bonus.
+     * Returns { success: boolean, weaponName: string }
+     */
+    checkParry(target) {
+        // Get target's weapon
+        let targetWeapon = null;
+        let targetWeaponName = null;
+        
+        // Player: check equipped weapon
+        if (target.equipmentSystem) {
+            targetWeapon = target.equipmentSystem.getActiveWeapon();
+        }
+        // NPC: check .weapon field
+        if (!targetWeapon && target.weapon) {
+            targetWeapon = target.weapon;
+        }
+        
+        if (!targetWeapon || !targetWeapon.weaponStats || !targetWeapon.weaponStats.parryBonus) {
+            return { success: false };
+        }
+        
+        targetWeaponName = targetWeapon.name;
+        
+        // Must be in defensive stance (or have a stance with parry enabled)
+        const stance = this.getEntityStance(target);
+        const isDefensive = stance && (stance.canDisengage || stance.interceptMod > 1.0);
+        
+        // Base parry chance from weapon
+        let chance = targetWeapon.weaponStats.parryBonus;
+        
+        // Defensive stance doubles parry chance; non-defensive gets only half
+        if (isDefensive) {
+            chance *= 2.0;
+        } else {
+            chance *= 0.5;
+        }
+        
+        // Target AGI bonus (+2% per point above 10)
+        if (target.stats) {
+            chance += (target.stats.agility - 10) * 0.02;
+        }
+        
+        chance = Math.max(0, Math.min(0.40, chance));
+        
+        if (Math.random() < chance) {
+            return { success: true, weaponName: targetWeaponName };
+        }
+        
+        return { success: false };
+    }
+    
     // ── Damage calculation ─────────────────────────────────────────────
     
     rollWeaponDamage(weapon, attacker) {
@@ -689,16 +863,17 @@ export class CombatSystem {
         } else if (weapon && weapon.weaponStats && weapon.weaponStats.damage) {
             damage = this.rollDice(weapon.weaponStats.damage);
         } else {
-            // Unarmed: 1d3
-            damage = Math.floor(Math.random() * 3) + 1;
+            // Unarmed: 1d2 (was 1d3 — fists are weak)
+            damage = Math.floor(Math.random() * 2) + 1;
         }
         
-        // Strength bonus
+        // Strength bonus — scales better now
+        // STR 10 = +0, STR 12 = +1, STR 14 = +2, STR 8 = -1
         if (attacker.stats && attacker.stats.strength) {
-            damage += Math.floor((attacker.stats.strength - 10) / 3);
+            damage += Math.floor((attacker.stats.strength - 10) / 2);
         }
         
-        // NPC flat damage bonus (NPCs without stats)
+        // NPC flat damage bonus (NPCs without stats — legacy fallback)
         if (attacker.baseDamage && !attacker.stats) {
             damage += attacker.baseDamage;
         }
@@ -888,6 +1063,18 @@ export class CombatSystem {
                   .replace('{armor}', armorName)
                   .replace('{blocked}', blocked);
         this.game.ui.log(msg, 'info');
+    }
+    
+    logStagger(target) {
+        let msg = this.pickRandom(STAGGER_TEMPLATES);
+        msg = msg.replace('{t}', target);
+        this.game.ui.log(msg, 'combat');
+    }
+    
+    logParry(target, weaponName) {
+        let msg = this.pickRandom(PARRY_TEMPLATES);
+        msg = msg.replace('{t}', target).replace('{w}', weaponName);
+        this.game.ui.log(msg, 'combat');
     }
     
     logPartDestroyed(target, bodyPart) {

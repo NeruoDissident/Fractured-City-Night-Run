@@ -21,7 +21,8 @@ export const PROPERTY_LABELS = {
     // Tool-action properties (for disassembly and crafting tool requirements)
     screwdriving: { 1: 'Screwdriver',      2: 'Precision Driver' },
     prying:       { 1: 'Pry Tool',         2: 'Heavy Pry Bar' },
-    bolt_turning: { 1: 'Wrench',           2: 'Torque Wrench' }
+    bolt_turning: { 1: 'Wrench',           2: 'Torque Wrench' },
+    hammering:    { 1: 'Makeshift Hammer',  2: 'Heavy Hammer' }
 };
 
 /**
@@ -481,7 +482,23 @@ export class ContentManager {
                 properties: {
                     structural: 1,
                     grip: 1,
-                    fuel: 1
+                    fuel: 1,
+                    hammering: 1
+                }
+            },
+            wood_plank: {
+                name: 'Wood Plank',
+                type: 'component',
+                isComponent: true,
+                weight: 250,
+                volume: 300,
+                tags: ['wood', 'structural'],
+                stackable: true,
+                properties: {
+                    structural: 2,
+                    blunt: 1,
+                    fuel: 2,
+                    hammering: 1
                 }
             },
             stone: {
@@ -494,7 +511,8 @@ export class ContentManager {
                 stackable: true,
                 properties: {
                     blunt: 2,
-                    grinding: 2
+                    grinding: 2,
+                    hammering: 1
                 }
             },
             bone_shard: {
@@ -738,6 +756,9 @@ export class ContentManager {
                     actionCost: 100,
                     attackType: 'sharp',
                     bleedChance: 0.30,
+                    accuracy: 5,
+                    critBonus: 0,
+                    parryBonus: 0.05,
                     canTwoHand: false
                 }
             },
@@ -774,6 +795,9 @@ export class ContentManager {
                     actionCost: 100,
                     attackType: 'sharp',
                     bleedChance: 0.40,
+                    accuracy: 10,
+                    critBonus: 3,
+                    parryBonus: 0.12,
                     canTwoHand: true,
                     twoHandDamage: '1d6+1d4',
                     twoHandActionCost: 110
@@ -799,10 +823,52 @@ export class ContentManager {
                     damage: '1d8',
                     actionCost: 120,
                     attackType: 'blunt',
-                    stunChance: 0.10,
+                    staggerChance: 0.20,
+                    accuracy: -5,
+                    critBonus: -1,
                     canTwoHand: true,
                     twoHandDamage: '1d8+1d6',
                     twoHandActionCost: 140
+                }
+            },
+            spiked_club: {
+                name: 'Spiked Club',
+                type: 'weapon',
+                baseDamage: '1d10',
+                actionCost: 140,
+                glyph: '!',
+                slots: ['hand'],
+                canTwoHand: true,
+                twoHandDamageBonus: '1d6',
+                twoHandActionCost: 160,
+                tags: ['melee', 'blunt', 'crafted'],
+                weight: 600,
+                volume: 350,
+                components: [
+                    { id: 'wood_plank', name: 'Wood Plank', quantity: 1, quality: 100, maxQuality: 100, weight: 250, volume: 300 },
+                    { id: 'nail', name: 'Nail', quantity: 3, quality: 100, maxQuality: 100, weight: 5, volume: 2 }
+                ],
+                componentRequirements: [
+                    { property: 'structural', minValue: 2, quantity: 1, name: 'Sturdy Wood' },
+                    { property: 'piercing', minValue: 1, quantity: 3, name: 'Nails' },
+                    { property: 'hammering', minValue: 1, quantity: 1, name: 'Hammering Tool' }
+                ],
+                craftTime: 3,
+                disassemblyMethods: {
+                    hand: { componentYield: 0.5, qualityMod: 0.5, timeRequired: 2 },
+                    knife: { componentYield: 0.8, qualityMod: 0.7, timeRequired: 1 }
+                },
+                weaponStats: {
+                    damage: '1d10',
+                    actionCost: 140,
+                    attackType: 'blunt',
+                    bleedChance: 0.20,
+                    staggerChance: 0.25,
+                    accuracy: -8,
+                    critBonus: 0,
+                    canTwoHand: true,
+                    twoHandDamage: '1d10+1d6',
+                    twoHandActionCost: 160
                 }
             },
             trenchcoat: {
