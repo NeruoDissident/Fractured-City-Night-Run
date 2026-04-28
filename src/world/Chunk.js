@@ -111,38 +111,7 @@ export class Chunk {
     }
     
     selectBiome() {
-        // Zone-based biome selection for coherent city structure
-        // Distance from origin determines biome type
-        const distFromOrigin = Math.sqrt(this.cx * this.cx + this.cy * this.cy);
-        const hash = this.cx * 73856093 ^ this.cy * 19349663;
-        const rand = Math.abs(Math.sin(hash)) * 100;
-        
-        // Urban core: center of map (distance 0-3)
-        if (distFromOrigin < 3) {
-            return 'urban_core';
-        }
-        
-        // Suburbs: ring around urban core (distance 3-6)
-        if (distFromOrigin < 6) {
-            // Mix suburbs with occasional industrial
-            return rand < 80 ? 'suburbs' : 'industrial';
-        }
-        
-        // Mixed zone: industrial, ruins, rich neighborhoods (distance 6-10)
-        if (distFromOrigin < 10) {
-            if (rand < 40) return 'industrial';
-            if (rand < 70) return 'ruins';
-            if (rand < 85) return 'rich_neighborhood';
-            return 'suburbs';
-        }
-        
-        // Outer zone: rural and forest (distance 10+)
-        if (distFromOrigin < 15) {
-            return rand < 60 ? 'rural' : 'forest';
-        }
-        
-        // Far edges: mostly forest
-        return 'forest';
+        return this.world.getBiomeForChunk(this.cx, this.cy);
     }
     
     generateCleanTerrain(x, y, biome) {

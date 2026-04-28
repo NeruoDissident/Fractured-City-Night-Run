@@ -41,6 +41,10 @@ export class Game {
         
         this.interactMode = false;
         this.interactCandidates = null;
+        
+        this.currentLayer = 'overworld'; // overworld | zone
+        this.overworldX = 0;
+        this.overworldY = 0;
     }
     
     async init() {
@@ -94,9 +98,8 @@ export class Game {
         this.worldObjectSystem = new WorldObjectSystem(this);
         
         this.player = new Player(this, characterData);
-        const spawnPos = this.world.getSpawnPosition();
-        this.player.x = spawnPos.x;
-        this.player.y = spawnPos.y;
+        this.player.x = 0;
+        this.player.y = 0;
         
         this.world.addEntity(this.player);
         
@@ -107,7 +110,8 @@ export class Game {
         this.isRunning = true;
         
         this.ui.log('Welcome to Fractured City.', 'info');
-        this.ui.log('Survive. Extract. Repeat.', 'info');
+        this.ui.log('Overworld ready. Move to a biome tile and press [>] to descend into that zone.', 'info');
+        this.ui.log('Press [<] on ground level to return to the overworld.', 'info');
         this.ui.log('Press [X] to inspect tiles, [?] for help.', 'info');
         this.ui.log(`Time: ${this.timeSystem.getTimeString()} - ${this.timeSystem.getTimePeriod()} (Day ${this.timeSystem.getDay()})`, 'info');
         console.log(`[TimeSystem] Started at ${this.timeSystem.getTimeString()}, outdoor ambient: ${this.timeSystem.getOutdoorAmbient().toFixed(2)}`);
@@ -129,7 +133,11 @@ export class Game {
         this.player.lastActionCost = 100; // default 1 turn
         
         if (action.type === 'move') {
-            playerActed = this.player.tryMove(action.dx, action.dy);
+            if (this.currentLayer === 'overworld') {
+                playerActed = this.moveOverworld(action.dx, action.dy);
+            } else {
+                playerActed = this.player.tryMove(action.dx, action.dy);
+            }
             // lastActionCost set by tryMove (movement or attack cost)
         } else if (action.type === 'wait') {
             playerActed = true;
@@ -144,11 +152,21 @@ export class Game {
             playerActed = this.player.cycleMovementMode();
             this.player.lastActionCost = 0; // free action — no world tick
         } else if (action.type === 'ascend') {
-            playerActed = this.player.tryAscend();
-            this.player.lastActionCost = this.player.getMovementActionCost();
+            if (this.currentLayer === 'zone') {
+                playerActed = this.ascendToOverworld();
+                if (!playerActed) {
+                    playerActed = this.player.tryAscend();
+                }
+                this.player.lastActionCost = this.player.getMovementActionCost();
+            }
         } else if (action.type === 'descend') {
-            playerActed = this.player.tryDescend();
-            this.player.lastActionCost = this.player.getMovementActionCost();
+            if (this.currentLayer === 'overworld') {
+                playerActed = this.descendIntoZone();
+                this.player.lastActionCost = this.player.getMovementActionCost();
+            } else {
+                playerActed = this.player.tryDescend();
+                this.player.lastActionCost = this.player.getMovementActionCost();
+            }
         } else if (action.type === 'use_ability') {
             // Ability was resolved by the UI before creating this action
             // action.result contains the ability resolution result
@@ -201,6 +219,7 @@ export class Game {
     }
     
     updateFoV() {
+        if (this.currentLayer === 'overworld') return;
         if (!this.fov) {
             console.error('FoV system not initialized!');
             return;
@@ -416,10 +435,14 @@ export class Game {
         
         const viewWidth = this.renderer.tilesX;
         const viewHeight = this.renderer.tilesY;
-        const cameraX = this.player.x - Math.floor(viewWidth / 2);
-        const cameraY = this.player.y - Math.floor(viewHeight / 2);
+        const cameraX = (this.currentLayer === 'overworld' ? this.overworldX : this.player.x) - Math.floor(viewWidth / 2);
+        const cameraY = (this.currentLayer === 'overworld' ? this.overworldY : this.player.y) - Math.floor(viewHeight / 2);
         
-        this.world.render(this.renderer, cameraX, cameraY, viewWidth, viewHeight, this.fov, this.player.z, this.lightingSystem);
+        if (this.currentLayer === 'overworld') {
+            this.world.renderOverworld(this.renderer, cameraX, cameraY, viewWidth, viewHeight, this.overworldX, this.overworldY);
+        } else {
+            this.world.render(this.renderer, cameraX, cameraY, viewWidth, viewHeight, this.fov, this.player.z, this.lightingSystem);
+        }
         
         if (this.interactMode && this.interactCandidates) {
             for (const c of this.interactCandidates) {
@@ -450,5 +473,37 @@ export class Game {
         if (this.mobileControls) {
             this.mobileControls.updateHUD();
         }
+    }
+
+    moveOverworld(dx, dy) {
+        this.overworldX += dx;
+        this.overworldY += dy;
+        this.player.lastActionCost = 100;
+        const tile = this.world.getOverworldTile(this.overworldX, this.overworldY);
+        this.ui.log(`Overworld: ${tile.name} (${this.overworldX}, ${this.overworldY})`, 'info');
+        return true;
+    }
+
+    descendIntoZone() {
+        this.currentLayer = 'zone';
+        const zoneCenterX = this.overworldX * this.world.chunkSize + Math.floor(this.world.chunkSize / 2);
+        const zoneCenterY = this.overworldY * this.world.chunkSize + Math.floor(this.world.chunkSize / 2);
+        this.player.x = zoneCenterX;
+        this.player.y = zoneCenterY;
+        this.player.z = 0;
+        this.world.getOrCreateChunk(this.overworldX, this.overworldY);
+        this.updateFoV();
+        const tile = this.world.getOverworldTile(this.overworldX, this.overworldY);
+        this.ui.log(`You descend into ${tile.name}.`, 'info');
+        return true;
+    }
+
+    ascendToOverworld() {
+        if (this.player.z !== 0) return false;
+        this.currentLayer = 'overworld';
+        this.overworldX = Math.floor(this.player.x / this.world.chunkSize);
+        this.overworldY = Math.floor(this.player.y / this.world.chunkSize);
+        this.ui.log('You ascend back to the overworld.', 'info');
+        return true;
     }
 }

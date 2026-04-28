@@ -23,6 +23,15 @@ export class World {
         this.worldObjects = []; // Doors, furniture, etc.
         this.extractionPoint = null;
         this.activeRadius = 2;
+        this.overworldBiomeConfigs = {
+            urban_core: { glyph: 'C', color: '#00ccff', name: 'Urban Core' },
+            suburbs: { glyph: 's', color: '#88cc44', name: 'Suburbs' },
+            industrial: { glyph: 'I', color: '#cc8800', name: 'Industrial Zone' },
+            rich_neighborhood: { glyph: 'R', color: '#ddaa44', name: 'Rich Neighborhood' },
+            rural: { glyph: 'r', color: '#aa8855', name: 'Rural Outskirts' },
+            forest: { glyph: 'f', color: '#44aa44', name: 'Forest' },
+            ruins: { glyph: 'u', color: '#888888', name: 'Ruins' }
+        };
     }
     
     init() {
@@ -60,8 +69,54 @@ export class World {
     getBiomeAt(x, y) {
         const cx = Math.floor(x / this.chunkSize);
         const cy = Math.floor(y / this.chunkSize);
-        const chunk = this.getOrCreateChunk(cx, cy);
-        return chunk.biome || 'unknown';
+        return this.getBiomeForChunk(cx, cy);
+    }
+
+    getBiomeForChunk(cx, cy) {
+        return this.getOverworldTile(cx, cy).biome;
+    }
+
+    getOverworldTile(ox, oy) {
+        const heat = this.sampleOverworldField(ox, oy, 7, 10007);
+        const moisture = this.sampleOverworldField(ox, oy, 9, 20011);
+        const urban = this.sampleOverworldField(ox, oy, 6, 30013);
+        const dist = Math.hypot(ox, oy);
+
+        let biome;
+        if (dist < 2.5 && urban > 0.52) biome = 'urban_core';
+        else if (urban > 0.72 && moisture < 0.40) biome = 'industrial';
+        else if (urban > 0.60 && moisture >= 0.40) biome = 'suburbs';
+        else if (moisture < 0.26) biome = 'ruins';
+        else if (moisture < 0.42) biome = 'rural';
+        else if (moisture > 0.70) biome = 'forest';
+        else biome = 'rich_neighborhood';
+
+        return { biome, ...this.overworldBiomeConfigs[biome] };
+    }
+
+    sampleOverworldField(x, y, scale = 8, seed = 1337) {
+        const sx = x / scale;
+        const sy = y / scale;
+        const x0 = Math.floor(sx);
+        const y0 = Math.floor(sy);
+        const x1 = x0 + 1;
+        const y1 = y0 + 1;
+        const tx = sx - x0;
+        const ty = sy - y0;
+        const n00 = this.hash2D(x0, y0, seed);
+        const n10 = this.hash2D(x1, y0, seed);
+        const n01 = this.hash2D(x0, y1, seed);
+        const n11 = this.hash2D(x1, y1, seed);
+        const u = tx * tx * (3 - 2 * tx);
+        const v = ty * ty * (3 - 2 * ty);
+        const nx0 = n00 * (1 - u) + n10 * u;
+        const nx1 = n01 * (1 - u) + n11 * u;
+        return nx0 * (1 - v) + nx1 * v;
+    }
+
+    hash2D(x, y, seed = 0) {
+        const v = Math.sin((x * 127.1 + y * 311.7 + seed) * 0.0174533) * 43758.5453123;
+        return v - Math.floor(v);
     }
     
     getTile(x, y, z = 0) {
@@ -506,6 +561,23 @@ export class World {
                     renderer.drawTile(screenX, screenY, this.extractionPoint.glyph, this.applyLight(this.extractionPoint.color, light, tint));
                 }
             }
+        }
+    }
+
+    renderOverworld(renderer, cameraX, cameraY, viewWidth, viewHeight, playerOverworldX, playerOverworldY) {
+        for (let y = 0; y < viewHeight; y++) {
+            for (let x = 0; x < viewWidth; x++) {
+                const ox = cameraX + x;
+                const oy = cameraY + y;
+                const tile = this.getOverworldTile(ox, oy);
+                renderer.drawTile(x, y, tile.glyph, tile.color, '#050505');
+            }
+        }
+
+        const px = playerOverworldX - cameraX;
+        const py = playerOverworldY - cameraY;
+        if (px >= 0 && px < viewWidth && py >= 0 && py < viewHeight) {
+            renderer.drawTile(px, py, '@', '#00ffff', '#111111');
         }
     }
     
