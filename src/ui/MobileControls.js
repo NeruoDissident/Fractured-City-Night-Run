@@ -191,22 +191,36 @@ export class MobileControls {
 
             case 'ascend':
                 if (this.game.gameState === 'playing' && !this.game.inspectMode) {
-                    const tileUp = this.game.world.getTile(this.game.player.x, this.game.player.y, this.game.player.z);
-                    if (tileUp.isStaircase || tileUp.isManhole || tileUp.isLadder) {
+                    // Mirror keyboard behavior:
+                    // - In zone layer, allow [ascend] at z=0 to return to overworld
+                    // - Otherwise require staircase/manhole/ladder on current tile
+                    if (this.game.currentLayer === 'zone' && this.game.player.z === 0) {
                         this.game.processTurn({ type: 'ascend' });
                     } else {
-                        this.game.ui.log('There are no stairs here.', 'warning');
+                        const tileUp = this.game.world.getTile(this.game.player.x, this.game.player.y, this.game.player.z);
+                        if (tileUp.isStaircase || tileUp.isManhole || tileUp.isLadder) {
+                            this.game.processTurn({ type: 'ascend' });
+                        } else {
+                            this.game.ui.log('There are no stairs here.', 'warning');
+                        }
                     }
                 }
                 break;
 
             case 'descend':
                 if (this.game.gameState === 'playing' && !this.game.inspectMode) {
-                    const tileDown = this.game.world.getTile(this.game.player.x, this.game.player.y, this.game.player.z);
-                    if (tileDown.isStaircase || tileDown.isManhole || tileDown.isLadder) {
+                    // Mirror keyboard behavior:
+                    // - In overworld layer, allow [descend] on biome tile to enter zone
+                    // - Otherwise require staircase/manhole/ladder on current tile
+                    if (this.game.currentLayer === 'overworld') {
                         this.game.processTurn({ type: 'descend' });
                     } else {
-                        this.game.ui.log('There are no stairs here.', 'warning');
+                        const tileDown = this.game.world.getTile(this.game.player.x, this.game.player.y, this.game.player.z);
+                        if (tileDown.isStaircase || tileDown.isManhole || tileDown.isLadder) {
+                            this.game.processTurn({ type: 'descend' });
+                        } else {
+                            this.game.ui.log('There are no stairs here.', 'warning');
+                        }
                     }
                 }
                 break;
