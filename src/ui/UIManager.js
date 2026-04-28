@@ -300,6 +300,16 @@ export class UIManager {
         if (!this.contextPanel || !this.game.player) return;
         
         const player = this.game.player;
+        if (this.game.currentLayer === 'overworld') {
+            const tile = this.game.world.getOverworldTile(this.game.overworldX, this.game.overworldY);
+            let html = '';
+            html += `<div class="stat-line"><span class="stat-label">Layer:</span> <span class="stat-value" style="color:#00ffff;">Overworld</span></div>`;
+            html += `<div class="stat-line"><span class="stat-label">Zone:</span> <span class="stat-value" style="color:${tile.color};">${tile.name}</span></div>`;
+            html += `<div class="stat-line"><span class="stat-label">Over Pos:</span> <span class="stat-value">(${this.game.overworldX}, ${this.game.overworldY})</span></div>`;
+            html += `<div style="color:#888; margin-top:6px;">Press [>] to descend into this zone.</div>`;
+            this.contextPanel.innerHTML = html;
+            return;
+        }
         const tile = this.game.world.getTile(player.x, player.y);
         
         let html = '';
@@ -334,8 +344,12 @@ export class UIManager {
         
         const player = this.game.player;
         const world = this.game.world;
-        const tile = world.getTile(player.x, player.y, player.z);
-        const biome = world.getBiomeAt(player.x, player.y);
+        const tile = this.game.currentLayer === 'overworld'
+            ? null
+            : world.getTile(player.x, player.y, player.z);
+        const biome = this.game.currentLayer === 'overworld'
+            ? world.getOverworldTile(this.game.overworldX, this.game.overworldY).biome
+            : world.getBiomeAt(player.x, player.y);
         
         const biomeNames = {
             urban_core: 'Urban Core',
@@ -398,6 +412,13 @@ export class UIManager {
         const biomeName = biomeNames[biome] || biome;
         const biomeColor = biomeColors[biome] || '#aaaaaa';
         html += `<div class="stat-line"><span class="stat-label">Biome:</span> <span class="stat-value" style="color: ${biomeColor};">${biomeName}</span></div>`;
+
+        if (this.game.currentLayer === 'overworld') {
+            html += `<div class="stat-line"><span class="stat-label">Layer:</span> <span class="stat-value" style="color:#00ffff;">Overworld</span></div>`;
+            html += `<div class="stat-line"><span class="stat-label">Zone Pos:</span> <span class="stat-value">(${this.game.overworldX}, ${this.game.overworldY})</span></div>`;
+            this.locationPanel.innerHTML = html;
+            return;
+        }
         
         // Floor level
         const floorLabel = player.z === 0 ? 'Ground' : player.z > 0 ? `Floor ${player.z}` : `Basement ${Math.abs(player.z)}`;

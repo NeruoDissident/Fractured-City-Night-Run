@@ -140,9 +140,17 @@ export class InputHandler {
         // Handle staircase navigation (< and >) - check before gameState
         if ((e.key === '<' || e.key === '>') && this.game.gameState === 'playing' && !this.game.inspectMode) {
             e.preventDefault();
+            const action = this.keyMap[e.key];
+            if (this.game.currentLayer === 'overworld' && e.key === '>') {
+                this.game.processTurn(action);
+                return;
+            }
+            if (this.game.currentLayer === 'zone' && e.key === '<' && this.game.player.z === 0) {
+                this.game.processTurn(action);
+                return;
+            }
             const tile = this.game.world.getTile(this.game.player.x, this.game.player.y, this.game.player.z);
             if (tile.isStaircase || tile.isManhole || tile.isLadder) {
-                const action = this.keyMap[e.key];
                 this.game.processTurn(action);
             } else {
                 this.game.ui.log('There are no stairs here.', 'warning');
