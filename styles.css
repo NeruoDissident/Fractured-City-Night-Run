@@ -33,19 +33,26 @@ body {
 }
 
 #ui-panels {
-    width: 350px;
+    width: 300px;
     background-color: #0f0f0f;
     border-left: 2px solid #333;
     display: flex;
     flex-direction: column;
-    overflow-y: auto;
+    height: 100vh;
+    overflow: hidden;
 }
 
 .panel {
     border-bottom: 1px solid #333;
-    padding: 10px;
-    min-height: 150px;
+    padding: 8px 10px;
+    min-height: 0;
+    overflow-y: auto;
 }
+
+#log-panel      { flex: 2.5; }
+#character-panel { flex: 2; }
+#context-panel  { flex: 1.5; }
+#location-panel { flex: 1; min-height: 50px; }
 
 .panel h3 {
     color: #00ffff;
@@ -90,8 +97,9 @@ body {
 }
 
 #minimap-panel {
-    min-height: auto;
-    padding: 10px;
+    flex-shrink: 0;
+    overflow: hidden;
+    padding: 8px 10px;
 }
 
 #character-content,
@@ -163,7 +171,7 @@ body {
     display: flex;
     gap: 0;
     width: 700px;
-    max-width: calc(100vw - 220px);
+    max-width: calc(100vw - 320px);
     max-height: 45vh;
     overflow: hidden;
 }
@@ -345,11 +353,11 @@ button {
     background-color: #003333;
     color: #00ffff;
     border: 1px solid #00ffff;
-    padding: 12px 24px;
+    padding: 7px 16px;
     cursor: pointer;
     font-family: 'Courier New', monospace;
-    font-size: 16px;
-    margin: 5px;
+    font-size: 14px;
+    margin: 3px;
 }
 
 button:hover {
@@ -367,8 +375,8 @@ button:active {
 }
 
 .modal-content button {
-    font-size: 16px;
-    padding: 12px 24px;
+    font-size: 14px;
+    padding: 7px 16px;
 }
 
 .modal-content .small-btn {
@@ -602,6 +610,28 @@ input, select {
         background-color: #2a1a4e;
     }
 
+    .action-btn--more {
+        background-color: #111;
+        border-color: #555;
+        color: #888;
+        flex: 0 0 40px;
+    }
+
+    #btn-overworld {
+        background-color: #0a1a0a;
+        border-color: #44aa44;
+        color: #44ff88;
+    }
+
+    #mobile-more-row {
+        flex-wrap: wrap;
+    }
+
+    #mobile-more-row .action-btn {
+        flex: 1 1 calc(25% - 4px);
+        min-width: 0;
+    }
+
     /* --- Panel Tabs --- */
     #mobile-panel-tabs {
         display: flex;
@@ -781,3 +811,347 @@ input, select {
         max-height: none;
     }
 }
+
+/* ── Talent / Traits Screen ──────────────────────────────────────────────── */
+
+.talent-tab-btn {
+    background: #222;
+    color: #aaa;
+    border: 1px solid #444;
+    padding: 6px 18px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 14px;
+    border-radius: 3px;
+    transition: background 0.15s, color 0.15s;
+}
+.talent-tab-btn:hover { background: #2a2a2a; color: #fff; }
+.talent-tab-btn.active { background: #1a3040; border-color: #00ffff; color: #00ffff; }
+
+#talent-screen-layout {
+    display: flex;
+    gap: 12px;
+    height: 480px;
+}
+
+#talent-tree-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 160px;
+    flex-shrink: 0;
+}
+#talent-tree-nav .talent-pts-display {
+    color: #ffcc44;
+    font-size: 13px;
+    margin-bottom: 4px;
+    padding: 6px 8px;
+    background: #111;
+    border: 1px solid #333;
+    border-radius: 3px;
+    text-align: center;
+}
+.talent-tree-btn {
+    background: #1a1a1a;
+    border: 1px solid #333;
+    color: #ccc;
+    padding: 8px 10px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 13px;
+    text-align: left;
+    border-radius: 3px;
+    transition: background 0.1s, border-color 0.1s;
+}
+.talent-tree-btn:hover { background: #252525; color: #fff; }
+.talent-tree-btn.selected { border-color: #00ffff; color: #00ffff; background: #0a1a20; }
+.talent-tree-btn .tree-count {
+    float: right;
+    font-size: 11px;
+    color: #666;
+}
+
+#talent-nodes-panel {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.talent-node-card {
+    background: #111;
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.talent-node-card.unlocked-talent { border-color: #00aa44; background: #0a1a0a; }
+.talent-node-card.locked-prereq { opacity: 0.5; }
+.talent-node-card.purchasable { border-color: #445566; }
+.talent-node-card.purchasable:hover { border-color: #00ffff; background: #0a1520; }
+
+.talent-node-header {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+.talent-node-name {
+    font-size: 15px;
+    font-weight: bold;
+    color: #fff;
+}
+.talent-node-cost {
+    font-size: 12px;
+    color: #ffcc44;
+    margin-left: auto;
+}
+.talent-node-desc {
+    font-size: 12px;
+    color: #aaa;
+    line-height: 1.4;
+}
+.talent-node-prereqs {
+    font-size: 11px;
+    color: #888;
+    font-style: italic;
+}
+.talent-node-effect {
+    font-size: 12px;
+    color: #44ffaa;
+}
+.talent-buy-btn {
+    align-self: flex-start;
+    margin-top: 4px;
+    padding: 4px 14px;
+    font-family: inherit;
+    font-size: 12px;
+    background: #1a2830;
+    border: 1px solid #00ffff;
+    color: #00ffff;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background 0.1s;
+}
+.talent-buy-btn:hover { background: #223040; }
+.talent-buy-btn:disabled { opacity: 0.4; cursor: not-allowed; border-color: #555; color: #555; }
+.talent-unlocked-badge {
+    display: inline-block;
+    font-size: 11px;
+    color: #00aa44;
+    background: #0a1a0a;
+    border: 1px solid #00aa44;
+    border-radius: 3px;
+    padding: 2px 8px;
+    margin-top: 4px;
+}
+
+/* ── Character Creation (CoQ-style 3-column) ─────────────────────────────── */
+
+.cg-layout {
+    display: flex;
+    gap: 10px;
+    height: 80vh;
+}
+
+.cg-col {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    scrollbar-width: thin;
+}
+.cg-left  { width: 210px; flex-shrink: 0; }
+.cg-center { flex: 1; min-width: 0; }
+.cg-right { width: 210px; flex-shrink: 0; }
+
+.cg-section {
+    background: #0a0a0a;
+    border: 1px solid #2a2a2a;
+    border-radius: 4px;
+    padding: 10px;
+    margin-bottom: 8px;
+}
+
+.cg-section-title {
+    color: #00ffff;
+    font-size: 11px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid #2a2a2a;
+    padding-bottom: 4px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.cg-input {
+    background: #111;
+    border: 1px solid #444;
+    color: #fff;
+    padding: 6px 8px;
+    font-family: inherit;
+    font-size: 13px;
+    border-radius: 3px;
+    width: 100%;
+    box-sizing: border-box;
+}
+.cg-input:focus { border-color: #00ffff; outline: none; }
+
+.cg-btn {
+    background: #1a1a1a;
+    border: 1px solid #444;
+    color: #aaa;
+    padding: 6px 10px;
+    font-family: inherit;
+    font-size: 13px;
+    border-radius: 3px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.cg-btn:hover { background: #252525; color: #fff; }
+
+.cg-bg-card {
+    padding: 7px 8px;
+    border: 1px solid #2a2a2a;
+    border-radius: 3px;
+    margin-bottom: 5px;
+    cursor: pointer;
+    background: #0d0d0d;
+    transition: border-color 0.1s, background 0.1s;
+}
+.cg-bg-card:hover { border-color: #555; background: #131313; }
+.cg-bg-card.selected { border-color: #00ffff; background: #061010; }
+.cg-bg-name { color: #ffaa00; font-weight: bold; font-size: 12px; }
+.cg-bg-desc { color: #666; font-size: 10px; margin: 2px 0; line-height: 1.3; display: none; }
+.cg-bg-card.selected .cg-bg-desc { display: block; color: #888; }
+.cg-bg-mods { color: #44aaff; font-size: 10px; }
+.cg-bg-talents { color: #44ff88; font-size: 10px; margin-top: 2px; }
+
+.cg-stat-row {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-bottom: 4px;
+}
+.cg-stat-name { color: #888; font-size: 12px; width: 30px; flex-shrink: 0; }
+.cg-stat-btn {
+    width: 22px; height: 22px;
+    background: #181818;
+    border: 1px solid #444;
+    color: #aaa;
+    cursor: pointer;
+    font-size: 15px;
+    line-height: 1;
+    border-radius: 2px;
+    padding: 0;
+    font-family: inherit;
+    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+}
+.cg-stat-btn:hover { background: #2a2a2a; color: #fff; }
+.cg-stat-val { font-size: 13px; color: #fff; min-width: 36px; text-align: center; }
+
+.cg-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    margin-bottom: 8px;
+    flex-shrink: 0;
+}
+.cg-tab {
+    background: #0d0d0d;
+    border: 1px solid #2a2a2a;
+    border-bottom: 2px solid #2a2a2a;
+    color: #777;
+    padding: 4px 9px;
+    font-family: inherit;
+    font-size: 11px;
+    cursor: pointer;
+    border-radius: 3px 3px 0 0;
+    transition: color 0.1s, background 0.1s;
+}
+.cg-tab:hover { color: #ccc; background: #141414; }
+.cg-tab.active { color: #fff; background: #131313; border-bottom-color: #00ffff; }
+
+.cg-talent-list {
+    flex: 1;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    align-content: start;
+}
+
+.cg-talent-card {
+    background: #0d0d0d;
+    border: 1px solid #252525;
+    border-radius: 4px;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.cg-talent-card.cg-talent-free    { border-color: #1a3a1a; background: #091209; }
+.cg-talent-card.cg-talent-selected { border-color: #44ffaa; background: #071510; }
+.cg-talent-card.cg-talent-locked   { opacity: 0.4; }
+.cg-talent-card.cg-talent-available { border-color: #2a3a2a; }
+.cg-talent-card.cg-talent-available:hover { border-color: #00ffff; background: #080e14; }
+.cg-talent-card.cg-talent-costly   { opacity: 0.55; }
+.cg-talent-card.cg-drawback-card   { border-color: #2a1a1a; }
+.cg-talent-card.cg-drawback-selected { border-color: #ff6644; background: #140808; }
+
+.cg-talent-card-header {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+.cg-talent-card-name { font-size: 12px; font-weight: bold; color: #ddd; flex: 1; min-width: 0; }
+.cg-talent-card-tree { font-size: 9px; opacity: 0.75; }
+.cg-talent-card-cost { font-size: 11px; margin-left: auto; flex-shrink: 0; }
+.cg-talent-card-desc { font-size: 11px; color: #777; line-height: 1.35; }
+.cg-talent-prereq    { font-size: 10px; font-style: italic; }
+
+.cg-free-badge {
+    font-size: 10px; color: #44aa44;
+    background: #091209; border: 1px solid #2a5a2a;
+    border-radius: 3px; padding: 2px 6px;
+    align-self: flex-start; margin-top: 2px;
+}
+.cg-buy-btn {
+    align-self: flex-start; padding: 3px 10px;
+    font-family: inherit; font-size: 11px;
+    background: #081418; border: 1px solid #00cccc; color: #00cccc;
+    border-radius: 3px; cursor: pointer; margin-top: 2px;
+}
+.cg-buy-btn:hover { background: #0d1e24; }
+.cg-buy-btn:disabled { opacity: 0.3; cursor: not-allowed; border-color: #333; color: #555; }
+.cg-deselect-btn {
+    align-self: flex-start; padding: 3px 10px;
+    font-family: inherit; font-size: 11px;
+    background: #140808; border: 1px solid #cc3322; color: #cc3322;
+    border-radius: 3px; cursor: pointer; margin-top: 2px;
+}
+.cg-deselect-btn:hover { background: #1e0e0a; }
+
+.cg-start-btn {
+    width: 100%; padding: 10px;
+    font-family: inherit; font-size: 14px; font-weight: bold;
+    background: #081a08; border: 2px solid #44ff44; color: #44ff44;
+    border-radius: 3px; cursor: pointer; margin-bottom: 6px;
+    transition: background 0.1s;
+}
+.cg-start-btn:hover:not(:disabled) { background: #102010; }
+.cg-start-btn:disabled { opacity: 0.35; cursor: not-allowed; border-color: #333; color: #555; }
+.cg-play-now-btn {
+    width: 100%; padding: 7px;
+    font-family: inherit; font-size: 12px;
+    background: #181008; border: 1px solid #cc7700; color: #cc7700;
+    border-radius: 3px; cursor: pointer; transition: background 0.1s;
+}
+.cg-play-now-btn:hover { background: #201408; }

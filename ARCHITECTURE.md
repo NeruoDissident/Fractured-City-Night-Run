@@ -59,6 +59,10 @@
 - E: Interact with world object
 - X: Inspect mode
 - M: Cycle movement mode
+- T: Cycle combat stance (talent-gated)
+- B: Toggle combat overlay
+- Q: Talent & Ability panel
+- Tab: Toggle Overworld map
 - F: Toggle explore mode
 - < / >: Use stairs/manholes
 - Escape: Close all modals / Exit inspect mode
@@ -76,7 +80,7 @@
 **Responsibility:** Infinite world generation, chunk streaming, entity management, Z-level support
 
 **Architecture:**
-- World divided into 32x32 tile chunks
+- World divided into 128×128 tile chunks (increased from 32 in v39)
 - Chunks generated procedurally on-demand
 - Multi-level support (z=-1 sewers/basements, z=0 ground, z=1 second floors)
 - Only active chunks (within radius) are simulated
@@ -91,9 +95,10 @@
 - Far Edges (distance 15+) - Mostly forest
 
 **World Features:**
-- Road networks (biome-specific styling)
-- Prefab buildings (9 validated ASCII layouts) with room-type tagging
+- Road networks (biome-specific styling, district system with 15 district types)
+- Prefab buildings (18 validated ASCII layouts) with room-type tagging
 - Procedural rectangular buildings as fallback
+- Overworld map (60×40 grid of zones, Tab to toggle)
 - Interactive doors as WorldObjects (biome-based types, lock chance)
 - Multi-floor buildings with staircases
 - Sewer systems at z=-1 with manholes and ladders
@@ -151,9 +156,14 @@
 #### NPC (`NPC.js`)
 **Responsibility:** AI-driven entities
 
-**Current AI Types:**
-- `wander` - Random movement (scavengers)
-- `chase` - Pathfinding toward player (raiders)
+**Current AI Types (5 types):**
+- Scavenger — wander, non-hostile, slow (speed 70)
+- Raider — chase/attack (speed 85)
+- Armed Raider — armed, brave, faster (speed 90)
+- Brute — high STR, fearless, slow (speed 70)
+- Stalker — fast, hit-and-run (speed 100)
+
+**Detection State Machine:** UNAWARE → ALERT → SEARCHING → ENGAGED → FLEEING
 
 **Expansion Points:**
 - Add `flee` AI (run from player when low HP)
@@ -352,14 +362,25 @@ content.createComponent(componentId)  // Raw material spawning
 ### 13. Character Creation System (`src/systems/CharacterCreationSystem.js`)
 **Responsibility:** Character backgrounds, traits, stat allocation
 
-**Status:** ✅ Implemented
+**Status:** ✅ Implemented (v52 CoQ-style overhaul)
 
 **Features:**
-- 6 backgrounds (Street Kid, Corporate Drone, Ex-Military, etc.)
-- 10+ traits (positive and negative)
-- Stat point allocation with validation
-- Gender selection
-- Trait effects on gameplay
+- 6 backgrounds with stat mods, gear labels, and free starting talents
+- Talent browser: 3-column layout (identity/background, talent selector, summary)
+- 6pt talent budget at chargen; drawbacks refund points
+- Stat allocation: 50pt budget, 5 stats, +/− buttons
+- `applyBackgroundToCharacter(player, bgId, skipTalents=false)` — no double-grant
+
+### 13b. Talent System (`src/content/TalentCatalog.js`)
+**Responsibility:** Talent trees, talent effects, unlock gating
+
+**Status:** ✅ Implemented (v51)
+
+**Features:**
+- 5 talent trees: combat_tactics, small_blades, blunt_weapons, unarmed, survival
+- 35+ talent nodes with tier/prereq gating
+- `TalentEffects.applyImmediateEffect()` — modifies player stats on grant
+- All combat stances and abilities gated behind talents (no defaults)
 
 ### 14. Crafting System (`src/systems/CraftingSystem.js`)
 **Responsibility:** Tiered component-based crafting and disassembly with quality mechanics
@@ -448,10 +469,11 @@ Fractured-City-Night-Run/
 │   │   ├── Renderer.js    # Canvas drawing
 │   │   └── InputHandler.js # Keyboard
 │   ├── world/
-│   │   ├── World.js       # Chunk manager, Z-level support, getBiomeAt()
-│   │   ├── Chunk.js       # Terrain gen, prefab placement, loot spawning
+│   │   ├── World.js       # Chunk manager, Z-level support, zone mode
+│   │   ├── Chunk.js       # Terrain gen, district system, prefab placement, seeded RNG
 │   │   ├── WorldObject.js # Base class for interactive objects
 │   │   ├── ExtractionPoint.js # Win condition
+│   │   ├── OverworldMap.js # 60×40 zone grid, threat levels, Tab toggle
 │   │   └── objects/
 │   │       ├── Door.js    # Interactive door WorldObject
 │   │       └── Furniture.js # 16 furniture types, storage, loot population
@@ -468,13 +490,16 @@ Fractured-City-Night-Run/
 │   │   ├── ContainerSystem.js # Weight/volume
 │   │   ├── CraftingSystem.js  # Crafting and disassembly
 │   │   ├── WorldObjectSystem.js # WorldObject interactions
-│   │   ├── CharacterCreationSystem.js # Character gen
+│   │   ├── CharacterCreationSystem.js # Character gen (CoQ-style, v52)
+│   │   ├── AbilitySystem.js   # Combat abilities, talent-gated
+│   │   ├── CombatEffects.js   # Shake, floating text, visual feedback
 │   │   ├── TimeSystem.js  # Day/night cycle, 24-hour clock
 │   │   └── LightingSystem.js # Ambient + point light, fuel consumption
 │   ├── content/
 │   │   ├── ContentManager.js    # Data-driven content
-│   │   ├── BuildingPrefabs.js   # 9 ASCII prefab layouts + biome door types
-│   │   └── LootTables.js        # 16 room-type loot pools + outdoor loot
+│   │   ├── BuildingPrefabs.js   # 18 ASCII prefab layouts + biome door types
+│   │   ├── LootTables.js        # 16 room-type loot pools + outdoor loot
+│   │   └── TalentCatalog.js     # TALENT_TREES, TALENT_NODES, TalentEffects
 │   └── ui/
 │       ├── UIManager.js         # Panels, modals, location display
 │       ├── CraftingUI.js        # Crafting workshop UI with sub-recipe drill-down

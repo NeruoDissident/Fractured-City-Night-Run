@@ -1,3 +1,5 @@
+import { TalentEffects } from '../content/TalentCatalog.js';
+
 /**
  * CombatSystem - Handles all combat resolution
  * 
@@ -593,6 +595,18 @@ export class CombatSystem {
         // Stance modifier (attacker)
         const attackerStance = this.getEntityStance(attacker);
         if (attackerStance) chance += (attackerStance.hitMod || 0);
+
+        // Talent bonuses: all-weapon hit, weapon-type-specific hit
+        if (attacker.unlockedTalents) {
+            chance += TalentEffects.getSum(attacker, 'allWeaponHit');
+            const attackType = this.getAttackType(weapon);
+            if (attackType === 'sharp') chance += TalentEffects.getSum(attacker, 'sharpHitBonus');
+            if (attackType === 'unarmed') chance += TalentEffects.getSum(attacker, 'unarmedHitBonus');
+        }
+        // Background traitEffects hit bonus
+        if (attacker.traitEffects && attacker.traitEffects.hitBonus) {
+            chance += attacker.traitEffects.hitBonus;
+        }
         
         // Attacker injury penalties (arm/hand damage, blood loss, shock)
         if (attacker.anatomy) {
@@ -635,6 +649,16 @@ export class CombatSystem {
         
         // Unarmed penalty — fists are imprecise
         if (!weapon) chance -= 3;
+
+        // Talent crit bonuses
+        if (attacker.unlockedTalents) {
+            const attackType = this.getAttackType(weapon);
+            if (attackType === 'sharp') chance += TalentEffects.getSum(attacker, 'sharpCritBonus');
+        }
+        // Background traitEffects crit bonus
+        if (attacker.traitEffects && attacker.traitEffects.critBonus) {
+            chance += attacker.traitEffects.critBonus;
+        }
         
         // Injury penalties (eye damage, blood loss, shock)
         if (attacker.anatomy) {
@@ -647,9 +671,11 @@ export class CombatSystem {
     
     /**
      * Get the combat stance data for an entity.
-     * Players have explicit stances; NPCs default to aggressive.
+     * Players: delegates to player.getStance() which respects talent-gating.
+     * NPCs: direct lookup (NPCs don't use the talent system).
      */
     getEntityStance(entity) {
+        if (entity.getStance) return entity.getStance();
         if (entity.combatStances && entity.combatStance) {
             return entity.combatStances[entity.combatStance];
         }
@@ -765,6 +791,11 @@ export class CombatSystem {
         let chance = (weapon && weapon.weaponStats && weapon.weaponStats.staggerChance)
             ? weapon.weaponStats.staggerChance
             : 0.15;
+
+        // Talent stagger bonus
+        if (attacker.unlockedTalents) {
+            chance += TalentEffects.getSum(attacker, 'bluntStaggerBonus');
+        }
         
         // Attacker STR increases stagger chance (+3% per point above 10)
         if (attacker.stats) {
@@ -876,6 +907,15 @@ export class CombatSystem {
         // NPC flat damage bonus (NPCs without stats — legacy fallback)
         if (attacker.baseDamage && !attacker.stats) {
             damage += attacker.baseDamage;
+        }
+
+        // Talent flat damage bonuses
+        if (attacker.unlockedTalents) {
+            const attackType = weapon
+                ? (weapon.weaponStats?.attackType || weapon.attackType || 'blunt')
+                : 'unarmed';
+            if (attackType === 'blunt') damage += TalentEffects.getSum(attacker, 'bluntDamageBonus');
+            if (attackType === 'unarmed') damage += TalentEffects.getSum(attacker, 'unarmedDamageBonus');
         }
         
         // Injury damage modifier (arm/hand damage, blood loss, shock)

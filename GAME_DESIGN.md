@@ -1,6 +1,6 @@
 # Fractured City - Game Design Philosophy
 
-**Last Updated:** February 15, 2026
+**Last Updated:** April 28, 2026
 
 ---
 
@@ -223,16 +223,19 @@ The game doesn't end when you "reach the exit" - you must **build** your escape:
 - **Cataclysm: Dark Days Ahead** - Deterministic crafting, quality system, body parts
 - **Project Zomboid** - Realistic injuries, multi-turn actions
 - **Dwarf Fortress** - Emergent gameplay, detailed simulation
+- **Caves of Qud** - Talent/mutation trees, character creation depth, point-buy chargen
 
 ### What We Take
 - **CDDA:** Predictable outcomes, component quality, tool requirements
 - **PZ:** Body-part injuries, status effects, realistic healing
 - **DF:** Detailed item descriptions, component-level tracking
+- **CoQ:** Rich talent trees at chargen, system-locking origin paths, flavor-over-mechanics design
 
 ### What We Don't Take
 - **CDDA:** Overwhelming complexity (we're more focused)
 - **PZ:** Slow pacing (we're turn-based, faster)
 - **DF:** ASCII-only (we have colored glyphs)
+- **CoQ:** Fantasy setting (we're cyberpunk)
 
 ---
 
@@ -377,29 +380,41 @@ When starting a new session, remember:
 ### Phase 2: Combat & NPC AI ✅ (Complete)
 - ✅ Anatomy-based combat (no HP bar, blood/wound system)
 - ✅ Body-part targeting, bleeding, wound clotting
-- ✅ Combat overlay (B key), combat stances (T key)
+- ✅ Combat overlay (B key), combat stances (T key, talent-gated)
 - ✅ Weapon-specific damage types (sharp/blunt/stab)
-- Remaining: stat-based hit chances, weapon targeting distributions, faction AI
+- ✅ Stat-based hit/crit chances (AGI, PER, STR — v31)
+- ✅ Stagger (blunt) and Parry (sharp defensive — v32)
+- ✅ 5 NPC types with energy-based speed and detection AI (v20/v33)
+- ✅ 15 combat abilities across 3 weapon classes, talent-gated (v51)
 
 ### Crafting System Overhaul ✅ (Complete, v19)
 - ✅ Tiered crafting: raw materials → intermediates → items
 - ✅ maxValue tier gating, craftedProperties, sub-recipe UI
 - ✅ Raw materials in loot tables, 4 craftable intermediates
 
-### Phase 3: Status Effects & Injuries (Partial)
+### Phase 3: Status Effects & Injuries ✅ (Largely Complete)
 - ✅ Bleeding, wound clotting, blood loss death
 - ✅ Pain/shock system, organ damage
-- Remaining: infection, broken limbs, medical treatment depth
+- ✅ Infection system with sepsis progression (v28)
+- ✅ Medical system: bandages, antiseptic, painkillers (v28)
+- Remaining: broken limbs, splints, surgical procedures
 
-### Phase 4: Cybernetics & Echo Effects
-- Details TBD
+### Phase 4: Origins & Cybernetics
+- Three system-locking Origins: **Flesh / Metal (Chrome) / Echo**
+  - **Flesh** — biological/human path, advanced anatomy/healing
+  - **Metal/Chrome** — cybernetics path, risky installation, stat augments
+  - **Echo** — supernatural/digital path, impossible abilities
+- Chrome: Cybernetic installation UI with risk visualization (infection, rejection, shock)
+- Echo: Digital manifestation abilities, corrupted-data entities
 
 ### World Expansion ✅ (Complete)
-- ✅ Building interiors via prefab system (9 layouts with room-type tagging)
+- ✅ Building interiors via prefab system (18 layouts with room-type tagging)
 - ✅ Context-aware loot spawning (16 room types with weighted item pools)
 - ✅ Interactive doors as WorldObjects (biome-based types, lock chance, HP)
 - ✅ Furniture as WorldObjects (16 types, storage, loot population)
 - ✅ Location UI panel (biome, floor, room/area display)
+- ✅ District system (15 types, seeded RNG, 128×128 chunks — v39)
+- ✅ Overworld map (60×40 zone grid, zone drop-in — v50)
 
 ### Future: Social Systems
 - NPC dialogue and trading

@@ -1,3 +1,5 @@
+import { TalentEffects } from '../content/TalentCatalog.js';
+
 export class CharacterCreationSystem {
     constructor() {
         this.backgrounds = {
@@ -6,42 +8,54 @@ export class CharacterCreationSystem {
                 description: 'Born in the ruins, raised by the streets. You know every alley, every hiding spot, every way to survive when you have nothing.',
                 statMods: { agility: 2, perception: 1, intelligence: -1 },
                 startingGear: ['rusty_knife', 'torn_jacket', 'lockpick'],
-                traits: ['streetwise']
+                gearLabel: 'Shiv, Flashlight, Coat, Backpack',
+                traits: ['streetwise'],
+                startingTalents: ['stance_opportunistic']
             },
             corpo: {
                 name: 'Corporate Defector',
                 description: 'You escaped the corporate towers with your life and little else. Your technical knowledge is valuable, but your soft hands betray your past.',
                 statMods: { intelligence: 3, perception: 1, strength: -2 },
                 startingGear: ['datapad', 'corpo_suit', 'access_card'],
-                traits: ['tech_savvy']
+                gearLabel: 'Flashlight, Lantern, Coat, Backpack',
+                traits: ['tech_savvy'],
+                startingTalents: ['weapon_aptitude']
             },
             nomad: {
                 name: 'Nomad',
                 description: 'The wasteland is your home. You\'ve walked further than most, survived worse than most, and you\'re tougher for it.',
                 statMods: { endurance: 2, strength: 2, intelligence: -1 },
                 startingGear: ['hunting_rifle', 'leather_jacket', 'water_canteen'],
-                traits: ['wasteland_survivor']
+                gearLabel: 'Knife, Canteen, Coat, Backpack',
+                traits: ['wasteland_survivor'],
+                startingTalents: ['survival_tough_hide', 'survival_fast_clotter']
             },
             scavenger: {
                 name: 'Scavenger',
                 description: 'You make your living picking through the bones of the old world. You have an eye for value and know how to find what others miss.',
                 statMods: { perception: 3, agility: 1, strength: -1 },
                 startingGear: ['crowbar', 'backpack', 'flashlight'],
-                traits: ['keen_eye']
+                gearLabel: 'Shiv, Flashlight, Lantern, Coat, Backpack',
+                traits: ['keen_eye'],
+                startingTalents: ['blades_crit']
             },
             raiderDefector: {
                 name: 'Raider Defector',
                 description: 'You left the raider gangs behind, but the skills remain. You know how to fight, how to kill, and how to survive in a world that wants you dead.',
                 statMods: { strength: 2, endurance: 1, intelligence: -1 },
                 startingGear: ['machete', 'raider_armor', 'stimpak'],
-                traits: ['combat_veteran']
+                gearLabel: 'Knife, Pipe, Coat, Backpack',
+                traits: ['combat_veteran'],
+                startingTalents: ['weapon_aptitude', 'stance_aggressive']
             },
             medic: {
                 name: 'Field Medic',
                 description: 'In a world of violence, healers are rare and precious. You know anatomy, medicine, and how to keep people alive against all odds.',
                 statMods: { intelligence: 2, perception: 2, strength: -2 },
                 startingGear: ['scalpel', 'med_kit', 'white_coat'],
-                traits: ['medical_training']
+                gearLabel: 'Medkit, Flashlight, Coat, Backpack',
+                traits: ['medical_training'],
+                startingTalents: ['survival_pain_resistance']
             }
         };
         
@@ -83,6 +97,50 @@ export class CharacterCreationSystem {
                 effect: { luckBonus: 2 }
             },
             
+            // Background-implied traits (cost 0, applied automatically by background)
+            streetwise: {
+                name: 'Streetwise',
+                description: 'You know how to read a fight and move unseen.',
+                cost: 0,
+                type: 'background',
+                effect: { visionBonus: 1 }
+            },
+            tech_savvy: {
+                name: 'Tech Savvy',
+                description: 'You understand machines and can work faster with tools.',
+                cost: 0,
+                type: 'background',
+                effect: { craftSpeedMod: 0.9 }
+            },
+            wasteland_survivor: {
+                name: 'Wasteland Survivor',
+                description: 'Hard miles make hard people.',
+                cost: 0,
+                type: 'background',
+                effect: {}
+            },
+            keen_eye: {
+                name: 'Keen Eye',
+                description: 'You spot things others miss.',
+                cost: 0,
+                type: 'background',
+                effect: { visionBonus: 1 }
+            },
+            combat_veteran: {
+                name: 'Combat Veteran',
+                description: 'You\'ve seen combat and survived to carry the scars.',
+                cost: 0,
+                type: 'background',
+                effect: {}
+            },
+            medical_training: {
+                name: 'Medical Training',
+                description: 'You know the human body inside and out.',
+                cost: 0,
+                type: 'background',
+                effect: { healingMod: 1.5 }
+            },
+
             // Negative traits (give points)
             nearSighted: {
                 name: 'Near-Sighted',
@@ -187,7 +245,7 @@ export class CharacterCreationSystem {
         };
     }
     
-    applyBackgroundToCharacter(player, backgroundId) {
+    applyBackgroundToCharacter(player, backgroundId, skipTalents = false) {
         const background = this.backgrounds[backgroundId];
         if (!background) return;
         
@@ -200,19 +258,49 @@ export class CharacterCreationSystem {
         player.background = background.name;
         player.backgroundId = backgroundId;
         
-        // Background traits are automatically applied
+        // Store background trait list and merge their effects into traitEffects
         player.backgroundTraits = background.traits || [];
+        if (!player.traitEffects) player.traitEffects = {};
+        for (const traitId of player.backgroundTraits) {
+            const trait = this.traits[traitId];
+            if (trait && trait.effect) {
+                for (const [key, val] of Object.entries(trait.effect)) {
+                    if (typeof val === 'number' && typeof player.traitEffects[key] === 'number') {
+                        player.traitEffects[key] += val;
+                    } else {
+                        player.traitEffects[key] = val;
+                    }
+                }
+            }
+        }
+
+        // Grant free starting talents from background (skip if chargen already applied them)
+        if (!skipTalents) {
+            const startingTalents = background.startingTalents || [];
+            if (!player.unlockedTalents) player.unlockedTalents = [];
+            for (const talentId of startingTalents) {
+                if (!player.unlockedTalents.includes(talentId)) {
+                    player.unlockedTalents.push(talentId);
+                    TalentEffects.applyImmediateEffect(player, talentId);
+                }
+            }
+        }
     }
     
     applyTraitsToCharacter(player, traitIds) {
         player.selectedTraits = traitIds || [];
-        player.traitEffects = {};
+        if (!player.traitEffects) player.traitEffects = {};
         
         for (const traitId of traitIds) {
             const trait = this.traits[traitId];
             if (trait && trait.effect) {
-                // Merge trait effects
-                Object.assign(player.traitEffects, trait.effect);
+                for (const [key, val] of Object.entries(trait.effect)) {
+                    if (typeof val === 'number' && typeof player.traitEffects[key] === 'number') {
+                        player.traitEffects[key] += val;
+                    } else {
+                        player.traitEffects[key] = val;
+                    }
+                }
             }
         }
     }

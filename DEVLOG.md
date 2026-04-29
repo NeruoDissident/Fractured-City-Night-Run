@@ -3,7 +3,7 @@
 **Project:** Fractured City - Browser-based Cyberpunk Roguelike  
 **Engine:** Vanilla JavaScript + HTML5 Canvas 2D  
 **Status:** Active Development  
-**Last Updated:** February 15, 2026
+**Last Updated:** April 28, 2026
 
 ---
 
@@ -87,34 +87,38 @@ A traditional turn-based roguelike set in a cyberpunk dystopia. Features permade
 - [x] **Modal Scroll Fix** - Fixed CSS overflow for PWA modal scrolling (touch-action, overflow-y, overscroll-behavior)
 
 ### Current Build Stats
-- **Files:** 30+ modular ES6 modules
-- **Systems:** 18 core systems (Renderer, World, Entities, Equipment, Combat, FoV, UI, Content, Input, Container, CharCreation, ItemSystem, Crafting, WorldObject, Sound, Lighting, Time, MobileControls)
-- **Item Types:** 20+ families (weapons, armor, materials, tools, food, drinks, containers, light sources, fuel, raw materials, intermediates)
+- **Files:** 35+ modular ES6 modules
+- **Systems:** 22 core systems (+ AbilitySystem, CombatEffects, CharacterCreationSystem overhaul, OverworldMap)
+- **Item Types:** 25+ families
 - **Components:** 40+ component types with 16 property categories
 - **Craftable Intermediates:** 4 (Crude Blade, Sharpened Stick, Wrapped Handle, Strap)
-- **Raw Materials:** 8 world-spawning types (stone, wood, glass, metal, bone, rubber, duct tape, nail)
-- **Building Prefabs:** 9 validated layouts (small, medium, large)
-- **Loot Room Types:** 16 (residential, commercial, office, medical, industrial)
-- **NPCs:** 2 types (Scavengers, Raiders)
+- **Raw Materials:** 8 world-spawning types
+- **Building Prefabs:** 18 validated layouts (9 added v39)
+- **Loot Room Types:** 16
+- **NPCs:** 5 types (Scavenger, Raider, Armed Raider, Brute, Stalker)
 - **Biomes:** 7 (Urban Core, Suburbs, Industrial, Rich Neighborhood, Rural, Forest, Ruins)
-- **Z-Levels:** 3 levels (z=-1 sewers/basements, z=0 ground, z=1 second floors)
-- **Buildings:** Prefab and procedural structures with interactive doors and room-tagged loot
-- **Lighting:** Day/night cycle with ambient + point light sources (flashlight cone, lantern radial)
-- **Cache:** v19
+- **District Types:** 15
+- **Talent Trees:** 5, **Talent Nodes:** 35+
+- **Combat Abilities:** 15 (5 blunt, 5 sharp, 5 unarmed)
+- **Z-Levels:** 3 levels
+- **Chunk Size:** 128×128
+- **Cache:** v52
 
 ---
 
 ## 🚧 Current Sprint
 
-### Active: Combat Balance Tuning
+### Active: Testing / Next Priority TBD
 **Status:** Planning  
 **Priority:** HIGH  
-**Estimated Time:** TBD
+**Options:**
+- Town building / world gen improvements (named districts, POIs)
+- NPC dialogue and lore
+- Three Origins system: Flesh / Metal / Echo at chargen
 
-#### Goals
-- Stat-based hit chances (STR, DEX, AGI influence accuracy)
-- Weapon-specific body part targeting distributions
-- Combat balance: unarmed near-unwinnable, weapons are the turning point
+#### Previous Sprint: v52 — Character Creation Overhaul (CoQ-style) ✅
+**Status:** ✅ Complete  
+**Completed:** April 28, 2026
 
 #### Previous Sprint: Phase 1 — Light & Dark + Item Audit ✅
 **Status:** ✅ Complete  
@@ -382,6 +386,31 @@ A roguelike where every run feels different, player choices matter, and the worl
 
 ## 📝 Session Notes
 
+### Session: April 28, 2026
+**Completed:**
+- **v52 Character Creation Overhaul** — CoQ-style 3-column chargen screen
+  - Left col: Name/gender, 6 background cards (stat mods, gear label, free talent)
+  - Center col: Talent browser with 6 tabs (All/trees), 2-col card grid, Buy/Remove buttons with prereq gating
+  - Right col: Live summary (name, bg, gear, talent pts, attr preview, start button)
+  - 6pt talent budget, drawbacks refund points, backgrounds grant free talents
+  - `_cgPlayNow` button: random bg + 4 tier-1 talents within budget
+  - `player.talentPoints = 0` at start; earned in-game via leveling
+  - `skipTalents` flag on `applyBackgroundToCharacter` prevents double-grant
+  - Added `gearLabel` to all 6 backgrounds in `CharacterCreationSystem.js`
+  - Cache bumped to v52
+
+**Completed (earlier sessions v20-v51, summarized):**
+- v20: NPC energy-based speed, detection state machine (UNAWARE/ALERT/SEARCHING/ENGAGED/FLEEING)
+- v21-v28: Medkit system, infection, pain suppression, mobile UX, container UX streamlining
+- v31: Stat-based combat math (AGI hit %, PER crit %, STR damage)
+- v32: Stagger (blunt) + Parry (sharp defensive) system
+- v33: 3 new NPC types (Armed Raider, Brute, Stalker)
+- v34-v37: Background-specific starting gear, Spiked Club weapon, ADDING_ITEMS.md
+- v38-v39: World gen overhaul — 128×128 chunks, seeded RNG, 15 district types, 18 prefabs, 9 new POI generators, per-chunk NPC spawning
+- v40-v49: Combat overlay, anatomy combat penalties, stance modifiers
+- v50: Overworld system — 60×40 zone grid, zone drop-in, Tab toggle, zone biome forcing
+- v51: Talent system — 5 trees, 35+ nodes, TalentCatalog.js, ability gating, stance gating
+
 ### Session: February 15, 2026
 **Completed:**
 - **v19 Crafting System Overhaul** — Complete redesign of crafting to be tiered and intuitive
@@ -624,9 +653,14 @@ A roguelike where every run feels different, player choices matter, and the worl
 - [x] **Beta 0.4:** Phase 1 — Light & Dark + Item System Audit (Complete)
 - [x] **Beta 0.5:** Combat & Anatomy System (Complete)
 - [x] **Beta 0.6:** v19 Crafting System Overhaul — Tiered crafting, intermediates, raw materials (Complete)
-- [ ] **Beta 0.7:** Combat Balance Tuning — Stat-based hit chances, weapon targeting
-- [ ] **Beta 0.8:** Phase 3 — Status Effects & Injuries
-- [ ] **Beta 0.9:** Phase 4 — Cybernetics & Echo Effects
+- [x] **Beta 0.7:** Combat Balance — Stat-based hit/crit, stagger, parry, 5 NPC types (Complete)
+- [x] **Beta 0.8:** World Gen Overhaul — 128 chunk, districts, 18 prefabs, seeded RNG (Complete)
+- [x] **Beta 0.9:** Overworld System — 60×40 zone grid, zone drop-in, Tab toggle (Complete)
+- [x] **Beta 0.10:** Talent System — 5 trees, 35+ nodes, ability/stance gating (Complete)
+- [x] **Beta 0.11:** Character Creation Overhaul — CoQ-style 3-column, talent chargen (Complete)
+- [ ] **Beta 0.12:** Town building / World gen improvements
+- [ ] **Beta 0.13:** Three Origins — Flesh / Metal / Echo system-locking choice
+- [ ] **Beta 0.14:** Cybernetics (Metal/Chrome path), NPC dialogue
 - [ ] **Release 1.0:** Full feature set, polished, balanced
 
 ---

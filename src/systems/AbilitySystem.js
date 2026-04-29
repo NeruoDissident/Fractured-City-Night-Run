@@ -1,10 +1,12 @@
+import { TalentEffects } from '../content/TalentCatalog.js';
+
 /**
- * AbilitySystem — Manages combat abilities tied to weapon types, stat thresholds, and stances.
+ * AbilitySystem — Manages combat abilities tied to talent unlocks.
  * 
  * Abilities are data-driven, defined in ABILITY_DATA below.
  * Each ability has:
  *   - weaponType: 'blunt', 'sharp', or 'unarmed'
- *   - statRequirements: { stat: minValue, ... }
+ *   - requiredTalent: talent node ID that unlocks this ability
  *   - preferredStance: stance that grants bonuses (soft lock — usable in any stance)
  *   - actionCost: AP cost to use the ability
  *   - effects: what happens on hit (targeted body part, stun, bleed, etc.)
@@ -19,6 +21,7 @@ const ABILITY_DATA = {
         name: 'Limb Breaker',
         description: 'Target a specific limb with a crushing blow. Arm hits reduce enemy hit chance and damage. Leg hits reduce dodge.',
         weaponType: 'blunt',
+        requiredTalent: 'blunt_limb_breaker',
         statRequirements: { strength: 12 },
         preferredStance: 'aggressive',
         actionCost: 150,
@@ -37,6 +40,7 @@ const ABILITY_DATA = {
         name: 'Concussion',
         description: 'Overhead strike aimed at the skull. Stuns the target, skipping their next turn.',
         weaponType: 'blunt',
+        requiredTalent: 'blunt_skull_crack',
         statRequirements: { strength: 14, agility: 11 },
         preferredStance: 'aggressive',
         actionCost: 180,
@@ -56,6 +60,7 @@ const ABILITY_DATA = {
         name: 'Sweeping Strike',
         description: 'Wide low swing targeting both legs. Knocks target prone (skip turn, easier to hit). Reduced damage per leg.',
         weaponType: 'blunt',
+        requiredTalent: 'blunt_sweeping_strike',
         statRequirements: { strength: 11, agility: 12 },
         preferredStance: 'aggressive',
         actionCost: 160,
@@ -74,6 +79,7 @@ const ABILITY_DATA = {
         name: 'Guard Break',
         description: 'Strike the arm they block with. Halves their arm block chance for 3 turns.',
         weaponType: 'blunt',
+        requiredTalent: 'blunt_guard_break',
         statRequirements: { perception: 12 },
         preferredStance: 'opportunistic',
         actionCost: 140,
@@ -93,6 +99,7 @@ const ABILITY_DATA = {
         name: 'Measured Strike',
         description: 'Careful blow targeting an already-wounded body part. High accuracy, exploits existing injuries.',
         weaponType: 'blunt',
+        requiredTalent: 'blunt_measured_strike',
         statRequirements: { perception: 13, agility: 11 },
         preferredStance: 'defensive',
         actionCost: 130,
@@ -113,6 +120,7 @@ const ABILITY_DATA = {
         name: 'Hamstring',
         description: 'Slash at the legs to cripple movement. Heavy bleed. Leg damage reduces enemy dodge chance.',
         weaponType: 'sharp',
+        requiredTalent: 'blades_hamstring',
         statRequirements: { agility: 12 },
         preferredStance: 'opportunistic',
         actionCost: 140,
@@ -131,6 +139,7 @@ const ABILITY_DATA = {
         name: 'Throat Slash',
         description: 'Lethal strike at the neck. Very hard to land but causes arterial bleeding. Rapid blood loss.',
         weaponType: 'sharp',
+        requiredTalent: 'blades_throat_slash',
         statRequirements: { agility: 14, perception: 12 },
         preferredStance: 'opportunistic',
         actionCost: 180,
@@ -151,6 +160,7 @@ const ABILITY_DATA = {
         name: 'Disarm',
         description: 'Slash at the weapon hand. If hand drops below 50% HP, enemy drops their weapon. They fight unarmed after.',
         weaponType: 'sharp',
+        requiredTalent: 'blades_disarm',
         statRequirements: { agility: 12, strength: 11 },
         preferredStance: 'defensive',
         actionCost: 150,
@@ -169,6 +179,7 @@ const ABILITY_DATA = {
         name: 'Flurry',
         description: 'Two rapid slashes. Each deals reduced damage but high bleed chance. Stacks wounds fast.',
         weaponType: 'sharp',
+        requiredTalent: 'blades_flurry',
         statRequirements: { agility: 14 },
         preferredStance: 'aggressive',
         actionCost: 170,
@@ -187,6 +198,7 @@ const ABILITY_DATA = {
         name: 'Precision Stab',
         description: 'Target a specific organ through an existing wound. Bypasses armor on wounded parts. High crit chance.',
         weaponType: 'sharp',
+        requiredTalent: 'blades_precision_stab',
         statRequirements: { perception: 13 },
         preferredStance: 'opportunistic',
         actionCost: 160,
@@ -208,6 +220,7 @@ const ABILITY_DATA = {
         name: 'Tackle',
         description: 'Rush and knock the target to the ground. Both go prone (skip turn, easier to hit). Low damage.',
         weaponType: 'unarmed',
+        requiredTalent: 'unarmed_tackle',
         statRequirements: { strength: 12, endurance: 11 },
         preferredStance: 'aggressive',
         actionCost: 160,
@@ -227,6 +240,7 @@ const ABILITY_DATA = {
         name: 'Eye Gouge',
         description: 'Jab at the eyes. Low damage but eye damage reduces enemy crit chance permanently.',
         weaponType: 'unarmed',
+        requiredTalent: 'unarmed_eye_gouge',
         statRequirements: { agility: 12 },
         preferredStance: 'opportunistic',
         actionCost: 130,
@@ -245,6 +259,7 @@ const ABILITY_DATA = {
         name: 'Chokehold',
         description: 'Grapple the target. Suffocation damage each turn for 3 turns. They can roll STR to break free.',
         weaponType: 'unarmed',
+        requiredTalent: 'unarmed_chokehold',
         statRequirements: { strength: 13, agility: 12 },
         preferredStance: 'defensive',
         actionCost: 180,
@@ -267,6 +282,7 @@ const ABILITY_DATA = {
         name: 'Kidney Shot',
         description: 'Brutal body blow targeting organs. Massive pain — can trigger shock (severe combat penalties).',
         weaponType: 'unarmed',
+        requiredTalent: 'unarmed_kidney_shot',
         statRequirements: { strength: 11, perception: 11 },
         preferredStance: 'opportunistic',
         actionCost: 140,
@@ -286,6 +302,7 @@ const ABILITY_DATA = {
         name: 'Headbutt',
         description: 'Slam your skull into theirs. Stuns the target (skip turn). You take 40% of the damage to your own head.',
         weaponType: 'unarmed',
+        requiredTalent: 'unarmed_headbutt',
         statRequirements: { strength: 12, endurance: 12 },
         preferredStance: 'aggressive',
         actionCost: 120,
@@ -317,9 +334,9 @@ export class AbilitySystem {
     
     /**
      * Get all abilities for a given weapon type.
-     * Returns all abilities with an `unlocked` flag based on the entity's stats.
+     * Returns abilities with unlocked flag based on talent ownership.
      * @param {string} weaponType - 'blunt', 'sharp', or 'unarmed'
-     * @param {Object} entity - The entity (player or NPC) using the ability
+     * @param {Object} entity - The entity using the ability
      * @returns {Array} abilities with unlocked status and computed modifiers
      */
     getAbilitiesForWeapon(weaponType, entity) {
@@ -328,24 +345,18 @@ export class AbilitySystem {
         for (const [id, ability] of Object.entries(this.abilities)) {
             if (ability.weaponType !== weaponType) continue;
             
-            const unlocked = this.meetsStatRequirements(ability, entity);
-            const currentStance = entity.combatStance || 'aggressive';
-            const inPreferredStance = currentStance === ability.preferredStance;
-            
-            // Compute effective modifiers based on stance
-            const stanceMods = inPreferredStance 
-                ? ability.stanceBonus 
-                : ability.wrongStancePenalty;
-            
+            const unlocked = this.meetsTalentRequirements(ability, entity);
+            const stanceInfo = this.getStanceModifiers(ability, entity);
             const cooldownRemaining = this.getCooldownRemaining(entity, id);
             
             results.push({
                 ...ability,
                 unlocked,
-                inPreferredStance,
-                currentStance,
-                stanceMods,
-                missingStats: this.getMissingStats(ability, entity),
+                inPreferredStance: stanceInfo.inPreferredStance,
+                currentStance: stanceInfo.currentStance,
+                stanceMods: stanceInfo.mods,
+                hasStance: stanceInfo.hasStance,
+                missingTalent: unlocked ? null : ability.requiredTalent,
                 cooldownRemaining,
                 onCooldown: cooldownRemaining > 0
             });
@@ -366,30 +377,45 @@ export class AbilitySystem {
     }
     
     /**
-     * Check if entity meets stat requirements for an ability.
+     * Check if entity has the required talent to use an ability.
+     * NPCs without the talent system are assumed to have access to all abilities.
+     */
+    meetsTalentRequirements(ability, entity) {
+        if (!ability.requiredTalent) return true;
+        if (!entity.unlockedTalents) return true; // NPC fallback
+        return TalentEffects.hasAbility(entity, ability.id);
+    }
+
+    /**
+     * Determine stance modifiers for an ability, respecting talent-gated stances.
+     * If the entity has no stances unlocked, returns neutral mods.
+     */
+    getStanceModifiers(ability, entity) {
+        const unlockedStances = entity.unlockedTalents
+            ? TalentEffects.getUnlockedStances(entity)
+            : Object.keys(entity.combatStances || {});
+        const hasStance = unlockedStances.length > 0;
+        const currentStance = hasStance ? (entity.combatStance || unlockedStances[0]) : null;
+        const inPreferredStance = !!(currentStance && currentStance === ability.preferredStance);
+
+        let mods;
+        if (!hasStance) {
+            mods = { hitMod: 0, damageMod: 1.0, bleedMod: 1.0, critMod: 0, stunDurationBonus: 0, effectDurationBonus: 0 };
+        } else {
+            mods = inPreferredStance ? ability.stanceBonus : ability.wrongStancePenalty;
+        }
+        return { hasStance, currentStance, inPreferredStance, mods };
+    }
+
+    /**
+     * Legacy stat check — kept for NPCs that still rely on it.
      */
     meetsStatRequirements(ability, entity) {
         if (!entity.stats) return false;
-        for (const [stat, minValue] of Object.entries(ability.statRequirements)) {
+        for (const [stat, minValue] of Object.entries(ability.statRequirements || {})) {
             if ((entity.stats[stat] || 0) < minValue) return false;
         }
         return true;
-    }
-    
-    /**
-     * Get list of stats that don't meet requirements.
-     */
-    getMissingStats(ability, entity) {
-        const missing = [];
-        if (!entity.stats) return Object.entries(ability.statRequirements).map(([s, v]) => ({ stat: s, required: v, current: 0 }));
-        
-        for (const [stat, minValue] of Object.entries(ability.statRequirements)) {
-            const current = entity.stats[stat] || 0;
-            if (current < minValue) {
-                missing.push({ stat, required: minValue, current });
-            }
-        }
-        return missing;
     }
     
     /**
@@ -425,8 +451,8 @@ export class AbilitySystem {
         const ability = this.abilities[abilityId];
         if (!ability) return { success: false, reason: 'Unknown ability' };
         
-        if (!this.meetsStatRequirements(ability, attacker)) {
-            return { success: false, reason: 'Stats too low' };
+        if (!this.meetsTalentRequirements(ability, attacker)) {
+            return { success: false, reason: 'Ability not unlocked — purchase the required talent' };
         }
         
         // Cooldown check
@@ -447,10 +473,10 @@ export class AbilitySystem {
         const attackerName = combat.getDisplayName(attacker, true);
         const targetName = combat.getDisplayName(target, false);
         
-        // Stance modifiers
-        const currentStance = attacker.combatStance || 'aggressive';
-        const inPreferredStance = currentStance === ability.preferredStance;
-        const stanceMods = inPreferredStance ? ability.stanceBonus : ability.wrongStancePenalty;
+        // Stance modifiers (neutral if no stance trained)
+        const stanceInfo = this.getStanceModifiers(ability, attacker);
+        const inPreferredStance = stanceInfo.inPreferredStance;
+        const stanceMods = stanceInfo.mods;
         
         // Compute hit chance
         let hitChance = combat.calculateHitChance(attacker, target, weapon);

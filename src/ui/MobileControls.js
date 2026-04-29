@@ -134,7 +134,10 @@ export class MobileControls {
     handleMove(dx, dy) {
         if (!this.game.isRunning) return;
 
-        if (this.game.interactMode) {
+        if (this.game.gameState === 'overworld') {
+            this.game.overworldMap.moveCursor(dx, dy);
+            this.game.render();
+        } else if (this.game.interactMode) {
             this.game.interactInDirection(dx, dy);
         } else if (this.game.inspectMode) {
             this.game.moveInspectCursor(dx, dy);
@@ -146,13 +149,31 @@ export class MobileControls {
     handleAction(action) {
         switch (action) {
             case 'wait':
-                if (this.game.gameState === 'playing' && !this.game.inspectMode) {
+                if (this.game.gameState === 'overworld') {
+                    // On overworld, wait/center = drop into zone or close overworld
+                    const cur = this.game.overworldMap.getCurrentTile();
+                    if (cur && this.game._currentZoneCol === this.game.overworldMap.cursorCol
+                        && this.game._currentZoneRow === this.game.overworldMap.cursorRow) {
+                        this.game.closeOverworld();
+                    } else {
+                        this.game.dropIntoZone(this.game.overworldMap.cursorCol, this.game.overworldMap.cursorRow);
+                    }
+                } else if (this.game.gameState === 'playing' && !this.game.inspectMode) {
                     this.game.processTurn({ type: 'wait' });
                 }
                 break;
 
             case 'interact':
-                if (this.game.gameState === 'playing' && !this.game.inspectMode) {
+                if (this.game.gameState === 'overworld') {
+                    // ACT on overworld = drop into / return to current zone
+                    if (this.game._currentZoneCol === this.game.overworldMap.cursorCol
+                        && this.game._currentZoneRow === this.game.overworldMap.cursorRow
+                        && this.game.world) {
+                        this.game.closeOverworld();
+                    } else {
+                        this.game.dropIntoZone(this.game.overworldMap.cursorCol, this.game.overworldMap.cursorRow);
+                    }
+                } else if (this.game.gameState === 'playing' && !this.game.inspectMode) {
                     this.game.enterInteractMode();
                 }
                 break;
@@ -180,7 +201,11 @@ export class MobileControls {
             case 'combat_stance':
                 if (this.game.gameState === 'playing' && !this.game.inspectMode && this.game.player) {
                     const stance = this.game.player.cycleCombatStance();
-                    this.game.ui.log(`Combat stance: ${stance.name}`, 'info');
+                    if (stance) {
+                        this.game.ui.log(`Combat stance: ${stance.name}`, 'info');
+                    } else {
+                        this.game.ui.log('No stances unlocked — buy Combat Tactics talents [Q].', 'warning');
+                    }
                     this.game.render();
                 }
                 break;
@@ -233,6 +258,14 @@ export class MobileControls {
 
             case 'more_menu':
                 this.toggleMoreMenu();
+                break;
+
+            case 'overworld':
+                if (this.game.gameState === 'playing') {
+                    this.game.returnToOverworld();
+                } else if (this.game.gameState === 'overworld') {
+                    this.game.closeOverworld();
+                }
                 break;
         }
     }

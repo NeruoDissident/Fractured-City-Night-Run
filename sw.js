@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fractured-city-v38';
+const CACHE_NAME = 'fractured-city-v55';
 const ASSETS = [
     '/',
     '/index.html',
@@ -14,6 +14,7 @@ const ASSETS = [
     '/assets/entites/npcs/npc.png',
     '/src/core/InputHandler.js',
     '/src/world/World.js',
+    '/src/world/OverworldMap.js',
     '/src/world/Chunk.js',
     '/src/world/WorldObject.js',
     '/src/world/ExtractionPoint.js',
@@ -38,11 +39,14 @@ const ASSETS = [
     '/src/content/ContentManager.js',
     '/src/content/BuildingPrefabs.js',
     '/src/content/LootTables.js',
+    '/src/content/TalentCatalog.js',
+    '/src/systems/AbilitySystem.js',
     '/src/ui/UIManager.js',
     '/src/ui/CraftingUI.js',
     '/src/ui/DisassembleModal.js',
     '/src/ui/WorldObjectModal.js',
-    '/src/ui/MobileControls.js'
+    '/src/ui/MobileControls.js',
+    '/src/utils/noise.js'
 ];
 
 self.addEventListener('install', (event) => {

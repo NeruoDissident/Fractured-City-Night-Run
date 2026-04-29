@@ -17,7 +17,22 @@ const SURFACE_PROPERTIES = {
     'Private Drive':    { grinding: 1 },
     'Suburban Road':    { grinding: 1 },
     'Residential Street': { grinding: 1 },
-    'Manicured Ground': { grinding: 1 }
+    'Manicured Ground': { grinding: 1 },
+    // New district tiles
+    'Alley':            { grinding: 1 },
+    'Service Road':     { grinding: 1 },
+    'Walkway':          { grinding: 1 },
+    'Rubble Path':      { grinding: 1 },
+    'Broken Path':      { grinding: 1 },
+    'Parking Lot':      { grinding: 1 },
+    'Plaza Stone':      { grinding: 1 },
+    'Wooden Pier':      { grinding: 0 },
+    // Street detail tiles
+    'Manhole Cover':    { grinding: 1 },
+    'Drain Grate':      { grinding: 1 },
+    'Oil Stain':        { grinding: 1 },
+    'Bench':            { grinding: 1 },
+    'Puddle':           { grinding: 0 }
 };
 
 export class CraftingSystem {

@@ -32,9 +32,10 @@ For now, we're using a **simpler model** where everyone acts once per turn, but 
 
 ### Current System
 
-- All entities act once per world tick
-- Weapons have `actionCost` values (100 = baseline)
-- Higher action cost = slower attacks (future expansion: skip turns)
+- Player actions have `actionCost` values (100 = baseline)
+- Higher action cost = slower attacks
+- **NPCs gain energy proportional to playerActionCost each tick** — so slow player actions (crouch 125) let NPCs act more often; fast actions (run 75) buy time
+- Max 3 NPC actions per tick (safety cap)
 
 ### Weapon Action Costs
 
@@ -129,15 +130,14 @@ When we add movement modes, they'll modify speed:
 ## Current Implementation Status
 
 ✅ **Implemented:**
-- Action cost tracking on weapons
+- Action cost tracking on weapons and movement modes
 - Two-handed grip with increased action cost
-- Helper methods for getting weapon action cost
+- **NPC energy-based speed system** (v20) — each NPC gains `speed × (playerActionCost/100)` energy per tick
+- Movement modes affect NPC energy gain (running gives NPCs less time per tick)
+- Movement mode sound volumes affecting NPC detection
 
 ⏳ **Not Yet Implemented (Future):**
-- Energy-based turn system
-- Speed stat affecting turn frequency
-- Movement mode speed modifiers
-- Stamina system
-- Action cost actually affecting turn order
-
-**For now:** Action costs are tracked but don't affect gameplay. This is intentional - we're building the foundation for a full speed system later.
+- Action cost actually skipping player turns (player always acts once)
+- Stamina system for sustained running
+- Cybernetic speed modifiers
+- Full player energy pooling (player currently acts once per tick regardless of cost)

@@ -2,6 +2,7 @@ import { Entity } from './Entity.js';
 import { Anatomy } from './Anatomy.js';
 import { EquipmentSystem } from '../systems/EquipmentSystem.js';
 import { ContainerSystem } from '../systems/ContainerSystem.js';
+import { TalentEffects } from '../content/TalentCatalog.js';
 
 export class Player extends Entity {
     constructor(game, characterData) {
@@ -25,8 +26,9 @@ export class Player extends Entity {
             perception: characterData.perception || 10
         };
         
+        const hasChargenTalents = !!(characterData.unlockedTalents && characterData.unlockedTalents.length > 0);
         if (characterData.background && game.charCreationSystem) {
-            game.charCreationSystem.applyBackgroundToCharacter(this, characterData.background);
+            game.charCreationSystem.applyBackgroundToCharacter(this, characterData.background, hasChargenTalents);
         }
         
         if (characterData.traits && game.charCreationSystem) {
@@ -60,8 +62,22 @@ export class Player extends Entity {
             prone: { name: 'Prone', actionCost: 150, soundVolume: 0, color: '#ff0000' }
         };
         
-        // Combat stance system
-        this.combatStance = 'aggressive';
+        // Talent system — points earned in-game (chargen spending is separate)
+        this.talentPoints = 0;
+        this.unlockedTalents = [];
+
+        // If chargen provided a full talent list, apply it now (overrides background auto-grant)
+        if (characterData.unlockedTalents && characterData.unlockedTalents.length > 0) {
+            for (const tid of characterData.unlockedTalents) {
+                if (!this.unlockedTalents.includes(tid)) {
+                    this.unlockedTalents.push(tid);
+                    TalentEffects.applyImmediateEffect(this, tid);
+                }
+            }
+        }
+
+        // Combat stance system — combatStance is null until a stance talent is purchased
+        this.combatStance = null;
         this.combatStances = {
             aggressive: {
                 name: 'Aggressive',
@@ -348,7 +364,7 @@ export class Player extends Entity {
         
         // Opportunity attacks: adjacent enemies get a free hit when you disengage
         const stance = this.getStance();
-        if (!stance.canDisengage) {
+        if (!stance || !stance.canDisengage) {
             const adjacentEnemies = this.getAdjacentEnemies();
             for (const enemy of adjacentEnemies) {
                 if (enemy.attack && !enemy.isDead()) {
@@ -541,15 +557,22 @@ export class Player extends Entity {
     }
     
     cycleCombatStance() {
-        const stanceOrder = ['aggressive', 'defensive', 'opportunistic'];
-        const currentIndex = stanceOrder.indexOf(this.combatStance);
-        this.combatStance = stanceOrder[(currentIndex + 1) % stanceOrder.length];
-        const stance = this.combatStances[this.combatStance];
-        return stance;
+        const unlocked = TalentEffects.getUnlockedStances(this);
+        if (unlocked.length === 0) {
+            return null;
+        }
+        const currentIndex = unlocked.indexOf(this.combatStance);
+        this.combatStance = unlocked[(currentIndex + 1) % unlocked.length];
+        return this.combatStances[this.combatStance];
     }
     
     getStance() {
-        return this.combatStances[this.combatStance] || this.combatStances.aggressive;
+        const unlocked = TalentEffects.getUnlockedStances(this);
+        if (unlocked.length === 0) return null;
+        if (!this.combatStance || !unlocked.includes(this.combatStance)) {
+            this.combatStance = unlocked[0];
+        }
+        return this.combatStances[this.combatStance] || null;
     }
     
     attack(target) {

@@ -3,6 +3,7 @@ import { showCraftingUI } from './CraftingUI.js';
 import { showWorldObjectModal, showFurnitureContentsModal } from './WorldObjectModal.js';
 import { Anatomy } from '../entities/Anatomy.js';
 import { getPropertyLabel, PROPERTY_LABELS } from '../content/ContentManager.js';
+import { TalentEffects, TALENT_TREES, TALENT_NODES } from '../content/TalentCatalog.js';
 
 export class UIManager {
     constructor(game) {
@@ -157,9 +158,13 @@ export class UIManager {
         
         html += `<div class="stat-line"><span class="stat-label">Mode:</span> <span class="stat-value" style="color: ${mode.color};">${mode.name}</span></div>`;
         
-        // Combat stance
+        // Combat stance (only shown if at least one stance is unlocked)
         const stance = player.getStance();
-        html += `<div class="stat-line"><span class="stat-label">Stance:</span> <span class="stat-value" style="color: ${stance.color}; font-weight: bold;">${stance.name}</span></div>`;
+        if (stance) {
+            html += `<div class="stat-line"><span class="stat-label">Stance:</span> <span class="stat-value" style="color: ${stance.color}; font-weight: bold;">${stance.name}</span></div>`;
+        } else {
+            html += `<div class="stat-line"><span class="stat-label">Stance:</span> <span class="stat-value" style="color: #666;">None — unlock via Talents [Q]</span></div>`;
+        }
         
         html += `<div class="stat-line"><span class="stat-label">Turn:</span> <span class="stat-value">${this.game.turnCount}</span></div>`;
         html += '<br>';
@@ -422,6 +427,69 @@ export class UIManager {
         this.locationPanel.innerHTML = html;
     }
     
+    updateOverworldPanel() {
+        const ow   = this.game.overworldMap;
+        const tile = ow ? ow.getCurrentTile() : null;
+
+        // ── Character panel: player name + background ──────────────────────
+        if (this.characterPanel && this.game.player) {
+            const p = this.game.player;
+            let html = `<h4 style="color:#00ff88;margin-bottom:8px;border-bottom:2px solid #00ff88;padding-bottom:5px;">OPERATIVE</h4>`;
+            html += `<div class="stat-line"><span class="stat-label">Name:</span> <span class="stat-value" style="color:#ffffff;">${p.name || 'Unknown'}</span></div>`;
+            const bgName = p.backgroundId ? p.backgroundId.replace(/([A-Z])/g, ' $1').trim() : '—';
+            html += `<div class="stat-line"><span class="stat-label">Background:</span> <span class="stat-value" style="color:#ffcc44;">${bgName}</span></div>`;
+            this.characterPanel.innerHTML = html;
+        }
+
+        // ── Location panel: overworld tile info ────────────────────────────
+        if (this.locationPanel && tile) {
+            const biomeColors = {
+                urban_core:'#00ccff', suburbs:'#88cc44', industrial:'#cc8800',
+                rich_neighborhood:'#ddaa44', rural:'#aa8855', forest:'#44aa44', ruins:'#888888'
+            };
+            const biomeColor = biomeColors[tile.biome] || '#aaaaaa';
+            const biomeLabel = tile.biome.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+            const threatColor = ['#448844','#888844','#aa7722','#cc4422','#ff2222'][tile.threatLevel - 1] || '#888888';
+            const stars = '★'.repeat(tile.threatLevel) + '☆'.repeat(5 - tile.threatLevel);
+
+            let html = `<h4 style="color:#ffaa00;margin-bottom:8px;border-bottom:2px solid #ffaa00;padding-bottom:5px;">OVERWORLD</h4>`;
+            html += `<div class="stat-line"><span class="stat-label">Zone:</span> <span class="stat-value" style="color:#ffffff;">${tile.zone.name}</span></div>`;
+            html += `<div class="stat-line"><span class="stat-label">Biome:</span> <span class="stat-value" style="color:${biomeColor};">${biomeLabel}</span></div>`;
+            html += `<div class="stat-line"><span class="stat-label">Threat:</span> <span class="stat-value" style="color:${threatColor};">${stars}</span></div>`;
+            html += `<div class="stat-line"><span class="stat-label">Size:</span> <span class="stat-value" style="color:#888888;">${tile.zone.width}×${tile.zone.height}</span></div>`;
+            html += `<div class="stat-line"><span class="stat-label">Coords:</span> <span class="stat-value" style="color:#666666;">(${ow.cursorCol}, ${ow.cursorRow})</span></div>`;
+            if (tile.explored) {
+                html += `<div class="stat-line" style="margin-top:6px;"><span class="stat-value" style="color:#00ff88;">✓ Visited</span></div>`;
+            }
+            this.locationPanel.innerHTML = html;
+        } else if (this.locationPanel) {
+            this.locationPanel.innerHTML = '<div style="color:#666;">No tile data</div>';
+        }
+
+        // ── Context panel: controls hint ───────────────────────────────────
+        if (this.contextPanel) {
+            const hasActiveZone = !!this.game.world;
+            const ow = this.game.overworldMap;
+            const onActiveZone = ow && hasActiveZone &&
+                ow.cursorCol === this.game._currentZoneCol &&
+                ow.cursorRow === this.game._currentZoneRow;
+
+            let html = `<h4 style="color:#aaaaaa;margin-bottom:8px;border-bottom:2px solid #555555;padding-bottom:5px;">CONTROLS</h4>`;
+            html += `<div style="color:#888888;font-size:13px;line-height:1.8;">`;
+            html += `<div><span style="color:#ffcc44;">WASD / Arrows</span> — Move cursor</div>`;
+            if (onActiveZone) {
+                html += `<div><span style="color:#00ff88;">Enter / Tab</span> — Return to zone</div>`;
+            } else if (hasActiveZone) {
+                html += `<div><span style="color:#ffcc44;">Enter</span> — Travel here</div>`;
+                html += `<div><span style="color:#00ff88;">Tab</span> — Return to zone</div>`;
+            } else {
+                html += `<div><span style="color:#ffcc44;">Enter / Space</span> — Enter zone</div>`;
+            }
+            html += `</div>`;
+            this.contextPanel.innerHTML = html;
+        }
+    }
+
     updateInspectInfo(x, y) {
         if (!this.contextPanel) return;
         
@@ -527,252 +595,410 @@ export class UIManager {
     showCharacterCreation() {
         const modal = document.getElementById('character-creation');
         const form = document.getElementById('creation-form');
-        
-        const charSys = this.game.charCreationSystem;
-        
-        let html = '';
-        
-        html += '<div style="max-height: 70vh; overflow-y: auto; padding-right: 10px;">';
-        
-        html += '<div class="form-group">';
-        html += '<label style="color: #00ffff; font-size: 16px;">Name:</label>';
-        html += '<div style="display: flex; gap: 10px;">';
-        html += '<input type="text" id="char-name" value="Survivor" style="flex: 1; padding: 8px; font-size: 14px;" />';
-        html += '<button id="random-name-btn" type="button" style="padding: 8px 16px;">Random</button>';
-        html += '</div>';
-        html += '</div>';
-        
-        html += '<div class="form-group" style="margin-top: 20px;">';
-        html += '<label style="color: #00ffff; font-size: 16px;">Gender:</label>';
-        html += '<select id="char-gender" style="width: 100%; padding: 8px; font-size: 14px;">';
-        html += '<option value="male">Male</option>';
-        html += '<option value="female">Female</option>';
-        html += '<option value="other">Other</option>';
-        html += '</select>';
-        html += '</div>';
-        
-        html += '<div class="form-group" style="margin-top: 20px;">';
-        html += '<label style="color: #00ffff; font-size: 16px; margin-bottom: 10px; display: block;">Background:</label>';
-        const backgrounds = charSys.getAllBackgrounds();
-        const GEAR_LABELS = {
-            streetKid: 'Shiv (equipped), Flashlight',
-            corpo: 'Flashlight, Lantern',
-            nomad: 'Knife (equipped), Canteen',
-            scavenger: 'Shiv (equipped), Flashlight, Lantern',
-            raiderDefector: 'Knife (equipped), Pipe',
-            medic: 'Medkit, Flashlight',
+
+        this._cg = {
+            name: 'Survivor',
+            gender: 'other',
+            bg: null,
+            stats: { strength: 10, agility: 10, endurance: 10, intelligence: 10, perception: 10 },
+            statBudget: 50,
+            talentBudget: 6,
+            selectedTalents: [],
+            selectedDrawbacks: [],
+            activeTab: 'combat_tactics'
         };
-        for (const bg of backgrounds) {
-            html += '<div class="background-option" style="margin-bottom: 15px; padding: 10px; background: #1a1a1a; border: 2px solid #333; cursor: pointer;" data-bg-id="' + bg.id + '">';
-            html += '<div style="color: #ffaa00; font-weight: bold; font-size: 14px;">' + bg.name + '</div>';
-            html += '<div style="color: #aaa; font-size: 15px; margin: 5px 0; line-height: 1.4;">' + bg.description + '</div>';
-            html += '<div style="color: #00ffff; font-size: 15px;">Stats: ';
-            const statMods = [];
-            for (const [stat, mod] of Object.entries(bg.statMods)) {
-                const sign = mod > 0 ? '+' : '';
-                statMods.push(stat.toUpperCase() + ' ' + sign + mod);
-            }
-            html += statMods.join(', ');
-            html += '</div>';
-            const gearLabel = GEAR_LABELS[bg.id] || '';
-            if (gearLabel) {
-                html += '<div style="color: #88cc88; font-size: 13px; margin-top: 3px;">Gear: ' + gearLabel + '</div>';
-            }
-            html += '</div>';
-        }
-        html += '</div>';
-        
-        html += '<div class="form-group" style="margin-top: 20px;">';
-        html += '<label style="color: #00ffff; font-size: 16px;">Distribute 50 points across stats:</label>';
-        html += '<div style="margin-top: 10px;"><label>Strength:</label> <input type="number" id="stat-str" value="10" min="1" max="20" class="stat-input" /></div>';
-        html += '<div><label>Agility:</label> <input type="number" id="stat-agi" value="10" min="1" max="20" class="stat-input" /></div>';
-        html += '<div><label>Endurance:</label> <input type="number" id="stat-end" value="10" min="1" max="20" class="stat-input" /></div>';
-        html += '<div><label>Intelligence:</label> <input type="number" id="stat-int" value="10" min="1" max="20" class="stat-input" /></div>';
-        html += '<div><label>Perception:</label> <input type="number" id="stat-per" value="10" min="1" max="20" class="stat-input" /></div>';
-        html += '<div id="stat-total" style="margin-top: 10px; color: #ffaa00; font-weight: bold;">Total: 50/50</div>';
-        html += '</div>';
-        
-        html += '<div class="form-group" style="margin-top: 20px;">';
-        html += '<label style="color: #00ffff; font-size: 16px; margin-bottom: 10px; display: block;">Traits (3 points available):</label>';
-        html += '<div id="trait-points" style="margin-bottom: 10px; color: #ffaa00; font-weight: bold;">Points: 3</div>';
-        
-        html += '<div style="margin-bottom: 15px;">';
-        html += '<div style="color: #00ff00; font-weight: bold; margin-bottom: 5px;">Positive Traits (Cost Points):</div>';
-        const posTraits = charSys.getPositiveTraits();
-        for (const trait of posTraits) {
-            html += '<div style="margin-bottom: 8px; padding: 8px; background: #0a1a0a; border-left: 3px solid #00ff00;">';
-            html += '<label style="cursor: pointer; display: block;">';
-            html += '<input type="checkbox" class="trait-checkbox" data-trait-id="' + trait.id + '" data-trait-cost="' + trait.cost + '" /> ';
-            html += '<span style="color: #00ff00; font-weight: bold; font-size: 18px;">' + trait.name + '</span> <span style="color: #ffaa00; font-size: 16px;">(Cost: ' + trait.cost + ')</span>';
-            html += '<div style="color: #ccc; font-size: 16px; margin-top: 5px; line-height: 1.4;">' + trait.description + '</div>';
-            html += '</label>';
-            html += '</div>';
-        }
-        html += '</div>';
-        
-        html += '<div>';
-        html += '<div style="color: #ff4444; font-weight: bold; margin-bottom: 5px;">Negative Traits (Give Points):</div>';
-        const negTraits = charSys.getNegativeTraits();
-        for (const trait of negTraits) {
-            html += '<div style="margin-bottom: 8px; padding: 8px; background: #1a0a0a; border-left: 3px solid #ff4444;">';
-            html += '<label style="cursor: pointer; display: block;">';
-            html += '<input type="checkbox" class="trait-checkbox" data-trait-id="' + trait.id + '" data-trait-cost="' + trait.cost + '" /> ';
-            html += '<span style="color: #ff4444; font-weight: bold; font-size: 18px;">' + trait.name + '</span> <span style="color: #00ff00; font-size: 16px;">(Gives: ' + Math.abs(trait.cost) + ')</span>';
-            html += '<div style="color: #ccc; font-size: 16px; margin-top: 5px; line-height: 1.4;">' + trait.description + '</div>';
-            html += '</label>';
-            html += '</div>';
-        }
-        html += '</div>';
-        html += '</div>';
-        
-        html += '</div>';
-        
-        html += '<div style="display: flex; gap: 10px; margin-top: 20px;">';
-        html += '<button id="play-now-btn" style="flex: 1; padding: 12px; font-size: 16px; background: #ff8800; border: 2px solid #ffaa00;">⚡ Play Now</button>';
-        html += '<button id="start-game-btn" style="flex: 1; padding: 12px; font-size: 16px;">Start Game</button>';
-        html += '</div>';
-        
-        form.innerHTML = html;
+
+        form.innerHTML = `<div class="cg-layout">
+            <div class="cg-col cg-left"  id="cg-col-left"></div>
+            <div class="cg-col cg-center" id="cg-col-center" style="display:flex;flex-direction:column;"></div>
+            <div class="cg-col cg-right"  id="cg-col-right"></div>
+        </div>`;
+
         modal.classList.remove('hidden');
-        
-        let selectedBackground = null;
-        
-        const bgOptions = form.querySelectorAll('.background-option');
-        bgOptions.forEach(option => {
-            option.addEventListener('click', () => {
-                bgOptions.forEach(o => o.style.border = '2px solid #333');
-                option.style.border = '2px solid #00ffff';
-                selectedBackground = option.getAttribute('data-bg-id');
-            });
+        this._cgRefresh();
+    }
+
+    _cgRefresh() {
+        this._cgRenderLeft();
+        this._cgRenderCenter();
+        this._cgRenderRight();
+    }
+
+    _cgPoints() {
+        const charSys = this.game.charCreationSystem;
+        let pts = this._cg.talentBudget;
+        for (const tid of this._cg.selectedTalents) {
+            const node = TALENT_NODES[tid];
+            if (node) pts -= node.cost;
+        }
+        for (const did of this._cg.selectedDrawbacks) {
+            const t = charSys.traits[did];
+            if (t) pts += Math.abs(t.cost);
+        }
+        return pts;
+    }
+
+    _cgStatTotal() {
+        return Object.values(this._cg.stats).reduce((a, b) => a + b, 0);
+    }
+
+    _cgRandomName() {
+        const first = ['Raze','Cipher','Vex','Nyx','Kade','Zara','Jax','Nova','Ash','Rook','Blade','Echo','Hex','Sable','Wraith','Drift','Lace','Torque','Grit','Flux'];
+        const last  = ['Chrome','Steel','Volt','Neon','Razor','Ghost','Wire','Byte','Shade','Spark','Edge','Frost','Blaze','Storm','Void','Mortem','Scar','Vein','Recoil','Creek'];
+        return `${first[Math.floor(Math.random()*first.length)]} ${last[Math.floor(Math.random()*last.length)]}`;
+    }
+
+    _cgRenderLeft() {
+        const col = document.getElementById('cg-col-left');
+        if (!col) return;
+        const cg = this._cg;
+        const charSys = this.game.charCreationSystem;
+        const bgData = cg.bg ? charSys.getBackground(cg.bg) : null;
+        const bgMods = bgData?.statMods || {};
+        const statTotal = this._cgStatTotal();
+        const statNames = { strength:'STR', agility:'AGI', endurance:'END', intelligence:'INT', perception:'PER' };
+
+        let html = `<div class="cg-section">
+            <div class="cg-section-title">Identity</div>
+            <div style="display:flex;gap:5px;margin-bottom:6px;">
+                <input type="text" id="cg-name" value="${cg.name}" class="cg-input" style="flex:1;" />
+                <button id="cg-rnd" class="cg-btn" style="padding:6px 8px;">&#9856;</button>
+            </div>
+            <select id="cg-gender" class="cg-input">
+                <option value="male"${cg.gender==='male'?' selected':''}>Male</option>
+                <option value="female"${cg.gender==='female'?' selected':''}>Female</option>
+                <option value="other"${cg.gender==='other'?' selected':''}>Other / Unspecified</option>
+            </select>
+        </div>`;
+
+        html += `<div class="cg-section">
+            <div class="cg-section-title">Background</div>`;
+        for (const bg of charSys.getAllBackgrounds()) {
+            const sel = cg.bg === bg.id;
+            const modStr = Object.entries(bg.statMods).map(([s,v])=>`${s.toUpperCase().slice(0,3)} ${v>0?'+':''}${v}`).join(' ');
+            const freeTalentNames = (bg.startingTalents||[]).map(t=>TALENT_NODES[t]?.name||t).join(', ');
+            html += `<div class="cg-bg-card${sel?' selected':''}" data-bg="${bg.id}">
+                <div class="cg-bg-name">${bg.name}</div>
+                <div class="cg-bg-desc">${bg.description}</div>
+                <div class="cg-bg-mods">${modStr}</div>
+                ${bg.gearLabel ? `<div style="color:#88aacc;font-size:10px;margin-top:2px;">Gear: ${bg.gearLabel}</div>` : ''}
+                ${freeTalentNames ? `<div class="cg-bg-talents">Free: ${freeTalentNames}</div>` : ''}
+            </div>`;
+        }
+        html += `</div>`;
+
+        const budgetColor = statTotal===50 ? '#44ff44' : statTotal>50 ? '#ff4444' : '#ffaa00';
+        html += `<div class="cg-section">
+            <div class="cg-section-title">
+                <span>Attributes</span>
+                <span id="cg-stat-badge" style="color:${budgetColor};">${statTotal}/50</span>
+            </div>`;
+        for (const [key, label] of Object.entries(statNames)) {
+            const val = cg.stats[key];
+            const mod = bgMods[key] || 0;
+            const eff = val + mod;
+            const modStr = mod!==0 ? ` <span style="color:${mod>0?'#44ff44':'#ff4444'};font-size:10px;">${mod>0?'+':''}${mod}</span>` : '';
+            html += `<div class="cg-stat-row">
+                <span class="cg-stat-name">${label}</span>
+                <button class="cg-stat-btn" data-stat="${key}" data-dir="-1">&#8722;</button>
+                <span class="cg-stat-val">${eff}${modStr}</span>
+                <button class="cg-stat-btn" data-stat="${key}" data-dir="1">+</button>
+            </div>`;
+        }
+        html += `<div style="font-size:10px;color:#555;margin-top:4px;">Base ${statTotal-50>=0?'+':''} before background mods shown above</div>
+        </div>`;
+
+        col.innerHTML = html;
+
+        document.getElementById('cg-name').oninput = e => { this._cg.name = e.target.value; this._cgRenderRight(); };
+        document.getElementById('cg-rnd').onclick  = () => { this._cg.name = this._cgRandomName(); document.getElementById('cg-name').value = this._cg.name; this._cgRenderRight(); };
+        document.getElementById('cg-gender').onchange = e => { this._cg.gender = e.target.value; this._cgRenderRight(); };
+
+        col.querySelectorAll('.cg-bg-card').forEach(card => {
+            card.onclick = () => { this._cg.bg = card.dataset.bg; this._cgRenderLeft(); this._cgRenderCenter(); this._cgRenderRight(); };
         });
-        
-        const statInputs = form.querySelectorAll('.stat-input');
-        const updateStatTotal = () => {
-            let total = 0;
-            statInputs.forEach(input => {
-                total += parseInt(input.value) || 0;
-            });
-            const totalDiv = document.getElementById('stat-total');
-            totalDiv.textContent = `Total: ${total}/50`;
-            totalDiv.style.color = total === 50 ? '#00ff00' : (total > 50 ? '#ff4444' : '#ffaa00');
-        };
-        
-        statInputs.forEach(input => {
-            input.addEventListener('input', updateStatTotal);
-        });
-        
-        const traitCheckboxes = form.querySelectorAll('.trait-checkbox');
-        const updateTraitPoints = () => {
-            let points = 3;
-            traitCheckboxes.forEach(cb => {
-                if (cb.checked) {
-                    points -= parseInt(cb.getAttribute('data-trait-cost'));
-                }
-            });
-            const pointsDiv = document.getElementById('trait-points');
-            pointsDiv.textContent = `Points: ${points}`;
-            pointsDiv.style.color = points >= 0 ? '#00ff00' : '#ff4444';
-        };
-        
-        traitCheckboxes.forEach(cb => {
-            cb.addEventListener('change', updateTraitPoints);
-        });
-        
-        const generateCyberpunkName = () => {
-            const firstNames = ['Raze', 'Cipher', 'Vex', 'Nyx', 'Kade', 'Zara', 'Jax', 'Nova', 'Ash', 'Rook', 'Blade', 'Echo', 'Hex', 'Sable', 'Wraith'];
-            const lastNames = ['Chrome', 'Steel', 'Volt', 'Neon', 'Razor', 'Ghost', 'Wire', 'Byte', 'Shade', 'Spark', 'Edge', 'Frost', 'Blaze', 'Storm', 'Void'];
-            const first = firstNames[Math.floor(Math.random() * firstNames.length)];
-            const last = lastNames[Math.floor(Math.random() * lastNames.length)];
-            return `${first} ${last}`;
-        };
-        
-        document.getElementById('random-name-btn').addEventListener('click', () => {
-            document.getElementById('char-name').value = generateCyberpunkName();
-        });
-        
-        document.getElementById('play-now-btn').addEventListener('click', () => {
-            const backgrounds = charSys.getAllBackgrounds();
-            const randomBg = backgrounds[Math.floor(Math.random() * backgrounds.length)];
-            
-            const genders = ['male', 'female', 'other'];
-            const randomGender = genders[Math.floor(Math.random() * genders.length)];
-            
-            const allTraits = [...charSys.getPositiveTraits(), ...charSys.getNegativeTraits()];
-            const selectedTraits = [];
-            let points = 3;
-            
-            const shuffled = allTraits.sort(() => Math.random() - 0.5);
-            for (const trait of shuffled) {
-                if (points - trait.cost >= 0 && selectedTraits.length < 3) {
-                    selectedTraits.push(trait.id);
-                    points -= trait.cost;
-                }
-            }
-            
-            const stats = [10, 10, 10, 10, 10];
-            let remaining = 0;
-            for (let i = 0; i < 5; i++) {
-                const add = Math.floor(Math.random() * 6);
-                stats[i] += add;
-                remaining += add;
-            }
-            
-            const characterData = {
-                name: generateCyberpunkName(),
-                gender: randomGender,
-                background: randomBg.id,
-                traits: selectedTraits,
-                strength: stats[0],
-                agility: stats[1],
-                endurance: stats[2],
-                intelligence: stats[3],
-                perception: stats[4]
+
+        col.querySelectorAll('.cg-stat-btn').forEach(btn => {
+            btn.onclick = () => {
+                const stat = btn.dataset.stat;
+                const dir = parseInt(btn.dataset.dir);
+                const cur = this._cg.stats[stat];
+                const newVal = cur + dir;
+                if (newVal < 1 || newVal > 20) return;
+                const newTotal = this._cgStatTotal() + dir;
+                if (newTotal > 50) return;
+                this._cg.stats[stat] = newVal;
+                this._cgRenderLeft();
+                this._cgRenderRight();
             };
-            
-            modal.classList.add('hidden');
-            this.game.startGame(characterData);
         });
-        
-        document.getElementById('start-game-btn').addEventListener('click', () => {
-            if (!selectedBackground) {
-                alert('Please select a background!');
-                return;
+    }
+
+    _cgRenderCenter() {
+        const col = document.getElementById('cg-col-center');
+        if (!col) return;
+        const cg = this._cg;
+        const charSys = this.game.charCreationSystem;
+        const pts = this._cgPoints();
+        const bgFreeTalents = cg.bg ? (charSys.getBackground(cg.bg)?.startingTalents || []) : [];
+        const effectiveUnlocked = [...bgFreeTalents, ...cg.selectedTalents];
+
+        const tabs = [
+            { id: 'all', label: 'All', color: '#00ffff' },
+            ...Object.entries(TALENT_TREES).map(([id,t]) => ({ id, label: t.name, color: t.color })),
+            { id: 'drawbacks', label: 'Drawbacks', color: '#ff6644' }
+        ];
+
+        let html = `<div class="cg-tabs">`;
+        for (const tab of tabs) {
+            const sel = cg.activeTab === tab.id;
+            html += `<button class="cg-tab${sel?' active':''}" data-tab="${tab.id}" style="${sel?`border-bottom-color:${tab.color};`:''}">
+                ${tab.label}
+            </button>`;
+        }
+        html += `</div><div class="cg-talent-list" id="cg-talent-list">`;
+
+        if (cg.activeTab === 'drawbacks') {
+            for (const trait of charSys.getNegativeTraits()) {
+                const sel = cg.selectedDrawbacks.includes(trait.id);
+                html += this._cgDrawbackCard(trait, sel);
             }
-            
-            const total = Array.from(statInputs).reduce((sum, input) => sum + (parseInt(input.value) || 0), 0);
-            if (total !== 50) {
-                alert('Stats must total exactly 50 points!');
-                return;
+        } else {
+            let nodes = Object.values(TALENT_NODES);
+            if (cg.activeTab !== 'all') nodes = nodes.filter(n => n.treeId === cg.activeTab);
+            for (const node of nodes) {
+                const isFree     = bgFreeTalents.includes(node.id);
+                const isSelected = cg.selectedTalents.includes(node.id);
+                const prereqsMet = TalentEffects.canUnlock({ unlockedTalents: effectiveUnlocked }, node.id);
+                const canAfford  = pts >= node.cost || isSelected;
+                html += this._cgTalentCard(node, { isFree, isSelected, prereqsMet, canAfford });
             }
-            
-            let traitPoints = 3;
-            const selectedTraits = [];
-            traitCheckboxes.forEach(cb => {
-                if (cb.checked) {
-                    selectedTraits.push(cb.getAttribute('data-trait-id'));
-                    traitPoints -= parseInt(cb.getAttribute('data-trait-cost'));
+        }
+
+        html += `</div>`;
+        col.innerHTML = html;
+
+        col.querySelectorAll('.cg-tab').forEach(btn => {
+            btn.onclick = () => { this._cg.activeTab = btn.dataset.tab; this._cgRenderCenter(); };
+        });
+        col.querySelectorAll('.cg-talent-toggle').forEach(btn => {
+            btn.onclick = () => {
+                const tid = btn.dataset.talent;
+                if (this._cg.selectedTalents.includes(tid)) {
+                    this._cg.selectedTalents = this._cg.selectedTalents.filter(t => t !== tid);
+                } else {
+                    this._cg.selectedTalents.push(tid);
                 }
-            });
-            
-            if (traitPoints < 0) {
-                alert('Not enough trait points!');
-                return;
-            }
-            
-            const characterData = {
-                name: document.getElementById('char-name').value,
-                gender: document.getElementById('char-gender').value,
-                background: selectedBackground,
-                traits: selectedTraits,
-                strength: parseInt(document.getElementById('stat-str').value),
-                agility: parseInt(document.getElementById('stat-agi').value),
-                endurance: parseInt(document.getElementById('stat-end').value),
-                intelligence: parseInt(document.getElementById('stat-int').value),
-                perception: parseInt(document.getElementById('stat-per').value)
+                this._cgRenderCenter();
+                this._cgRenderRight();
             };
-            
-            modal.classList.add('hidden');
-            this.game.startGame(characterData);
+        });
+        col.querySelectorAll('.cg-drawback-toggle').forEach(btn => {
+            btn.onclick = () => {
+                const did = btn.dataset.drawback;
+                if (this._cg.selectedDrawbacks.includes(did)) {
+                    this._cg.selectedDrawbacks = this._cg.selectedDrawbacks.filter(d => d !== did);
+                } else {
+                    this._cg.selectedDrawbacks.push(did);
+                }
+                this._cgRenderCenter();
+                this._cgRenderRight();
+            };
+        });
+    }
+
+    _cgTalentCard(node, { isFree, isSelected, prereqsMet, canAfford }) {
+        const tree = TALENT_TREES[node.treeId];
+        const treeColor = tree ? tree.color : '#aaa';
+        let cls = 'cg-talent-card';
+        if (isFree)         cls += ' cg-talent-free';
+        else if (isSelected) cls += ' cg-talent-selected';
+        else if (!prereqsMet) cls += ' cg-talent-locked';
+        else if (canAfford)  cls += ' cg-talent-available';
+        else                 cls += ' cg-talent-costly';
+
+        let prereqHtml = '';
+        if (node.prerequisites?.length) {
+            const names = node.prerequisites.map(p => TALENT_NODES[p]?.name || p).join(', ');
+            prereqHtml = `<div class="cg-talent-prereq" style="color:${prereqsMet?'#3a7a3a':'#7a3a3a'};">Req: ${names}</div>`;
+        }
+
+        let btn = '';
+        if (isFree) {
+            btn = `<span class="cg-free-badge">Free (${tree?.name || ''})</span>`;
+        } else if (isSelected) {
+            btn = `<button class="cg-talent-toggle cg-deselect-btn" data-talent="${node.id}">\u2715 Remove</button>`;
+        } else if (!prereqsMet) {
+            btn = `<button class="cg-talent-toggle cg-buy-btn" data-talent="${node.id}" disabled>Prereq needed</button>`;
+        } else if (!canAfford) {
+            btn = `<button class="cg-talent-toggle cg-buy-btn" data-talent="${node.id}" disabled>Need ${node.cost}pt</button>`;
+        } else {
+            btn = `<button class="cg-talent-toggle cg-buy-btn" data-talent="${node.id}">+ Take (${node.cost}pt)</button>`;
+        }
+
+        return `<div class="${cls}">
+            <div class="cg-talent-card-header">
+                <span class="cg-talent-card-name">${node.name}</span>
+                <span class="cg-talent-card-tree" style="color:${treeColor};">${tree?.name||''}</span>
+                ${!isFree ? `<span class="cg-talent-card-cost" style="color:${isSelected?'#44ffaa':'#ffcc44'};">${isSelected?'\u2713 ':''}${node.cost}pt</span>` : ''}
+            </div>
+            <div class="cg-talent-card-desc">${node.description}</div>
+            ${prereqHtml}${btn}
+        </div>`;
+    }
+
+    _cgDrawbackCard(trait, selected) {
+        const gain = Math.abs(trait.cost);
+        const cls = `cg-talent-card cg-drawback-card${selected?' cg-drawback-selected':''}`;
+        const btn = selected
+            ? `<button class="cg-drawback-toggle cg-deselect-btn" data-drawback="${trait.id}">\u2715 Remove</button>`
+            : `<button class="cg-drawback-toggle cg-buy-btn" data-drawback="${trait.id}" style="border-color:#cc4422;color:#cc4422;">Take (+${gain}pt)</button>`;
+        return `<div class="${cls}">
+            <div class="cg-talent-card-header">
+                <span class="cg-talent-card-name" style="color:${selected?'#ff6644':'#cc8877'};">${trait.name}</span>
+                <span class="cg-talent-card-cost" style="color:#44ff88;">+${gain}pt</span>
+            </div>
+            <div class="cg-talent-card-desc">${trait.description}</div>
+            ${btn}
+        </div>`;
+    }
+
+    _cgRenderRight() {
+        const col = document.getElementById('cg-col-right');
+        if (!col) return;
+        const cg = this._cg;
+        const charSys = this.game.charCreationSystem;
+        const pts = this._cgPoints();
+        const statTotal = this._cgStatTotal();
+        const bgData = cg.bg ? charSys.getBackground(cg.bg) : null;
+        const bgMods = bgData?.statMods || {};
+        const bgFreeTalents = bgData?.startingTalents || [];
+        const statNames = { strength:'STR', agility:'AGI', endurance:'END', intelligence:'INT', perception:'PER' };
+        const valid = cg.bg && statTotal === 50 && pts >= 0;
+
+        let html = `<div class="cg-section" style="flex:1;">
+            <div class="cg-section-title">Summary</div>
+            <div style="margin-bottom:10px;">
+                <div style="font-size:15px;color:#fff;font-weight:bold;">${cg.name||'???'}</div>
+                <div style="font-size:11px;color:#666;">${cg.gender} &mdash; ${bgData?`<span style="color:#ffaa00;">${bgData.name}</span>`:'<span style="color:#ff4444;">No background</span>'}</div>
+                ${bgData?.gearLabel ? `<div style="font-size:10px;color:#557799;margin-top:2px;">&#128736; ${bgData.gearLabel}</div>` : ''}
+            </div>
+            <div style="background:#0d0d0d;border:1px solid #222;padding:7px;border-radius:3px;margin-bottom:8px;">
+                <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
+                    <span style="color:#666;font-size:11px;">Talent pts left:</span>
+                    <span style="color:${pts<0?'#ff4444':pts===0?'#888':'#ffcc44'};font-weight:bold;">${pts}</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;">
+                    <span style="color:#666;font-size:11px;">Attr budget:</span>
+                    <span style="color:${statTotal===50?'#44ff44':statTotal>50?'#ff4444':'#ffaa00'};font-weight:bold;">${statTotal}/50</span>
+                </div>
+            </div>`;
+
+        html += `<div style="margin-bottom:8px;">`;
+        for (const [key, label] of Object.entries(statNames)) {
+            const base = cg.stats[key];
+            const mod = bgMods[key] || 0;
+            const eff = base + mod;
+            const modStr = mod!==0 ? ` <span style="color:${mod>0?'#44ff44':'#ff4444'};font-size:10px;">${mod>0?'+':''}${mod}</span>` : '';
+            html += `<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px;">
+                <span style="color:#666;">${label}</span><span>${eff}${modStr}</span>
+            </div>`;
+        }
+        html += `</div>`;
+
+        if (cg.selectedDrawbacks.length > 0) {
+            html += `<div style="margin-bottom:6px;"><div style="font-size:10px;color:#ff6644;margin-bottom:3px;text-transform:uppercase;letter-spacing:1px;">Drawbacks</div>`;
+            for (const did of cg.selectedDrawbacks) {
+                const t = charSys.traits[did];
+                if (t) html += `<div style="font-size:11px;color:#cc7755;padding-left:4px;">\u2022 ${t.name} <span style="color:#44ff88;">(+${Math.abs(t.cost)}pt)</span></div>`;
+            }
+            html += `</div>`;
+        }
+
+        if (bgFreeTalents.length > 0) {
+            html += `<div style="margin-bottom:6px;"><div style="font-size:10px;color:#444;margin-bottom:3px;text-transform:uppercase;letter-spacing:1px;">Free from background</div>`;
+            for (const tid of bgFreeTalents) {
+                const n = TALENT_NODES[tid];
+                if (n) html += `<div style="font-size:11px;color:#3a6a3a;padding-left:4px;">\u2022 ${n.name}</div>`;
+            }
+            html += `</div>`;
+        }
+
+        if (cg.selectedTalents.length > 0) {
+            html += `<div style="margin-bottom:6px;"><div style="font-size:10px;color:#444;margin-bottom:3px;text-transform:uppercase;letter-spacing:1px;">Purchased</div>`;
+            for (const tid of cg.selectedTalents) {
+                const n = TALENT_NODES[tid];
+                if (n) html += `<div style="font-size:11px;color:#44ffaa;padding-left:4px;">\u2022 ${n.name} <span style="color:#ffcc44;">(${n.cost}pt)</span></div>`;
+            }
+            html += `</div>`;
+        }
+
+        html += `</div>`;
+
+        html += `<div style="margin-top:8px;">
+            <button id="cg-start" class="cg-start-btn" ${!valid?'disabled':''}>&#9654; Start Run</button>
+            <button id="cg-play-now" class="cg-play-now-btn">&#9889; Play Now (Random)</button>
+        </div>`;
+
+        col.innerHTML = html;
+
+        document.getElementById('cg-start').onclick = () => {
+            if (!cg.bg) { return; }
+            if (this._cgStatTotal() !== 50) { return; }
+            if (this._cgPoints() < 0) { return; }
+            const allTalents = [...(bgData?.startingTalents||[]), ...cg.selectedTalents];
+            document.getElementById('character-creation').classList.add('hidden');
+            this.game.startGame({
+                name: cg.name || 'Survivor',
+                gender: cg.gender,
+                background: cg.bg,
+                traits: cg.selectedDrawbacks,
+                unlockedTalents: allTalents,
+                strength: cg.stats.strength,
+                agility: cg.stats.agility,
+                endurance: cg.stats.endurance,
+                intelligence: cg.stats.intelligence,
+                perception: cg.stats.perception
+            });
+        };
+
+        document.getElementById('cg-play-now').onclick = () => this._cgPlayNow();
+    }
+
+    _cgPlayNow() {
+        const charSys = this.game.charCreationSystem;
+        const bgs = charSys.getAllBackgrounds();
+        const bg = bgs[Math.floor(Math.random() * bgs.length)];
+        const genders = ['male', 'female', 'other'];
+        const stats = { strength:10, agility:10, endurance:10, intelligence:10, perception:10 };
+        const keys = Object.keys(stats);
+        let remaining = 50;
+        for (let i = 0; i < keys.length - 1; i++) {
+            const add = Math.floor(Math.random() * 5);
+            stats[keys[i]] += add;
+            remaining -= 10 + add;
+        }
+        stats[keys[keys.length-1]] = remaining;
+
+        const drawbacks = charSys.getNegativeTraits();
+        const drawback = drawbacks[Math.floor(Math.random() * drawbacks.length)];
+        let pts = 6 + Math.abs(drawback.cost);
+
+        const tier1 = Object.values(TALENT_NODES).filter(n => !n.prerequisites.length && n.cost <= 1).sort(() => Math.random()-0.5);
+        const picked = [];
+        for (const n of tier1) {
+            if (pts >= n.cost && picked.length < 4) { picked.push(n.id); pts -= n.cost; }
+        }
+
+        const allTalents = [...(bg.startingTalents||[]), ...picked];
+        document.getElementById('character-creation').classList.add('hidden');
+        this.game.startGame({
+            name: this._cgRandomName(),
+            gender: genders[Math.floor(Math.random()*genders.length)],
+            background: bg.id,
+            traits: [drawback.id],
+            unlockedTalents: allTalents,
+            ...stats
         });
     }
     
@@ -878,58 +1104,42 @@ export class UIManager {
         html += `<div class="stat-line"><span class="stat-label">Movement Penalty:</span> <span class="stat-value">${player.anatomy.getMovementPenalty()}</span></div>`;
         html += '</div>';
         
-        // Combat Stances reference
+        // Unlocked Stances
+        const unlockedStanceKeys = TalentEffects.getUnlockedStances(player);
         html += '<div style="margin-bottom: 20px;">';
-        html += '<h4 style="color: #00ffff; margin-bottom: 12px;">Combat Stances <span style="font-size: 13px; color: #888;">[T] to cycle</span></h4>';
-        const stanceDescriptions = {
-            aggressive: {
-                desc: 'All-in. Hit hard, get hit hard.',
-                details: [
-                    { label: 'Damage Dealt', value: '+25%', color: '#44ff44' },
-                    { label: 'Hit Chance', value: '+5%', color: '#44ff44' },
-                    { label: 'Crit Chance', value: '+3%', color: '#44ff44' },
-                    { label: 'Bleed Chance', value: '+30%', color: '#44ff44' },
-                    { label: 'Damage Taken', value: '+20%', color: '#ff4444' },
-                    { label: 'Arm Guard', value: 'Reduced', color: '#ff4444' }
-                ]
-            },
-            defensive: {
-                desc: 'Guard up. Survive and retreat.',
-                details: [
-                    { label: 'Damage Taken', value: '-30%', color: '#44ff44' },
-                    { label: 'Arm Guard', value: '1.5x', color: '#44ff44' },
-                    { label: 'Safe Disengage', value: 'Yes', color: '#44ff44' },
-                    { label: 'Damage Dealt', value: '-30%', color: '#ff4444' },
-                    { label: 'Hit Chance', value: '-5%', color: '#ff4444' },
-                    { label: 'Crit Chance', value: '-2%', color: '#ff4444' }
-                ]
-            },
-            opportunistic: {
-                desc: 'Exploit weakness. Finish them off.',
-                details: [
-                    { label: 'Crit on Wounded', value: '+10%', color: '#44ff44' },
-                    { label: 'Damage Dealt', value: 'Normal', color: '#888888' },
-                    { label: 'Damage Taken', value: 'Normal', color: '#888888' },
-                    { label: 'Arm Guard', value: 'Normal', color: '#888888' }
-                ]
+        if (unlockedStanceKeys.length === 0) {
+            html += '<h4 style="color: #555; margin-bottom: 8px;">Combat Stances</h4>';
+            html += '<div style="font-size: 13px; color: #555; font-style: italic;">No stances unlocked. Purchase stance talents via <span style="color: #888;">[Q] Traits &amp; Talents</span>.</div>';
+        } else {
+            html += '<h4 style="color: #00ffff; margin-bottom: 12px;">Combat Stances <span style="font-size: 13px; color: #888;">[T] to cycle</span></h4>';
+            for (const key of unlockedStanceKeys) {
+                const stanceData = player.combatStances[key];
+                if (!stanceData) continue;
+                const isActive = player.combatStance === key;
+                const borderColor = isActive ? stanceData.color : '#333';
+                const bgColor = isActive ? '#1a1a2a' : '#0a0a0a';
+                const activeTag = isActive ? ` <span style="color: #fff; font-size: 11px; background: ${stanceData.color}; padding: 1px 6px; border-radius: 3px;">ACTIVE</span>` : '';
+                html += `<div style="margin-bottom: 8px; padding: 10px; background: ${bgColor}; border-left: 3px solid ${borderColor};">`;
+                html += `<div style="color: ${stanceData.color}; font-weight: bold; margin-bottom: 4px;">${stanceData.name}${activeTag}</div>`;
+                html += `<div style="font-size: 12px; color: #aaa;">${stanceData.description || ''}</div>`;
+                html += '</div>';
             }
-        };
-        for (const [key, stanceData] of Object.entries(player.combatStances)) {
-            const isActive = player.combatStance === key;
-            const borderColor = isActive ? stanceData.color : '#333';
-            const bgColor = isActive ? '#1a1a2a' : '#0a0a0a';
-            const activeTag = isActive ? ' <span style="color: #fff; font-size: 11px; background: ' + stanceData.color + '; padding: 1px 6px; border-radius: 3px;">ACTIVE</span>' : '';
-            
-            html += `<div style="margin-bottom: 8px; padding: 10px; background: ${bgColor}; border-left: 3px solid ${borderColor};">`;
-            html += `<div style="color: ${stanceData.color}; font-weight: bold; margin-bottom: 4px;">${stanceData.name}${activeTag}</div>`;
-            
-            const sd = stanceDescriptions[key];
-            html += `<div style="font-size: 12px; color: #aaa; font-style: italic; margin-bottom: 6px;">${sd.desc}</div>`;
-            
-            for (const detail of sd.details) {
-                html += `<div style="font-size: 12px; margin-bottom: 2px;"><span style="color: #888;">${detail.label}:</span> <span style="color: ${detail.color};">${detail.value}</span></div>`;
+        }
+        html += '</div>';
+
+        // Talents summary
+        html += '<div style="margin-bottom: 20px;">';
+        html += `<h4 style="color: #ff8844; margin-bottom: 8px;">Talents <span style="font-size: 13px; color: #888;">${player.talentPoints || 0} point${(player.talentPoints || 0) !== 1 ? 's' : ''} remaining — [Q] to spend</span></h4>`;
+        if (!player.unlockedTalents || player.unlockedTalents.length === 0) {
+            html += '<div style="font-size: 13px; color: #555; font-style: italic;">No talents unlocked yet.</div>';
+        } else {
+            for (const talentId of player.unlockedTalents) {
+                const node = TALENT_NODES[talentId];
+                if (!node) continue;
+                const tree = TALENT_TREES[node.treeId];
+                const treeColor = tree ? tree.color : '#aaa';
+                html += `<div style="font-size: 12px; margin-bottom: 3px;"><span style="color: ${treeColor}; font-size: 10px;">[${tree ? tree.name : node.treeId}]</span> <span style="color: #44ffaa;">${node.name}</span></div>`;
             }
-            html += '</div>';
         }
         html += '</div>';
         
@@ -1018,7 +1228,11 @@ export class UIManager {
         html += `<div class="combat-entity-name" style="color: #00ffff;">YOU</div>`;
         
         // Stance
-        html += `<div style="color: ${stance.color}; font-size: 11px; margin-bottom: 4px;">${stance.name} Stance</div>`;
+        if (stance) {
+            html += `<div style="color: ${stance.color}; font-size: 11px; margin-bottom: 4px;">${stance.name} Stance</div>`;
+        } else {
+            html += `<div style="color: #666; font-size: 11px; margin-bottom: 4px;">No Stance</div>`;
+        }
         
         // Weapon
         const weaponName = weapon ? weapon.name : 'Bare Fists';
@@ -2988,11 +3202,21 @@ export class UIManager {
         if (!this.abilityPanelModal) return;
         
         if (this.abilityPanelModal.classList.contains('hidden')) {
+            if (!this._activeTalentTab) this._activeTalentTab = 'talents';
             this.showAbilityPanel();
             this.abilityPanelModal.classList.remove('hidden');
+            // Wire tab buttons after showing
+            const tabBtns = this.abilityPanelModal.querySelectorAll('.talent-tab-btn');
+            tabBtns.forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.tab === this._activeTalentTab);
+                btn.onclick = () => {
+                    this._activeTalentTab = btn.dataset.tab;
+                    this.showAbilityPanel();
+                    tabBtns.forEach(b => b.classList.toggle('active', b.dataset.tab === this._activeTalentTab));
+                };
+            });
         } else {
             this.abilityPanelModal.classList.add('hidden');
-            // Clean up number key handler
             if (this._abilityKeyHandler) {
                 document.removeEventListener('keydown', this._abilityKeyHandler);
                 this._abilityKeyHandler = null;
@@ -3001,9 +3225,130 @@ export class UIManager {
     }
     
     showAbilityPanel() {
-        if (!this.game.player || !this.game.abilitySystem) return;
-        
+        if (!this.game.player) return;
         const content = document.getElementById('ability-panel-content');
+        if (!content) return;
+        if (this._activeTalentTab === 'talents') {
+            this.showTalentContent(content);
+        } else {
+            this.showAbilitiesContent(content);
+        }
+    }
+
+    showTalentContent(content) {
+        const player = this.game.player;
+        if (!player) return;
+
+        let html = `<div id="talent-screen-layout">`;
+
+        // Left nav — tree list
+        html += `<div id="talent-tree-nav">`;
+        html += `<div class="talent-pts-display">${player.talentPoints || 0} point${(player.talentPoints || 0) !== 1 ? 's' : ''} remaining</div>`;
+        for (const [treeId, tree] of Object.entries(TALENT_TREES)) {
+            const owned = (player.unlockedTalents || []).filter(id => TALENT_NODES[id] && TALENT_NODES[id].treeId === treeId).length;
+            const total = Object.values(TALENT_NODES).filter(n => n.treeId === treeId).length;
+            const sel = (this._selectedTalentTree || 'combat_tactics') === treeId ? ' selected' : '';
+            html += `<button class="talent-tree-btn${sel}" data-tree="${treeId}" style="border-left: 3px solid ${tree.color};">`;
+            html += `${tree.name} <span class="tree-count">${owned}/${total}</span>`;
+            html += `</button>`;
+        }
+        html += `</div>`; // end nav
+
+        // Right panel — nodes for selected tree
+        const selectedTree = this._selectedTalentTree || 'combat_tactics';
+        const treeInfo = TALENT_TREES[selectedTree];
+        const nodes = Object.values(TALENT_NODES).filter(n => n.treeId === selectedTree);
+
+        html += `<div id="talent-nodes-panel">`;
+        html += `<div style="font-size: 12px; color: #888; margin-bottom: 8px; font-style: italic;">${treeInfo ? treeInfo.description : ''}</div>`;
+
+        for (const node of nodes) {
+            const isUnlocked = TalentEffects.has(player, node.id);
+            const canBuy = !isUnlocked && TalentEffects.canUnlock(player, node.id) && (player.talentPoints || 0) >= node.cost;
+            const prereqsMet = TalentEffects.canUnlock(player, node.id);
+            let cardClass = 'talent-node-card';
+            if (isUnlocked) cardClass += ' unlocked-talent';
+            else if (!prereqsMet) cardClass += ' locked-prereq';
+            else if (canBuy) cardClass += ' purchasable';
+
+            html += `<div class="${cardClass}">`;
+            html += `<div class="talent-node-header">`;
+            html += `<span class="talent-node-name">${node.name}</span>`;
+            if (!isUnlocked) html += `<span class="talent-node-cost">${node.cost} pt${node.cost !== 1 ? 's' : ''}</span>`;
+            html += `</div>`;
+            html += `<div class="talent-node-desc">${node.description}</div>`;
+
+            if (node.prerequisites && node.prerequisites.length > 0) {
+                const prereqNames = node.prerequisites.map(pid => TALENT_NODES[pid] ? TALENT_NODES[pid].name : pid).join(', ');
+                const prereqColor = prereqsMet ? '#44aa44' : '#aa4444';
+                html += `<div class="talent-node-prereqs" style="color: ${prereqColor};">Requires: ${prereqNames}</div>`;
+            }
+
+            if (isUnlocked) {
+                html += `<span class="talent-unlocked-badge">✓ Unlocked</span>`;
+            } else if (!prereqsMet) {
+                html += `<div style="font-size: 11px; color: #666; font-style: italic; margin-top: 4px;">Prerequisites not met</div>`;
+            } else {
+                const btnDisabled = !canBuy ? ' disabled' : '';
+                const btnTitle = canBuy ? '' : ((player.talentPoints || 0) < node.cost ? 'Not enough talent points' : 'Prerequisites not met');
+                html += `<button class="talent-buy-btn" data-talent="${node.id}"${btnDisabled} title="${btnTitle}">Buy (${node.cost}pt)</button>`;
+            }
+            html += `</div>`;
+        }
+        html += `</div>`; // end nodes panel
+        html += `</div>`; // end layout
+
+        content.innerHTML = html;
+
+        // Wire tree nav buttons
+        content.querySelectorAll('.talent-tree-btn').forEach(btn => {
+            btn.onclick = () => {
+                this._selectedTalentTree = btn.dataset.tree;
+                this.showTalentContent(content);
+            };
+        });
+
+        // Wire buy buttons
+        content.querySelectorAll('.talent-buy-btn').forEach(btn => {
+            btn.onclick = () => this.handleTalentPurchase(btn.dataset.talent);
+        });
+    }
+
+    handleTalentPurchase(talentId) {
+        const player = this.game.player;
+        if (!player) return;
+        const node = TALENT_NODES[talentId];
+        if (!node) return;
+
+        if (TalentEffects.has(player, talentId)) {
+            this.log('Already unlocked.', 'info');
+            return;
+        }
+        if (!TalentEffects.canUnlock(player, talentId)) {
+            this.log('Prerequisites not met.', 'warning');
+            return;
+        }
+        if ((player.talentPoints || 0) < node.cost) {
+            this.log('Not enough talent points.', 'warning');
+            return;
+        }
+
+        player.talentPoints -= node.cost;
+        if (!player.unlockedTalents) player.unlockedTalents = [];
+        player.unlockedTalents.push(talentId);
+        TalentEffects.applyImmediateEffect(player, talentId);
+
+        const unlocks = [];
+        if (node.effects.unlocksStance) unlocks.push(`stance: ${node.effects.unlocksStance}`);
+        if (node.effects.unlocksAbility) unlocks.push(`ability: ${node.effects.unlocksAbility}`);
+        this.log(`Unlocked talent: ${node.name}${unlocks.length ? ' — ' + unlocks.join(', ') : ''}`, 'success');
+
+        this.updateCharacterPanel();
+        this.showTalentContent(document.getElementById('ability-panel-content'));
+    }
+
+    showAbilitiesContent(content) {
+        if (!this.game.player || !this.game.abilitySystem) return;
         const player = this.game.player;
         const abilitySys = this.game.abilitySystem;
         const abilities = abilitySys.getAvailableAbilities(player);
@@ -3011,8 +3356,8 @@ export class UIManager {
         const weaponType = abilitySys.getWeaponType(weapon);
         const weaponName = weapon ? weapon.name : 'Bare Fists';
         const stance = player.getStance();
-        const stanceName = stance ? stance.name : 'Aggressive';
-        const stanceColor = stance ? stance.color : '#ff4444';
+        const stanceName = stance ? stance.name : 'None';
+        const stanceColor = stance ? stance.color : '#666';
         
         // Check if in combat (any engaged enemies)
         const inCombat = this.game.combatSystem && this.game.combatSystem.getEngagedEnemies().length > 0;
@@ -3065,22 +3410,14 @@ export class UIManager {
             // Description
             html += `<div style="color: #aaa; font-size: 12px; margin-bottom: 6px;">${ab.description}</div>`;
             
-            // Stat requirements
-            html += `<div style="font-size: 11px; margin-bottom: 4px;">`;
-            html += `<span style="color: #888;">Requires: </span>`;
-            const statNames = { strength: 'STR', agility: 'AGI', perception: 'PER', endurance: 'END', intelligence: 'INT' };
-            const reqEntries = Object.entries(ab.statRequirements);
-            for (let j = 0; j < reqEntries.length; j++) {
-                const [stat, val] = reqEntries[j];
-                const playerVal = player.stats[stat] || 0;
-                const met = playerVal >= val;
-                const color = met ? '#44ff44' : '#ff4444';
-                const label = statNames[stat] || stat.toUpperCase();
-                html += `<span style="color: ${color};">${label} ${val}</span>`;
-                if (!met) html += ` <span style="color: #ff4444; font-size: 10px;">(${playerVal})</span>`;
-                if (j < reqEntries.length - 1) html += `, `;
+            // Talent requirement
+            if (ab.requiredTalent) {
+                const talentNode = TALENT_NODES[ab.requiredTalent];
+                const talentName = talentNode ? talentNode.name : ab.requiredTalent;
+                const reqColor = ab.unlocked ? '#44aa44' : '#886633';
+                const reqLabel = ab.unlocked ? `\u2713 ${talentName}` : `\u2715 ${talentName}`;
+                html += `<div style="font-size: 11px; margin-bottom: 4px; color: ${reqColor};">Talent: ${reqLabel}</div>`;
             }
-            html += `</div>`;
             
             // Stance modifiers preview
             if (!locked) {
@@ -3132,14 +3469,20 @@ export class UIManager {
                     html += `<button class="ability-use-btn" data-ability="${ab.id}" style="margin-top: 6px; background: #224422; color: #44ff44; border: 1px solid #44ff44; padding: 4px 12px; cursor: pointer; font-size: 12px; font-weight: bold; border-radius: 3px;">Use [${i + 1}]</button>`;
                 }
             } else if (locked) {
-                html += `<div style="font-size: 11px; color: #ff4444; margin-top: 4px; font-style: italic;">Locked — stat requirements not met</div>`;
+                if (ab.missingTalent) {
+                    const talentNode = TALENT_NODES[ab.missingTalent];
+                    const talentName = talentNode ? talentNode.name : ab.missingTalent;
+                    html += `<div style="font-size: 11px; color: #886633; margin-top: 4px; font-style: italic;">Locked — requires talent: <span style="color: #ff8844;">${talentName}</span></div>`;
+                } else {
+                    html += `<div style="font-size: 11px; color: #ff4444; margin-top: 4px; font-style: italic;">Locked</div>`;
+                }
             }
             
             html += `</div>`;
         }
         
         content.innerHTML = html;
-        
+
         // Attach event listeners to use buttons
         const buttons = content.querySelectorAll('.ability-use-btn');
         for (const btn of buttons) {

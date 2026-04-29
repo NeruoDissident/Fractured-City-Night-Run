@@ -17,6 +17,7 @@ import { AbilitySystem } from '../systems/AbilitySystem.js';
 import { TimeSystem } from '../systems/TimeSystem.js';
 import { LightingSystem } from '../systems/LightingSystem.js';
 import { MobileControls } from '../ui/MobileControls.js';
+import { OverworldMap } from '../world/OverworldMap.js';
 
 export class Game {
     constructor() {
@@ -41,6 +42,12 @@ export class Game {
         
         this.interactMode = false;
         this.interactCandidates = null;
+
+        // ── Overworld ────────────────────────────────────────────────────
+        this.overworldMap    = null;
+        this._loadoutGiven   = false;  // starting gear given once per run
+        this._currentZoneCol = 0;      // which overworld tile the active zone is
+        this._currentZoneRow = 0;
     }
     
     async init() {
@@ -79,41 +86,182 @@ export class Game {
     }
     
     startGame(characterData) {
-        this.world = new World(this);
-        this.world.init();
-        
-        this.fov = new FoVSystem(this.world);
-        this.soundSystem = new SoundSystem(this);
-        this.timeSystem = new TimeSystem();
-        this.lightingSystem = new LightingSystem(this);
-        this.itemSystem = new ItemSystem(this);
-        this.craftingSystem = new CraftingSystem(this);
-        this.combatSystem = new CombatSystem(this);
-        this.combatEffects = new CombatEffects(this);
-        this.abilitySystem = new AbilitySystem(this);
-        this.worldObjectSystem = new WorldObjectSystem(this);
-        
+        // Create the player (no world yet — systems init on first zone drop-in)
         this.player = new Player(this, characterData);
-        const spawnPos = this.world.getSpawnPosition();
-        this.player.x = spawnPos.x;
-        this.player.y = spawnPos.y;
-        
-        this.world.addEntity(this.player);
-        
-        // Starting loadout
-        this.giveStartingLoadout();
-        
-        this.gameState = 'playing';
+        this._loadoutGiven = false;
+
+        // Create the overworld
+        const runSeed = Date.now() & 0x7FFFFFFF;
+        this.overworldMap = new OverworldMap(runSeed);
+
         this.isRunning = true;
-        
+        this.gameState = 'overworld';
+
         this.ui.log('Welcome to Fractured City.', 'info');
-        this.ui.log('Survive. Extract. Repeat.', 'info');
-        this.ui.log('Press [X] to inspect tiles, [?] for help.', 'info');
-        this.ui.log(`Time: ${this.timeSystem.getTimeString()} - ${this.timeSystem.getTimePeriod()} (Day ${this.timeSystem.getDay()})`, 'info');
-        console.log(`[TimeSystem] Started at ${this.timeSystem.getTimeString()}, outdoor ambient: ${this.timeSystem.getOutdoorAmbient().toFixed(2)}`);
-        console.log(`[LightingSystem] Initialized, effective vision range: ${this.lightingSystem.getEffectiveVisionRadius(8)}`);
-        
+        this.ui.log('Navigate the overworld. [Enter] or [Space] to drop into a zone.', 'info');
+        this.ui.log('Walk to a zone edge to move to the adjacent zone.', 'info');
+        this.render();
+    }
+
+    // ── Zone systems init (called on every zone entry) ─────────────────────────
+    _initZoneSystems() {
+        this.fov              = new FoVSystem(this.world);
+        this.soundSystem      = new SoundSystem(this);
+        this.timeSystem       = this.timeSystem || new TimeSystem();
+        this.lightingSystem   = new LightingSystem(this);
+        this.itemSystem       = new ItemSystem(this);
+        this.craftingSystem   = new CraftingSystem(this);
+        this.combatSystem     = new CombatSystem(this);
+        this.combatEffects    = new CombatEffects(this);
+        this.abilitySystem    = new AbilitySystem(this);
+        this.worldObjectSystem = new WorldObjectSystem(this);
+    }
+
+    // ── Drop into an overworld tile ───────────────────────────────────────────
+    dropIntoZone(col, row, entryEdge = null) {
+        const owTile = this.overworldMap.getTile(col, row);
+        if (!owTile) return;
+
+        this._currentZoneCol = col;
+        this._currentZoneRow = row;
+        this.overworldMap.markExplored(col, row);
+
+        // Compute chunk bounds from zone dimensions
+        const zw = owTile.zone.width;
+        const zh = owTile.zone.height;
+        const chunksX = Math.ceil(zw / 128);
+        const chunksY = Math.ceil(zh / 128);
+
+        // Build the zone world
+        this.world = new World(this);
+        this.world.zoneMode    = true;
+        this.world.forcedBiome = owTile.biome;
+        this.world.worldSeed   = owTile.seed;
+        this.world.zoneWidth   = zw;
+        this.world.zoneHeight  = zh;
+        this.world.zoneBounds  = { minCx: 0, maxCx: chunksX - 1, minCy: 0, maxCy: chunksY - 1 };
+        this.world.init();
+
+        // Init all zone-dependent systems
+        this._initZoneSystems();
+
+        // Determine player spawn position based on entry edge
+        let spawnX, spawnY;
+        if (entryEdge === 'west')  { spawnX = 2;        spawnY = Math.floor(zh / 2); }
+        else if (entryEdge === 'east')  { spawnX = zw - 3;    spawnY = Math.floor(zh / 2); }
+        else if (entryEdge === 'north') { spawnX = Math.floor(zw / 2); spawnY = 2; }
+        else if (entryEdge === 'south') { spawnX = Math.floor(zw / 2); spawnY = zh - 3; }
+        else {
+            // Initial drop-in from overworld: use world spawn position
+            const sp = this.world.getSpawnPosition();
+            spawnX = sp.x;
+            spawnY = sp.y;
+        }
+
+        // Find a non-blocked tile near the target spawn
+        const found = this._findOpenNear(spawnX, spawnY);
+        this.player.x = found.x;
+        this.player.y = found.y;
+        this.player.z = 0;
+
+        // Add player to world (remove from previous world entity list first)
+        if (!this.world.entities.includes(this.player)) {
+            this.world.addEntity(this.player);
+        }
+
+        // Give starting gear on first drop
+        if (!this._loadoutGiven) {
+            this.giveStartingLoadout();
+            this._loadoutGiven = true;
+        }
+
+        this.gameState = 'playing';
+
+        const threat = owTile.threatLevel;
+        this.ui.log(`Entering: ${owTile.zone.name} [${owTile.biome.replace('_', ' ')}]  Threat: ${'★'.repeat(threat)}`, 'info');
+        if (this.timeSystem) {
+            this.ui.log(`Time: ${this.timeSystem.getTimeString()} - ${this.timeSystem.getTimePeriod()}`, 'info');
+        }
+
         this.updateFoV();
+        this.render();
+    }
+
+    // ── Seamless zone transition when walking off an edge ──────────────────────
+    transitionZone(dx, dy) {
+        const ow = this.overworldMap;
+        const newCol = this._currentZoneCol + dx;
+        const newRow = this._currentZoneRow + dy;
+
+        const target = ow.getTile(newCol, newRow);
+        if (!target) {
+            this.ui.log('Edge of the known world.', 'warning');
+            return;
+        }
+
+        // Preserve player Y% when transitioning east/west, X% when north/south
+        const oldW = this.world.zoneWidth;
+        const oldH = this.world.zoneHeight;
+        const ratioX = this.player.x / oldW;
+        const ratioY = this.player.y / oldH;
+
+        let entryEdge;
+        let entryX, entryY;
+        const newW = target.zone.width;
+        const newH = target.zone.height;
+
+        if (dx === 1)  { entryEdge = 'west';  entryX = 2;        entryY = Math.round(ratioY * newH); }
+        if (dx === -1) { entryEdge = 'east';  entryX = newW - 3; entryY = Math.round(ratioY * newH); }
+        if (dy === 1)  { entryEdge = 'north'; entryX = Math.round(ratioX * newW); entryY = 2; }
+        if (dy === -1) { entryEdge = 'south'; entryX = Math.round(ratioX * newW); entryY = newH - 3; }
+
+        // Update overworld cursor
+        ow.cursorCol = newCol;
+        ow.cursorRow = newRow;
+
+        this.dropIntoZone(newCol, newRow, entryEdge);
+
+        // Override spawn to match the edge ratio (dropIntoZone used center, override here)
+        const found = this._findOpenNear(
+            Math.max(1, Math.min(newW - 2, entryX)),
+            Math.max(1, Math.min(newH - 2, entryY))
+        );
+        this.player.x = found.x;
+        this.player.y = found.y;
+        this.updateFoV();
+        this.render();
+    }
+
+    // Helper: find open tile near (px, py) by spiral search
+    _findOpenNear(px, py) {
+        for (let r = 0; r < 15; r++) {
+            for (let dy = -r; dy <= r; dy++) {
+                for (let dx = -r; dx <= r; dx++) {
+                    if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
+                    const x = px + dx;
+                    const y = py + dy;
+                    if (!this.world.isBlocked(x, y, 0)) return { x, y };
+                }
+            }
+        }
+        return this.world.getSpawnPosition();
+    }
+
+    // ── Open overworld map (non-destructive — zone state is preserved) ─────────
+    returnToOverworld() {
+        // Sync the overworld cursor back to wherever the player currently is
+        if (this.overworldMap) {
+            this.overworldMap.cursorCol = this._currentZoneCol;
+            this.overworldMap.cursorRow = this._currentZoneRow;
+        }
+        this.gameState = 'overworld';
+        this.render();
+    }
+
+    // ── Close overworld map and return to active zone ─────────────────────────
+    closeOverworld() {
+        if (!this.world) return; // no active zone yet
+        this.gameState = 'playing';
         this.render();
     }
     
@@ -130,7 +278,15 @@ export class Game {
         
         if (action.type === 'move') {
             playerActed = this.player.tryMove(action.dx, action.dy);
-            // lastActionCost set by tryMove (movement or attack cost)
+            // Zone edge transition: if move was blocked and target is outside zone bounds
+            if (!playerActed && this.world && this.world.zoneMode) {
+                const nx = this.player.x + action.dx;
+                const ny = this.player.y + action.dy;
+                if (nx < 0 || nx >= this.world.zoneWidth || ny < 0 || ny >= this.world.zoneHeight) {
+                    this.transitionZone(action.dx, action.dy);
+                    return; // transitionZone handles render
+                }
+            }
         } else if (action.type === 'wait') {
             playerActed = true;
             this.player.lastActionCost = 100;
@@ -413,7 +569,12 @@ export class Game {
     
     render() {
         this.renderer.clear();
-        
+
+        if (this.gameState === 'overworld') {
+            this.renderOverworld();
+            return;
+        }
+
         const viewWidth = this.renderer.tilesX;
         const viewHeight = this.renderer.tilesY;
         const cameraX = this.player.x - Math.floor(viewWidth / 2);
@@ -447,6 +608,67 @@ export class Game {
             this.ui.updatePanels();
         }
         
+        if (this.mobileControls) {
+            this.mobileControls.updateHUD();
+        }
+    }
+
+    // ── Overworld rendering ────────────────────────────────────────────────────
+    renderOverworld() {
+        const ow = this.overworldMap;
+        const viewWidth  = this.renderer.tilesX;
+        const viewHeight = this.renderer.tilesY;
+
+        // Centre view on cursor
+        const camCol = ow.cursorCol - Math.floor(viewWidth  / 2);
+        const camRow = ow.cursorRow - Math.floor(viewHeight / 2);
+
+        for (let sy = 0; sy < viewHeight; sy++) {
+            for (let sx = 0; sx < viewWidth; sx++) {
+                const col = camCol + sx;
+                const row = camRow + sy;
+                const tile = ow.getTile(col, row);
+
+                if (!tile) {
+                    this.renderer.drawTile(sx, sy, ' ', '#000000', '#050505');
+                    continue;
+                }
+
+                const visible  = ow.isVisible(col, row);
+                const explored = tile.explored;
+
+                if (!visible && !explored) {
+                    this.renderer.drawTile(sx, sy, ' ', '#000000', '#111111');
+                    continue;
+                }
+
+                const visual      = OverworldMap.getBiomeVisual(tile.biome);
+                const isCursor    = col === ow.cursorCol && row === ow.cursorRow;
+                const isActiveZone = col === this._currentZoneCol && row === this._currentZoneRow && this.world;
+
+                let fgColor = visible ? visual.color : '#3a3a3a';
+                let bgColor = '#000000';
+
+                let glyph, fg;
+                if (isCursor && isActiveZone) {
+                    // Cursor is on the player's active zone
+                    glyph = '@'; fg = '#00ff88'; bgColor = '#1a2a1a';
+                } else if (isCursor) {
+                    // Cursor on a different tile
+                    glyph = '>'; fg = '#ffff00'; bgColor = '#1a1a00';
+                } else if (isActiveZone) {
+                    // Active zone tile (cursor elsewhere)
+                    glyph = '@'; fg = '#00aa55'; bgColor = '#111a11';
+                } else {
+                    glyph = visual.glyph; fg = fgColor;
+                }
+
+                this.renderer.drawTile(sx, sy, glyph, fg, bgColor);
+            }
+        }
+
+        this.ui.updateOverworldPanel();
+
         if (this.mobileControls) {
             this.mobileControls.updateHUD();
         }

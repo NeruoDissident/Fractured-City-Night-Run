@@ -78,7 +78,18 @@ export class InputHandler {
         
         if (e.key === 'm' || e.key === 'M') {
             e.preventDefault();
-            if (this.game.gameState === 'playing' && !this.game.inspectMode) {
+            if (this.game.gameState === 'overworld') {
+                // M on overworld — no-op (already on map)
+                return;
+            }
+            if (this.game.gameState === 'playing') {
+                if (this.game.inspectMode) return;
+                // Hold M vs tap: tap = cycle movement, but we need map toggle too.
+                // Use shift+M for map overlay.
+                if (e.shiftKey) {
+                    // Shift+M: not used yet — reserved for map overlay overlay
+                    return;
+                }
                 this.game.processTurn({ type: 'cycle_movement' });
             }
             return;
@@ -88,7 +99,11 @@ export class InputHandler {
             e.preventDefault();
             if (this.game.gameState === 'playing' && !this.game.inspectMode && this.game.player) {
                 const stance = this.game.player.cycleCombatStance();
-                this.game.ui.log(`Combat stance: ${stance.name}`, 'info');
+                if (stance) {
+                    this.game.ui.log(`Combat stance: ${stance.name}`, 'info');
+                } else {
+                    this.game.ui.log('No stances unlocked — purchase Combat Tactics talents [Q].', 'warning');
+                }
                 this.game.render();
             }
             return;
@@ -98,6 +113,16 @@ export class InputHandler {
             e.preventDefault();
             if (this.game.gameState === 'playing' && !this.game.inspectMode) {
                 this.game.ui.toggleAbilityPanel();
+            }
+            return;
+        }
+
+        if (e.key === 'Tab') {
+            e.preventDefault();
+            if (this.game.gameState === 'playing') {
+                this.game.returnToOverworld();
+            } else if (this.game.gameState === 'overworld') {
+                this.game.closeOverworld();
             }
             return;
         }
@@ -150,6 +175,36 @@ export class InputHandler {
             return;
         }
         
+        // ── Overworld navigation ────────────────────────────────────────────────────
+        if (this.game.gameState === 'overworld') {
+            const ow = this.game.overworldMap;
+            const action = this.keyMap[e.key];
+
+            if (action && action.type === 'move') {
+                e.preventDefault();
+                ow.moveCursor(action.dx, action.dy);
+                this.game.render();
+                return;
+            }
+
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                const onActiveZone = ow.cursorCol === this.game._currentZoneCol &&
+                                     ow.cursorRow === this.game._currentZoneRow &&
+                                     this.game.world;
+                if (onActiveZone) {
+                    // Return to the zone already loaded
+                    this.game.closeOverworld();
+                } else {
+                    // Travel to a different zone (generates new world)
+                    this.game.dropIntoZone(ow.cursorCol, ow.cursorRow);
+                }
+                return;
+            }
+
+            return; // block all other keys on overworld
+        }
+
         if (this.game.gameState !== 'playing') return;
         
         // Interact mode: direction keys select a target

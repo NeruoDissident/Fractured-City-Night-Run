@@ -17,25 +17,48 @@ export class World {
     constructor(game) {
         this.game = game;
         this.chunks = new Map();
-        this.chunkSize = 64;
+        this.chunkSize = 128;
         this.entities = [];
         this.items = [];
         this.worldObjects = []; // Doors, furniture, etc.
         this.extractionPoint = null;
         this.activeRadius = 2;
+        this.worldSeed = Date.now() & 0x7FFFFFFF; // Seeded RNG for deterministic generation
+
+        // ── Zone mode ────────────────────────────────────────────────────────
+        // When true, generation is bounded to a single zone (no infinite expansion)
+        this.zoneMode    = false;
+        this.forcedBiome = null;  // override Chunk.selectBiome() for whole zone
+        this.zoneBounds  = null;  // { minCx, maxCx, minCy, maxCy }
+        this.zoneWidth   = 128;   // tile width  of this zone
+        this.zoneHeight  = 128;   // tile height of this zone
+        this._voidChunk  = null;  // lazy-built solid-wall chunk for out-of-bounds
     }
     
     init() {
         this.generateInitialChunks();
-        this.spawnInitialNPCs();
-        this.spawnExtractionPoint();
-        this.spawnAccessCard();
+        // NPCs spawn per-chunk via district-aware system in getOrCreateChunk()
+        // Extraction / access card not used in zone mode
+        if (!this.zoneMode) {
+            this.spawnExtractionPoint();
+            this.spawnAccessCard();
+        }
     }
     
     generateInitialChunks() {
-        for (let cy = -1; cy <= 1; cy++) {
-            for (let cx = -1; cx <= 1; cx++) {
-                this.getOrCreateChunk(cx, cy);
+        if (this.zoneMode && this.zoneBounds) {
+            // Zone mode: generate only the bounded chunk region
+            const { minCx, maxCx, minCy, maxCy } = this.zoneBounds;
+            for (let cy = minCy; cy <= maxCy; cy++) {
+                for (let cx = minCx; cx <= maxCx; cx++) {
+                    this.getOrCreateChunk(cx, cy);
+                }
+            }
+        } else {
+            for (let cy = -1; cy <= 1; cy++) {
+                for (let cx = -1; cx <= 1; cx++) {
+                    this.getOrCreateChunk(cx, cy);
+                }
             }
         }
     }
@@ -48,13 +71,69 @@ export class World {
     }
     
     getOrCreateChunk(cx, cy) {
+        // In zone mode, return a solid-wall void chunk for out-of-bounds requests
+        if (this.zoneMode && this.zoneBounds) {
+            const { minCx, maxCx, minCy, maxCy } = this.zoneBounds;
+            if (cx < minCx || cx > maxCx || cy < minCy || cy > maxCy) {
+                return this._getVoidChunk();
+            }
+        }
+
         const key = `${cx},${cy}`;
         if (!this.chunks.has(key)) {
             const chunk = new Chunk(this, cx, cy);
             chunk.generate();
             this.chunks.set(key, chunk);
+
+            // Spawn district-aware NPCs from chunk generation
+            if (chunk.npcSpawnRequests && chunk.npcSpawnRequests.length > 0) {
+                this.spawnChunkNPCs(chunk);
+            }
         }
         return this.chunks.get(key);
+    }
+
+    // Returns a pre-built chunk filled entirely with solid walls (used as zone boundary)
+    _getVoidChunk() {
+        if (!this._voidChunk) {
+            const c = new Chunk(this, -9999, -9999);
+            const S = this.chunkSize;
+            c.tiles = { 0: [] };
+            for (let y = 0; y < S; y++) {
+                c.tiles[0][y] = [];
+                for (let x = 0; x < S; x++) {
+                    c.tiles[0][y][x] = {
+                        glyph: '#', fgColor: '#444444', bgColor: '#111111',
+                        blocked: true, blocksLight: true, isWall: true,
+                        isExterior: true
+                    };
+                }
+            }
+            this._voidChunk = c;
+        }
+        return this._voidChunk;
+    }
+    
+    spawnChunkNPCs(chunk) {
+        const S = this.chunkSize;
+        const baseX = chunk.cx * S;
+        const baseY = chunk.cy * S;
+        
+        for (const req of chunk.npcSpawnRequests) {
+            if (req.count <= 0) continue;
+            for (let i = 0; i < req.count; i++) {
+                for (let attempt = 0; attempt < 15; attempt++) {
+                    const x = baseX + Math.floor(Math.random() * S);
+                    const y = baseY + Math.floor(Math.random() * S);
+                    
+                    if (!this.isBlocked(x, y, 0)) {
+                        const npc = new NPC(this.game, req.type, x, y);
+                        this.addEntity(npc);
+                        break;
+                    }
+                }
+            }
+        }
     }
     
     getBiomeAt(x, y) {
@@ -72,14 +151,7 @@ export class World {
         const localX = x - cx * this.chunkSize;
         const localY = y - cy * this.chunkSize;
         
-        const tile = chunk.getTile(localX, localY, z);
-        
-        // Debug: Sample tile retrieval for z=-1
-        if (z === -1 && Math.random() < 0.001) {
-            console.log(`World.getTile(${x},${y},${z}) -> chunk(${cx},${cy}) local(${localX},${localY}) = ${tile.name}`);
-        }
-        
-        return tile;
+        return chunk.getTile(localX, localY, z);
     }
     
     setTile(x, y, tile, z = 0) {
@@ -152,8 +224,8 @@ export class World {
             for (let i = 0; i < npcDef.count; i++) {
                 // Retry up to 10 times to find an unblocked position
                 for (let attempt = 0; attempt < 10; attempt++) {
-                    const x = Math.floor(Math.random() * 80) - 20;
-                    const y = Math.floor(Math.random() * 80) - 20;
+                    const x = Math.floor(Math.random() * 160) - 40;
+                    const y = Math.floor(Math.random() * 160) - 40;
                     
                     if (!this.isBlocked(x, y, 0)) {
                         const npc = new NPC(this.game, npcDef.type, x, y);
