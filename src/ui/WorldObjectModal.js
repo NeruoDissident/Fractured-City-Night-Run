@@ -323,6 +323,21 @@ export function showFurnitureContentsModal(uiManager, furniture) {
             if (pocket.contents) totalItems += pocket.contents.length;
         }
     }
+
+    // ── Goal flags ──────────────────────────────────────────────────────────
+    if (player && totalItems > 0) {
+        if (!player.goalsData) player.goalsData = {};
+        player.goalsData.stashFound = true;
+        // Check for medicine
+        const allItems = (furniture.pockets || []).flatMap(p => p.contents || []);
+        const medicalIds = ['medkit', 'bandage', 'antiseptic', 'painkiller'];
+        if (allItems.some(i => medicalIds.includes(i.id) || i.medicalEffect)) {
+            player.goalsData.medicineFound = true;
+        }
+        // Components found (count unique item types as components)
+        player.goalsData.componentsFound = (player.goalsData.componentsFound || 0) + allItems.length;
+        if (game.goalSystem) game.goalSystem.checkGoals(player);
+    }
     
     let html = '<div style="padding: 15px;">';
     html += `<button id="close-furniture-contents" class="small-btn" style="margin-bottom: 10px;">← Close</button>`;

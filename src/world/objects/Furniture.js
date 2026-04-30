@@ -161,7 +161,8 @@ export const OBJECT_SPRITE_INDEX = {
     door_closed: 16,
     door_open: 17,
     door_broken: 18,
-    door_barricaded: 19
+    door_barricaded: 19,
+    terminal: 6
 };
 
 /**
@@ -326,6 +327,30 @@ export const FURNITURE_TYPES = {
         }
     },
     
+    terminal: {
+        name: 'Terminal',
+        furnitureType: 'terminal',
+        glyph: '▣',
+        fgColor: '#00ffcc',
+        bgColor: '#3a3a3a',
+        material: 'metal',
+        hp: 30,
+        maxHP: 30,
+        durability: 1.0,
+        blocked: true,
+        blocksVision: false,
+        isContainer: false,
+        isTerminal: true,
+        actions: ['use', 'smash'],
+        dropTable: {
+            materials: [
+                { name: 'Metal Scraps', quantity: [1, 2], quality: [60, 80] },
+                { name: 'Screws', quantity: [1, 2], quality: [70, 100] }
+            ],
+            disassembleTool: 'screwdriver'
+        }
+    },
+
     // === NON-STORAGE FURNITURE ===
     
     table: {

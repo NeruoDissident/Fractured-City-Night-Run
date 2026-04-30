@@ -517,6 +517,10 @@ export class CombatSystem {
             if (this.game.combatEffects) {
                 this.game.combatEffects.addFloatingText(target.x, target.y - 0.5, 'KILLED', '#ff0000', 2000);
             }
+            // Track kills for goal system (only when player kills)
+            if (attacker === this.game.player && this.game.goalSystem) {
+                this.game.goalSystem.recordKill(this.game.player);
+            }
         }
         
         // ── Track engagement and record structured event ──

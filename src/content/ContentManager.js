@@ -1362,6 +1362,19 @@ export class ContentManager {
                 volume: 450,
                 components: null,
                 weaponStats: null
+            },
+            echo_fragment: {
+                name: 'Echo Fragment',
+                type: 'key_item',
+                glyph: '§',
+                color: '#cc44ff',
+                slots: [],
+                tags: ['echo', 'rare', 'key_item'],
+                weight: 20,
+                volume: 30,
+                components: null,
+                weaponStats: null,
+                isEchoFragment: true
             }
         };
     }

@@ -159,13 +159,15 @@ export class Chunk {
             case 'residential':
                 return [
                     { type: 'scavenger', count: 1 },
-                    { type: 'raider', count: this.rng() < 0.5 ? 1 : 0 }
+                    { type: 'raider', count: this.rng() < 0.5 ? 1 : 0 },
+                    { type: 'survivor', count: this.rng() < 0.5 ? 1 : 0 }
                 ];
             case 'slum':
                 return [
                     { type: 'raider', count: 2 },
                     { type: 'armed_raider', count: 1 },
-                    { type: 'brute', count: this.rng() < 0.3 ? 1 : 0 }
+                    { type: 'brute', count: this.rng() < 0.3 ? 1 : 0 },
+                    { type: 'survivor', count: 1 }
                 ];
             case 'industrial_yard':
             case 'shipping':

@@ -95,6 +95,25 @@ const NPC_TYPES = {
             { weight: 30, weapon: null },  // unarmed — still dangerous with STR 15
         ],
     },
+    survivor: {
+        name: 'Survivor',
+        glyph: '@',
+        color: '#aaffaa',
+        stats: { strength: 8, agility: 8, endurance: 7, intelligence: 9, perception: 8 },
+        speed: 60,
+        attackCost: 100,
+        moveCost: 100,
+        visionRange: 6,
+        hearingRange: 8,
+        hostile: false,
+        aggression: 0.0,
+        courage: 0.8,           // flees when badly hurt
+        leashRange: 5,          // stays near spawn
+        giveUpTurns: 3,
+        wanderChance: 0.1,
+        weaponTable: null,
+        needsItem: true,        // has a delivery request
+    },
     stalker: {
         name: 'Stalker',
         glyph: 'S',
@@ -174,6 +193,19 @@ export class NPC extends Entity {
         
         // Weapon item (null = unarmed)
         this.weapon = this.rollWeapon();
+
+        // Delivery request for survivor NPCs
+        this.deliveryRequest = null;
+        if (this.profile.needsItem) {
+            const requests = [
+                { itemId: 'medkit',     label: 'a medkit',      reward: 'food'      },
+                { itemId: 'bandage',    label: 'bandages',       reward: 'ammo'      },
+                { itemId: 'flashlight', label: 'a flashlight',   reward: 'food'      },
+                { itemId: 'canteen',    label: 'a canteen',      reward: 'medicine'  },
+                { itemId: 'knife',      label: 'a knife',        reward: 'intel'     },
+            ];
+            this.deliveryRequest = requests[Math.floor(Math.random() * requests.length)];
+        }
     }
     
     // ─── Weapon rolling from profile's weighted table ───────────────────────
@@ -659,6 +691,11 @@ export class NPC extends Entity {
         if (this.anatomy && this.anatomy.causeOfDeath) {
             const cause = this.anatomy.getDeathCause();
             this.game.ui.log(`${this.name} ${cause}.`, 'combat');
+        }
+        // Goal tracking: heavy NPCs count as gang leaders
+        if ((this.type === 'brute' || this.type === 'armed_raider') && this.game.player) {
+            if (!this.game.player.goalsData) this.game.player.goalsData = {};
+            this.game.player.goalsData.gangLeaderKilled = true;
         }
         this.game.world.removeEntity(this);
     }

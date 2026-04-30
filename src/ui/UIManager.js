@@ -168,6 +168,32 @@ export class UIManager {
         
         html += `<div class="stat-line"><span class="stat-label">Turn:</span> <span class="stat-value">${this.game.turnCount}</span></div>`;
         html += '<br>';
+
+        // ── Goal Board ──────────────────────────────────────────────────
+        if (player.archetypeLabel) {
+            html += `<div style="color:#00ffff;font-size:12px;text-transform:uppercase;border-bottom:1px solid #333;padding-bottom:3px;margin-bottom:5px;">${player.archetypeLabel}</div>`;
+
+            // Primary goal
+            if (player.primaryGoal) {
+                const pg = player.primaryGoal;
+                const pgColor = pg.completed ? '#44ff44' : '#ffaa00';
+                const pgMark  = pg.completed ? '✓' : '○';
+                html += `<div style="font-size:12px;color:${pgColor};margin-bottom:4px;">${pgMark} <em>${pg.text}</em></div>`;
+            }
+
+            // Floor goals
+            for (const goal of (player.floorGoals || [])) {
+                const gc = goal.completed ? '#44ff44' : '#888';
+                const gm = goal.completed ? '✓' : '·';
+                html += `<div style="font-size:11px;color:${gc};margin-bottom:2px;">${gm} ${goal.text}</div>`;
+            }
+
+            // XP
+            if ((player.xp || 0) > 0) {
+                html += `<div style="font-size:11px;color:#8888ff;margin-top:4px;">XP: ${player.xp}</div>`;
+            }
+            html += '<br>';
+        }
         
         const encumbrance = player.getEncumbranceLevel();
         const encumbranceColors = {
@@ -272,7 +298,7 @@ export class UIManager {
                 const ey = entity.y - startY;
                 if (ex >= 0 && ex < mapSize && ey >= 0 && ey < mapSize) {
                     if (fov.visibleTiles.has(`${entity.x},${entity.y},${z}`)) {
-                        ctx.fillStyle = '#ff4444';
+                        ctx.fillStyle = entity.hostile === false ? '#44ff88' : '#ff4444';
                         ctx.fillRect(ex * TILE_PX, ey * TILE_PX, TILE_PX, TILE_PX);
                     }
                 }
@@ -315,6 +341,22 @@ export class UIManager {
             const ex = this.game.world.extractionPoint;
             const dist = Math.floor(Math.sqrt(Math.pow(ex.x - player.x, 2) + Math.pow(ex.y - player.y, 2)));
             html += `<div class="stat-line"><span class="stat-label">Extraction:</span> <span class="stat-value" style="color: #00ff00;">${dist} tiles</span></div>`;
+        }
+
+        // Visible survivors
+        if (this.game.world && this.game.fov) {
+            const survivors = this.game.world.entities.filter(e =>
+                e !== player &&
+                e.type === 'survivor' &&
+                e.z === player.z &&
+                this.game.fov.isVisible(e.x, e.y, player.z)
+            );
+            for (const s of survivors) {
+                const dist = Math.floor(Math.sqrt(Math.pow(s.x - player.x, 2) + Math.pow(s.y - player.y, 2)));
+                const req = s.deliveryRequest;
+                const needs = req && !req.fulfilled ? ` — needs ${req.label}` : req?.fulfilled ? ' — helped' : '';
+                html += `<div class="stat-line" style="color:#aaffaa;"><span class="stat-label">Survivor:</span> <span class="stat-value">${dist} tiles${needs} [E to talk]</span></div>`;
+            }
         }
         
         const accessCard = this.game.world.items.find(item => item.id === 'access_card');
@@ -452,15 +494,68 @@ export class UIManager {
             const threatColor = ['#448844','#888844','#aa7722','#cc4422','#ff2222'][tile.threatLevel - 1] || '#888888';
             const stars = '★'.repeat(tile.threatLevel) + '☆'.repeat(5 - tile.threatLevel);
 
-            let html = `<h4 style="color:#ffaa00;margin-bottom:8px;border-bottom:2px solid #ffaa00;padding-bottom:5px;">OVERWORLD</h4>`;
+            // ── Intel tables ─────────────────────────────────────────────────
+            const BIOME_INTEL = {
+                urban_core:        { loot: 'Medkits, electronics, food',       enemies: 'Raiders, Armed Raiders', npcs: 'Survivors (rare)',  containers: '★★★★' },
+                suburbs:           { loot: 'Food, clothing, tools',            enemies: 'Scavengers, Raiders',    npcs: 'Survivors',         containers: '★★★' },
+                industrial:        { loot: 'Components, fuel, weapons',        enemies: 'Brutes, Raiders',        npcs: 'None',              containers: '★★★★★' },
+                rich_neighborhood: { loot: 'Meds, valuables, food',            enemies: 'Stalkers, Armed Raiders',npcs: 'Survivors (rare)',  containers: '★★★' },
+                ruins:             { loot: 'Scrap, old tools, random gear',    enemies: 'Brutes, Stalkers',       npcs: 'None',              containers: '★★' },
+                rural:             { loot: 'Food, water, basic tools',         enemies: 'Scavengers',             npcs: 'Survivors',         containers: '★★' },
+                forest:            { loot: 'Forage only — no containers',      enemies: 'Stalkers',               npcs: 'None',              containers: '★' },
+            };
+            const ZONE_INTEL = {
+                warehouse:         { loot: 'Bulk components, crates',          enemies: 'Heavy — Brutes common',  npcs: 'None',              note: 'Best loot density' },
+                factory_floor:     { loot: 'Tools, components, fuel',          enemies: 'Brutes, Raiders',        npcs: 'None',              note: 'Machinery to strip' },
+                apartments:        { loot: 'Food, meds, clothing',             enemies: 'Raiders, Scavengers',    npcs: 'Survivors likely',  note: 'Residential loot' },
+                residential:       { loot: 'Food, tools, clothing',            enemies: 'Light',                  npcs: 'Survivors likely',  note: 'Delivery targets here' },
+                shopping_strip:    { loot: 'Mixed — meds, food, clothing',     enemies: 'Raiders',                npcs: 'Survivors (rare)',  note: 'Good stash zones' },
+                shopping_mall:     { loot: 'High variety — all types',         enemies: 'Raiders, Armed Raiders', npcs: 'Survivors',         note: 'Large zone — high risk' },
+                corporate_tower:   { loot: 'Electronics, access cards, meds',  enemies: 'Armed Raiders, Stalkers',npcs: 'None',              note: 'Terminal access possible' },
+                collapsed:         { loot: 'Scrap, random buried gear',        enemies: 'Brutes',                 npcs: 'None',              note: 'Hard traversal' },
+                rail_yard:         { loot: 'Fuel, components, scrap',          enemies: 'Brutes, Raiders',        npcs: 'None',              note: 'Open ground — exposed' },
+                park:              { loot: 'Forage, basic tools',              enemies: 'Stalkers, Scavengers',   npcs: 'None',              note: 'Low loot, stealth viable' },
+                wasteland:         { loot: 'Scrap, random drops',              enemies: 'Scavengers',             npcs: 'None',              note: 'Open — easy extraction' },
+                forest:            { loot: 'Forage only',                      enemies: 'Stalkers',               npcs: 'None',              note: 'Dense cover' },
+                street_block:      { loot: 'Containers in buildings',          enemies: 'Raiders, Scavengers',    npcs: 'Survivors (rare)',  note: 'Standard urban layout' },
+            };
+
+            const bi = BIOME_INTEL[tile.biome] || {};
+            const zi = ZONE_INTEL[tile.zone.id] || {};
+
+            let html = `<h4 style="color:#ffaa00;margin-bottom:8px;border-bottom:2px solid #ffaa00;padding-bottom:5px;">ZONE INTEL</h4>`;
             html += `<div class="stat-line"><span class="stat-label">Zone:</span> <span class="stat-value" style="color:#ffffff;">${tile.zone.name}</span></div>`;
             html += `<div class="stat-line"><span class="stat-label">Biome:</span> <span class="stat-value" style="color:${biomeColor};">${biomeLabel}</span></div>`;
             html += `<div class="stat-line"><span class="stat-label">Threat:</span> <span class="stat-value" style="color:${threatColor};">${stars}</span></div>`;
             html += `<div class="stat-line"><span class="stat-label">Size:</span> <span class="stat-value" style="color:#888888;">${tile.zone.width}×${tile.zone.height}</span></div>`;
-            html += `<div class="stat-line"><span class="stat-label">Coords:</span> <span class="stat-value" style="color:#666666;">(${ow.cursorCol}, ${ow.cursorRow})</span></div>`;
             if (tile.explored) {
-                html += `<div class="stat-line" style="margin-top:6px;"><span class="stat-value" style="color:#00ff88;">✓ Visited</span></div>`;
+                html += `<div class="stat-line"><span class="stat-value" style="color:#00ff88;">✓ Visited</span></div>`;
             }
+
+            html += `<div style="border-top:1px solid #333;margin:6px 0 4px;"></div>`;
+
+            // Zone-specific note takes priority, fall back to biome
+            const loot     = zi.loot     || bi.loot     || '—';
+            const enemies  = zi.enemies  || bi.enemies  || '—';
+            const npcs     = zi.npcs     || bi.npcs     || '—';
+            const containers = bi.containers || '—';
+            const note     = zi.note;
+
+            html += `<div style="color:#888;font-size:11px;text-transform:uppercase;margin-bottom:3px;">Loot</div>`;
+            html += `<div style="color:#ffcc44;font-size:12px;margin-bottom:6px;">${loot}</div>`;
+            html += `<div style="color:#888;font-size:11px;text-transform:uppercase;margin-bottom:3px;">Containers</div>`;
+            html += `<div style="color:#ff8800;font-size:12px;margin-bottom:6px;">${containers}</div>`;
+            html += `<div style="color:#888;font-size:11px;text-transform:uppercase;margin-bottom:3px;">Enemies</div>`;
+            html += `<div style="color:#ff4444;font-size:12px;margin-bottom:6px;">${enemies}</div>`;
+            html += `<div style="color:#888;font-size:11px;text-transform:uppercase;margin-bottom:3px;">NPCs</div>`;
+            html += `<div style="color:#aaffaa;font-size:12px;margin-bottom:6px;">${npcs}</div>`;
+            if (note) {
+                html += `<div style="border-top:1px solid #333;margin:4px 0;"></div>`;
+                html += `<div style="color:#888;font-size:11px;text-transform:uppercase;margin-bottom:3px;">Note</div>`;
+                html += `<div style="color:#00ffff;font-size:12px;">${note}</div>`;
+            }
+            html += `<div style="color:#555;font-size:11px;margin-top:6px;">(${ow.cursorCol}, ${ow.cursorRow})</div>`;
+
             this.locationPanel.innerHTML = html;
         } else if (this.locationPanel) {
             this.locationPanel.innerHTML = '<div style="color:#666;">No tile data</div>';

@@ -1,6 +1,7 @@
 import { Chunk } from './Chunk.js';
 import { NPC } from '../entities/NPC.js';
 import { ExtractionPoint } from './ExtractionPoint.js';
+import { createFurniture, OBJECT_SPRITE_INDEX } from './objects/Furniture.js';
 
 // Biome tint colors for wall sprites (applied over neutral gray spritesheet)
 const BIOME_WALL_TINTS = {
@@ -38,11 +39,10 @@ export class World {
     init() {
         this.generateInitialChunks();
         // NPCs spawn per-chunk via district-aware system in getOrCreateChunk()
-        // Extraction / access card not used in zone mode
-        if (!this.zoneMode) {
-            this.spawnExtractionPoint();
-            this.spawnAccessCard();
-        }
+        this.spawnExtractionPoint();
+        this.spawnAccessCard();
+        this.spawnTerminal();
+        this.spawnEchoFragment();
     }
     
     generateInitialChunks() {
@@ -296,7 +296,60 @@ export class World {
         }
         console.warn('Failed to spawn access card after 50 attempts');
     }
-    
+
+    spawnTerminal() {
+        const spawnPos = this.getSpawnPosition();
+        const angle = Math.random() * Math.PI * 2;
+        const distance = 10 + Math.floor(Math.random() * 20);
+        const bx = Math.floor(spawnPos.x + Math.cos(angle) * distance);
+        const by = Math.floor(spawnPos.y + Math.sin(angle) * distance);
+
+        for (let attempt = 0; attempt < 50; attempt++) {
+            const tx = bx + Math.floor(Math.random() * 10) - 5;
+            const ty = by + Math.floor(Math.random() * 10) - 5;
+            if (this.isBlocked(tx, ty, 0)) continue;
+            if (this.getWorldObjectAt(tx, ty, 0)) continue;
+            const terminal = createFurniture('terminal', tx, ty, 0);
+            this.addWorldObject(terminal);
+            const spriteIdx = OBJECT_SPRITE_INDEX['terminal'];
+            this.updateTileAt(tx, ty, 0, {
+                glyph: terminal.glyph,
+                fgColor: terminal.fgColor,
+                bgColor: '#3a3a3a',
+                blocked: terminal.blocked,
+                blocksVision: terminal.blocksVision,
+                name: terminal.name,
+                worldObjectId: terminal.id,
+                spriteData: spriteIdx !== undefined ? { sheet: 'objects', index: spriteIdx } : null
+            });
+            this.game.ui.log('A terminal is active somewhere in this zone.', 'info');
+            return;
+        }
+    }
+
+    spawnEchoFragment() {
+        if (!this.game.content) return;
+        const spawnPos = this.getSpawnPosition();
+        const angle = Math.random() * Math.PI * 2;
+        const distance = 15 + Math.floor(Math.random() * 20);
+        const bx = Math.floor(spawnPos.x + Math.cos(angle) * distance);
+        const by = Math.floor(spawnPos.y + Math.sin(angle) * distance);
+
+        for (let attempt = 0; attempt < 50; attempt++) {
+            const tx = bx + Math.floor(Math.random() * 10) - 5;
+            const ty = by + Math.floor(Math.random() * 10) - 5;
+            if (this.isBlocked(tx, ty, 0)) continue;
+            const fragment = this.game.content.createItem('echo_fragment');
+            if (!fragment) return;
+            fragment.x = tx;
+            fragment.y = ty;
+            fragment.z = 0;
+            this.addItem(fragment);
+            this.game.ui.log('You sense a faint resonance nearby — an Echo Fragment.', 'info');
+            return;
+        }
+    }
+
     /**
      * Process world turn. actionCost is the player's action cost in energy units.
      * NPCs gain energy proportional to actionCost (100 = 1 full turn).

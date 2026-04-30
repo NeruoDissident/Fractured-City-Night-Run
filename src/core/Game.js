@@ -18,6 +18,7 @@ import { TimeSystem } from '../systems/TimeSystem.js';
 import { LightingSystem } from '../systems/LightingSystem.js';
 import { MobileControls } from '../ui/MobileControls.js';
 import { OverworldMap } from '../world/OverworldMap.js';
+import { GoalSystem } from '../systems/GoalSystem.js';
 
 export class Game {
     constructor() {
@@ -32,6 +33,7 @@ export class Game {
         this.timeSystem = null;
         this.lightingSystem = null;
         this.mobileControls = null;
+        this.goalSystem = null;
         
         this.isRunning = false;
         this.turnCount = 0;
@@ -90,6 +92,10 @@ export class Game {
         this.player = new Player(this, characterData);
         this._loadoutGiven = false;
 
+        // Init goal system
+        this.goalSystem = new GoalSystem(this);
+        this.goalSystem.initGoals(this.player);
+
         // Create the overworld
         const runSeed = Date.now() & 0x7FFFFFFF;
         this.overworldMap = new OverworldMap(runSeed);
@@ -98,6 +104,7 @@ export class Game {
         this.gameState = 'overworld';
 
         this.ui.log('Welcome to Fractured City.', 'info');
+        this.ui.log(`Archetype: ${this.player.archetypeLabel} — ${this.player.primaryGoal.text}`, 'info');
         this.ui.log('Navigate the overworld. [Enter] or [Space] to drop into a zone.', 'info');
         this.ui.log('Walk to a zone edge to move to the adjacent zone.', 'info');
         this.render();
@@ -181,6 +188,29 @@ export class Game {
         this.ui.log(`Entering: ${owTile.zone.name} [${owTile.biome.replace('_', ' ')}]  Threat: ${'★'.repeat(threat)}`, 'info');
         if (this.timeSystem) {
             this.ui.log(`Time: ${this.timeSystem.getTimeString()} - ${this.timeSystem.getTimePeriod()}`, 'info');
+        }
+
+        // Goal hints
+        if (this.player && this.player.floorGoals) {
+            const active = this.player.floorGoals.filter(g => !g.completed);
+            for (const goal of active) {
+                const hints = {
+                    find_stash:       'Search furniture and containers to find a stash.',
+                    reach_extraction: `Reach the extraction point — check your location panel for distance.`,
+                    kill_gang_leader: 'Eliminate a Brute or Armed Raider in this zone.',
+                    avoid_kills:      'Complete the zone without killing anyone.',
+                    find_medicine:    'Search containers for medical supplies.',
+                    treat_npc:        'Find a Survivor (green @) and talk to them.',
+                    deliver_item:     'Find a Survivor (green @) — they need something. Press [E] to talk.',
+                    hack_terminal:    'Find a terminal to access.',
+                    destroy_stash:    'Find and destroy a gang stash.',
+                    strip_electronics:'Loot containers to strip electronics.',
+                    salvage_gear:     'Loot gear from bodies or containers.',
+                    find_fragment:    'Search for an Echo fragment in this zone.',
+                };
+                const hint = hints[goal.id];
+                if (hint) this.ui.log(`Goal: ${hint}`, 'warning');
+            }
         }
 
         this.updateFoV();
@@ -327,6 +357,7 @@ export class Game {
                 this.world.processTurn(actionCost);
                 this.soundSystem.processTurn();
                 this.abilitySystem.processTurn();
+                if (this.goalSystem) this.goalSystem.checkGoals(this.player);
                 this.checkGameOver();
             }
         }
@@ -490,9 +521,10 @@ export class Game {
             const groundItems = (dir.dx === 0 && dir.dy === 0) ? this.world.getItemsAt(cx, cy, this.player.z) : [];
             const tile = this.world.getTile(cx, cy, this.player.z);
             const hasStairs = tile && (tile.isStaircase || tile.isManhole || tile.isLadder);
+            const npc = this.world.entities.find(e => e !== this.player && e.x === cx && e.y === cy && e.z === this.player.z);
             
-            if (worldObj || groundItems.length > 0 || (hasStairs && dir.dx === 0 && dir.dy === 0)) {
-                candidates.push({ x: cx, y: cy, dx: dir.dx, dy: dir.dy, worldObj, groundItems, hasStairs });
+            if (worldObj || groundItems.length > 0 || (hasStairs && dir.dx === 0 && dir.dy === 0) || npc) {
+                candidates.push({ x: cx, y: cy, dx: dir.dx, dy: dir.dy, worldObj, groundItems, hasStairs, npc });
             }
         }
         
@@ -536,18 +568,72 @@ export class Game {
     }
     
     resolveInteraction(candidate) {
-        if (candidate.worldObj) {
+        if (candidate.npc) {
+            this._talkToNPC(candidate.npc);
+        } else if (candidate.worldObj) {
             this.ui.showWorldObjectModal(candidate.worldObj);
         } else if (candidate.groundItems && candidate.groundItems.length > 0) {
             this.ui.showGroundItemsModal();
         } else if (candidate.hasStairs) {
-            // Let the stair interaction handle it
             const tile = this.world.getTile(candidate.x, candidate.y, this.player.z);
             if (tile.isStaircase || tile.isManhole || tile.isLadder) {
                 this.ui.log('Use < or > to go up/down stairs.', 'info');
             }
         }
         this.render();
+    }
+
+    _talkToNPC(npc) {
+        // Hostile NPCs — attempt intimidation
+        if (npc.hostile) {
+            const { DETECTION_STATE } = npc.constructor ? {} : {};
+            const playerStr = (this.player.stats?.strength || 10);
+            const npcCourage = (npc.profile?.courage || 0.5);
+            // Chance = player STR scaled against NPC courage (0=fearless,1=coward)
+            const chance = Math.min(0.9, Math.max(0.05, (playerStr / 20) * (1 - npcCourage)));
+            if (Math.random() < chance) {
+                npc.detectionState = 'fleeing';
+                if (!this.player.goalsData) this.player.goalsData = {};
+                this.player.goalsData.npcIntimidated = true;
+                this.ui.log(`You stare down the ${npc.name}. They back away, shaken. [Intimidated]`, 'info');
+                if (this.goalSystem) this.goalSystem.checkGoals(this.player);
+            } else {
+                this.ui.log(`You try to intimidate the ${npc.name} — they aren't impressed.`, 'warning');
+            }
+            return;
+        }
+        if (npc.deliveryRequest && !npc.deliveryRequest.fulfilled) {
+            const req = npc.deliveryRequest;
+            const item = this.player.inventory.find(i => i.id === req.itemId);
+            if (item) {
+                this.player.removeFromInventory(item);
+                npc.deliveryRequest.fulfilled = true;
+                if (!this.player.goalsData) this.player.goalsData = {};
+                this.player.goalsData.itemDelivered = true;
+                this.ui.log(`${npc.name}: "Thank you... this means everything." [Delivered ${req.label}]`, 'info');
+                if (this.goalSystem) this.goalSystem.checkGoals(this.player);
+            } else {
+                this.ui.log(`${npc.name}: "Please... I need ${req.label}. Can you help me?"`, 'info');
+            }
+        } else if (npc.deliveryRequest?.fulfilled) {
+            this.ui.log(`${npc.name}: "You already helped me. Stay safe out there."`, 'info');
+        } else {
+            // Treatment path — Field Medic goal
+            const medicalIds = ['medkit', 'bandage', 'antiseptic', 'painkiller'];
+            const medItem = this.player.inventory.find(i => medicalIds.includes(i.id) || i.medicalEffect);
+            if (medItem && !npc.treated) {
+                this.player.removeFromInventory(medItem);
+                npc.treated = true;
+                if (!this.player.goalsData) this.player.goalsData = {};
+                this.player.goalsData.npcsSaved = (this.player.goalsData.npcsSaved || 0) + 1;
+                this.ui.log(`${npc.name}: "I... thank you. I thought I wouldn't make it." [Treated with ${medItem.name}]`, 'info');
+                if (this.goalSystem) this.goalSystem.checkGoals(this.player);
+            } else if (npc.treated) {
+                this.ui.log(`${npc.name}: "You've already patched me up. Thank you."`, 'info');
+            } else {
+                this.ui.log(`${npc.name}: "..." They don't respond.`, 'info');
+            }
+        }
     }
     
     checkGameOver() {
