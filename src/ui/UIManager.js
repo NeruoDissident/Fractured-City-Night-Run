@@ -35,7 +35,116 @@ export class UIManager {
             this.detailedInventoryModal.classList.add('hidden');
         }
     }
-    
+
+    toggleQuestJournal() {
+        if (!this.questJournalModal) return;
+        if (this.questJournalModal.classList.contains('hidden')) {
+            this.questJournalModal.classList.remove('hidden');
+            this.renderQuestJournal();
+        } else {
+            this.questJournalModal.classList.add('hidden');
+        }
+    }
+
+    renderQuestJournal() {
+        if (!this.questJournalContent) return;
+        if (!this.game.questSystem) {
+            this.questJournalContent.innerHTML = `
+                <div style="padding:20px;text-align:center;color:#777;">
+                    Objectives are being rebuilt around world zones, occupations, and named situations.
+                </div>`;
+            return;
+        }
+        const qs = this.game.questSystem;
+        const player = this.game.player;
+
+        let html = '';
+
+        const active = qs.getActiveQuests(player);
+        if (active.length > 0) {
+            html += `<h3 style="color:#ffaa00;margin:12px 0 8px;">Active</h3>`;
+            for (const q of active) {
+                html += `<div style="padding:10px;background:#1a1a1a;border-left:3px solid #ffaa00;margin-bottom:8px;">`;
+                html += `<div style="font-weight:bold;color:#fff;">${q.title}</div>`;
+                html += `<div style="font-size:12px;color:#888;margin-top:3px;">${q.description}</div>`;
+                html += `<div style="font-size:12px;color:#ffaa00;margin-top:4px;">`;
+                html += `Stage ${q.stageIndex + 1}/${q.totalStages}: ${q.stageText}`;
+                html += `</div></div>`;
+            }
+        }
+
+        const completed = qs.getCompletedQuests(player);
+        if (completed.length > 0) {
+            html += `<h3 style="color:#44ff44;margin:12px 0 8px;">Completed</h3>`;
+            for (const q of completed) {
+                html += `<div style="padding:8px;background:#1a1a1a;border-left:3px solid #44ff44;margin-bottom:6px;">`;
+                html += `<div style="font-size:13px;color:#aaa;">${q.title}</div>`;
+                html += `</div>`;
+            }
+        }
+
+        // Side Jobs (delivery requests)
+        const activeDeliveries = qs.getActiveDeliveries(player);
+        if (activeDeliveries.length > 0) {
+            html += `<h3 style="color:#00aaff;margin:12px 0 8px;">Side Jobs</h3>`;
+            for (const d of activeDeliveries) {
+                html += `<div style="padding:8px;background:#1a1a1a;border-left:3px solid #00aaff;margin-bottom:6px;">`;
+                html += `<div style="font-size:13px;color:#ddd;">Find ${d.label} for ${d.npcName}</div>`;
+                html += `</div>`;
+            }
+        }
+
+        const completedDeliveries = qs.getCompletedDeliveries(player);
+        if (completedDeliveries.length > 0) {
+            html += `<h3 style="color:#888;margin:12px 0 8px;">Completed Jobs</h3>`;
+            for (const d of completedDeliveries) {
+                html += `<div style="padding:6px;background:#1a1a1a;border-left:3px solid #888;margin-bottom:4px;">`;
+                html += `<div style="font-size:12px;color:#888;">Delivered ${d.label} to ${d.npcName}</div>`;
+                html += `</div>`;
+            }
+        }
+
+        if (active.length === 0 && completed.length === 0 && activeDeliveries.length === 0 && completedDeliveries.length === 0) {
+            html += `<div style="padding:20px;text-align:center;color:#666;">No active quests.<br>Talk to survivors in the field.</div>`;
+        }
+
+        this.questJournalContent.innerHTML = html;
+    }
+
+    showNPCDialogue(npc, text, choices, onChoice) {
+        if (!this.npcDialogueModal) return;
+        this.npcDialogueName.textContent = npc.name || 'Someone';
+        this.npcDialogueGlyph.textContent = npc.glyph || '?';
+        this.npcDialogueGlyph.style.color = npc.color || '#aaa';
+        this.npcDialogueSubtitle.textContent = npc.type || 'survivor';
+        this.npcDialogueText.innerHTML = text;
+        this._npcDialogueCallback = onChoice;
+
+        this.npcDialogueChoices.innerHTML = '';
+        for (const choice of choices) {
+            const btn = document.createElement('button');
+            btn.className = 'small-btn';
+            btn.style.cssText = 'text-align:left; padding:8px 12px; font-size:13px; border:1px solid #555; background:#1a1a1a; color:#fff; cursor:pointer;';
+            btn.innerHTML = choice.label;
+            btn.addEventListener('click', () => {
+                if (this._npcDialogueCallback) {
+                    this._npcDialogueCallback(choice.id);
+                }
+                this.closeNPCDialogue();
+            });
+            this.npcDialogueChoices.appendChild(btn);
+        }
+
+        this.npcDialogueModal.classList.remove('hidden');
+    }
+
+    closeNPCDialogue() {
+        if (this.npcDialogueModal) {
+            this.npcDialogueModal.classList.add('hidden');
+        }
+        this._npcDialogueCallback = null;
+    }
+
     init() {
         this.logPanel = document.getElementById('log-content');
         this.characterPanel = document.getElementById('character-content');
@@ -52,6 +161,17 @@ export class UIManager {
         this.helpModal = document.getElementById('help-screen');
         this.abilityPanelModal = document.getElementById('ability-panel');
         this.abilityPopup = document.getElementById('ability-popup');
+        this.questJournalModal = document.getElementById('quest-journal');
+        this.questJournalContent = document.getElementById('quest-journal-content');
+
+        // NPC dialogue modal
+        this.npcDialogueModal = document.getElementById('npc-dialogue');
+        this.npcDialogueName = document.getElementById('npc-dialogue-name');
+        this.npcDialogueGlyph = document.getElementById('npc-dialogue-glyph');
+        this.npcDialogueSubtitle = document.getElementById('npc-dialogue-subtitle');
+        this.npcDialogueText = document.getElementById('npc-dialogue-text');
+        this.npcDialogueChoices = document.getElementById('npc-dialogue-choices');
+        this._npcDialogueCallback = null;
         
         // Combat overlay elements
         this.combatOverlay = document.getElementById('combat-overlay');
@@ -75,6 +195,13 @@ export class UIManager {
         document.getElementById('close-ability-btn').addEventListener('click', () => {
             this.abilityPanelModal.classList.add('hidden');
         });
+
+        const closeQuestBtn = document.getElementById('close-quest-btn');
+        if (closeQuestBtn) {
+            closeQuestBtn.addEventListener('click', () => {
+                this.questJournalModal.classList.add('hidden');
+            });
+        }
         
         const closeCombatBtn = document.getElementById('close-combat-btn');
         if (closeCombatBtn) {
@@ -487,10 +614,12 @@ export class UIManager {
         if (this.locationPanel && tile) {
             const biomeColors = {
                 urban_core:'#00ccff', suburbs:'#88cc44', industrial:'#cc8800',
-                rich_neighborhood:'#ddaa44', rural:'#aa8855', forest:'#44aa44', ruins:'#888888'
+                rich_neighborhood:'#ddaa44', rural:'#aa8855', forest:'#44aa44', ruins:'#888888',
+                ocean:'#3377cc', lake:'#44aaff', river:'#55bbff', coast:'#d8c06a', wetland:'#55aa88'
             };
             const biomeColor = biomeColors[tile.biome] || '#aaaaaa';
             const biomeLabel = tile.biome.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+            const terrainLabel = (tile.terrain || tile.biome).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
             const threatColor = ['#448844','#888844','#aa7722','#cc4422','#ff2222'][tile.threatLevel - 1] || '#888888';
             const stars = '★'.repeat(tile.threatLevel) + '☆'.repeat(5 - tile.threatLevel);
 
@@ -504,7 +633,21 @@ export class UIManager {
                 rural:             { loot: 'Food, water, basic tools',         enemies: 'Scavengers',             npcs: 'Survivors',         containers: '★★' },
                 forest:            { loot: 'Forage only — no containers',      enemies: 'Stalkers',               npcs: 'None',              containers: '★' },
             };
+            Object.assign(BIOME_INTEL, {
+                ocean:   { loot: 'Wreckage, salvage',            enemies: 'Sparse',             npcs: 'None',       containers: '*' },
+                lake:    { loot: 'Water, shoreline camps',       enemies: 'Sparse',             npcs: 'Drifters',   containers: '**' },
+                river:   { loot: 'Bridge stashes, water access', enemies: 'Toll crews',         npcs: 'Travelers',  containers: '**' },
+                coast:   { loot: 'Fuel, boat parts, food',       enemies: 'Smugglers, Raiders', npcs: 'Scavengers', containers: '***' },
+                wetland: { loot: 'Water, scrap, hidden camps',   enemies: 'Stalkers',           npcs: 'Rare',       containers: '*' },
+            });
             const ZONE_INTEL = {
+                urban_corner_store:{ loot: 'Food, batteries, register junk', enemies: 'Light',    npcs: 'Survivors', note: 'First target for readable urban zones' },
+                urban_market_corner:{ loot: 'Rations, medicine, tools',      enemies: 'Light',    npcs: 'Clerks, drifters', note: 'Street Kid starter route' },
+                open_water:        { loot: 'Floating salvage',               enemies: 'Rare',     npcs: 'None',      note: 'Placeholder water zone' },
+                lake_shore:        { loot: 'Water, camps, basic tools',      enemies: 'Light',    npcs: 'Drifters',  note: 'Fresh water access' },
+                river_crossing:    { loot: 'Bridge cache, travel supplies',  enemies: 'Variable', npcs: 'Travelers', note: 'Natural travel choke point' },
+                coastal_road:      { loot: 'Vehicles, fuel, roadside stash', enemies: 'Variable', npcs: 'Scavengers',note: 'Coastal route' },
+                marina_ruins:      { loot: 'Boat parts, fuel, tools',        enemies: 'Smugglers',npcs: 'Traders',   note: 'Future boat extraction hook' },
                 warehouse:         { loot: 'Bulk components, crates',          enemies: 'Heavy — Brutes common',  npcs: 'None',              note: 'Best loot density' },
                 factory_floor:     { loot: 'Tools, components, fuel',          enemies: 'Brutes, Raiders',        npcs: 'None',              note: 'Machinery to strip' },
                 apartments:        { loot: 'Food, meds, clothing',             enemies: 'Raiders, Scavengers',    npcs: 'Survivors likely',  note: 'Residential loot' },
@@ -525,7 +668,14 @@ export class UIManager {
 
             let html = `<h4 style="color:#ffaa00;margin-bottom:8px;border-bottom:2px solid #ffaa00;padding-bottom:5px;">ZONE INTEL</h4>`;
             html += `<div class="stat-line"><span class="stat-label">Zone:</span> <span class="stat-value" style="color:#ffffff;">${tile.zone.name}</span></div>`;
+            html += `<div class="stat-line"><span class="stat-label">Terrain:</span> <span class="stat-value" style="color:${biomeColor};">${terrainLabel}</span></div>`;
             html += `<div class="stat-line"><span class="stat-label">Biome:</span> <span class="stat-value" style="color:${biomeColor};">${biomeLabel}</span></div>`;
+            if (tile.settlement) {
+                html += `<div class="stat-line"><span class="stat-label">Region:</span> <span class="stat-value" style="color:#ffaa00;">${tile.settlement}</span></div>`;
+            }
+            if (tile.road) {
+                html += `<div class="stat-line"><span class="stat-label">Route:</span> <span class="stat-value" style="color:#aaaaaa;">Road access</span></div>`;
+            }
             html += `<div class="stat-line"><span class="stat-label">Threat:</span> <span class="stat-value" style="color:${threatColor};">${stars}</span></div>`;
             html += `<div class="stat-line"><span class="stat-label">Size:</span> <span class="stat-value" style="color:#888888;">${tile.zone.width}×${tile.zone.height}</span></div>`;
             if (tile.explored) {
@@ -3284,6 +3434,17 @@ export class UIManager {
             }
             closedAny = true;
         }
+
+        if (this.questJournalModal && !this.questJournalModal.classList.contains('hidden')) {
+            this.questJournalModal.classList.add('hidden');
+            closedAny = true;
+        }
+
+        if (this.npcDialogueModal && !this.npcDialogueModal.classList.contains('hidden')) {
+            this.npcDialogueModal.classList.add('hidden');
+            this._npcDialogueCallback = null;
+            closedAny = true;
+        }
         
         if (this.combatOverlayVisible) {
             this.hideCombatOverlay();
@@ -3822,6 +3983,7 @@ export class UIManager {
         html += '<div class="stat-line"><span class="stat-label">V:</span> <span class="stat-value">Workshop — craft and disassemble</span></div>';
         html += '<div class="stat-line"><span class="stat-label">T:</span> <span class="stat-value">Cycle combat stance</span></div>';
         html += '<div class="stat-line"><span class="stat-label">Q:</span> <span class="stat-value">Combat abilities panel</span></div>';
+        html += '<div class="stat-line"><span class="stat-label">J:</span> <span class="stat-value">Quest journal — active and completed quests</span></div>';
         html += '<div class="stat-line"><span class="stat-label">B:</span> <span class="stat-value">Toggle combat detail overlay</span></div>';
         html += '<div class="stat-line"><span class="stat-label">?:</span> <span class="stat-value">This help screen</span></div>';
         html += '</div>';

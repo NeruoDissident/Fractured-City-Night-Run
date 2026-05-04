@@ -159,6 +159,28 @@
         </div>
     </div>
     
+    <div id="quest-journal" class="modal hidden">
+        <div class="modal-content" style="max-width: 700px;">
+            <h2>Quest Journal <span style="font-size:13px; color:#888;">[J]</span></h2>
+            <div id="quest-journal-content" style="max-height: 60vh; overflow-y: auto;"></div>
+            <button id="close-quest-btn">Close [J]</button>
+        </div>
+    </div>
+
+    <div id="npc-dialogue" class="modal hidden">
+        <div class="modal-content" style="max-width: 600px;">
+            <div id="npc-dialogue-header" style="display:flex; align-items:center; gap:10px; margin-bottom:12px; border-bottom:2px solid #555; padding-bottom:8px;">
+                <span id="npc-dialogue-glyph" style="font-size:24px;">@</span>
+                <div>
+                    <h2 id="npc-dialogue-name" style="margin:0; font-size:18px;">NPC</h2>
+                    <div id="npc-dialogue-subtitle" style="font-size:12px; color:#888;"></div>
+                </div>
+            </div>
+            <div id="npc-dialogue-text" style="font-size:14px; line-height:1.6; color:#ddd; margin-bottom:16px; min-height:40px;"></div>
+            <div id="npc-dialogue-choices" style="display:flex; flex-direction:column; gap:8px;"></div>
+        </div>
+    </div>
+
     <script type="module" src="src/main.js"></script>
     <script>
         if ('serviceWorker' in navigator) {

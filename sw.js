@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fractured-city-v62';
+const CACHE_NAME = 'fractured-city-v63';
 const ASSETS = [
     '/',
     '/index.html',
@@ -16,8 +16,11 @@ const ASSETS = [
     '/src/world/World.js',
     '/src/world/OverworldMap.js',
     '/src/world/Chunk.js',
+    '/src/world/gen/ZoneCanvas.js',
+    '/src/world/gen/ZoneGenerator.js',
+    '/src/world/gen/ZoneTiles.js',
+    '/src/world/gen/UrbanFragments.js',
     '/src/world/WorldObject.js',
-    '/src/world/ExtractionPoint.js',
     '/src/world/objects/Door.js',
     '/src/world/objects/Furniture.js',
     '/src/entities/Entity.js',
@@ -37,8 +40,6 @@ const ASSETS = [
     '/src/systems/TimeSystem.js',
     '/src/systems/LightingSystem.js',
     '/src/content/ContentManager.js',
-    '/src/content/BuildingPrefabs.js',
-    '/src/content/LootTables.js',
     '/src/content/TalentCatalog.js',
     '/src/systems/AbilitySystem.js',
     '/src/systems/GoalSystem.js',

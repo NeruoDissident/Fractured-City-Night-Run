@@ -7,10 +7,15 @@ export class Renderer {
         this.tilesY = 20;
         this.scale = 1.0;
         this.spriteManager = null;
+        this.graphicsMode = 'ascii';
     }
     
     setSpriteManager(spriteManager) {
         this.spriteManager = spriteManager;
+    }
+
+    setGraphicsMode(mode) {
+        this.graphicsMode = mode === 'sprites' ? 'sprites' : 'ascii';
     }
     
     init() {
@@ -106,7 +111,7 @@ export class Renderer {
      * @param {string|null} lightTint - Light source tint color
      */
     drawTileSprite(x, y, glyph, fgColor, bgColor, spriteData, lightLevel = 1.0, lightTint = null) {
-        if (spriteData && this.spriteManager) {
+        if (this.graphicsMode === 'sprites' && spriteData && this.spriteManager) {
             const screenX = x * this.tileSize;
             const screenY = y * this.tileSize;
             const drawn = this.spriteManager.drawSprite(
@@ -124,7 +129,7 @@ export class Renderer {
      * Draw a dimmed (explored but not visible) tile with sprite support.
      */
     drawTileSpriteDimmed(x, y, glyph, fgColor, bgColor, spriteData) {
-        if (spriteData && this.spriteManager) {
+        if (this.graphicsMode === 'sprites' && spriteData && this.spriteManager) {
             const screenX = x * this.tileSize;
             const screenY = y * this.tileSize;
             const drawn = this.spriteManager.drawSpriteDimmed(

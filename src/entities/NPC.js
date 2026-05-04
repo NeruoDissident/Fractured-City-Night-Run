@@ -136,6 +136,77 @@ const NPC_TYPES = {
             // always has a blade
         ],
     },
+    // ─── Faction NPCs (zone template signatures) ───────────────────────────
+    ganger: {
+        name: 'Ganger',
+        glyph: 'g',
+        color: '#cc3333',
+        stats: { strength: 10, agility: 10, endurance: 10, intelligence: 7, perception: 9 },
+        speed: 75, attackCost: 100, moveCost: 100,
+        visionRange: 8, hearingRange: 14,
+        hostile: true, aggression: 0.7, courage: 0.5,
+        leashRange: 25, giveUpTurns: 15, wanderChance: 0.3,
+        weaponTable: [
+            { weight: 50, weapon: { name: 'Pipe', type: 'weapon', baseDamage: '1d8', weaponStats: { attackType: 'blunt', accuracy: -5, critBonus: -1, staggerChance: 0.20 } } },
+            { weight: 30, weapon: { name: 'Shiv', type: 'weapon', baseDamage: '1d4', weaponStats: { attackType: 'sharp', bleedChance: 0.30, accuracy: 5, parryBonus: 0.05 } } },
+            { weight: 20, weapon: null },
+        ],
+    },
+    smuggler: {
+        name: 'Smuggler',
+        glyph: '@',
+        color: '#ccaaff',
+        stats: { strength: 9, agility: 10, endurance: 8, intelligence: 10, perception: 10 },
+        speed: 70, attackCost: 100, moveCost: 100,
+        visionRange: 7, hearingRange: 12,
+        hostile: false, aggression: 0.0, courage: 0.5,
+        leashRange: 6, giveUpTurns: 5, wanderChance: 0.15,
+        weaponTable: [
+            { weight: 40, weapon: { name: 'Knife', type: 'weapon', baseDamage: '1d6', weaponStats: { attackType: 'sharp', bleedChance: 0.40, accuracy: 10, critBonus: 3, parryBonus: 0.12 } } },
+            { weight: 60, weapon: null },
+        ],
+        needsItem: true,
+    },
+    feral: {
+        name: 'Feral',
+        glyph: 'f',
+        color: '#dd8822',
+        stats: { strength: 11, agility: 12, endurance: 8, intelligence: 4, perception: 10 },
+        speed: 85, attackCost: 90, moveCost: 90,
+        visionRange: 6, hearingRange: 16,
+        hostile: true, aggression: 0.9, courage: 0.8,
+        leashRange: 20, giveUpTurns: 10, wanderChance: 0.5,
+        weaponTable: [
+            { weight: 70, weapon: { name: 'Shiv', type: 'weapon', baseDamage: '1d4', weaponStats: { attackType: 'sharp', bleedChance: 0.30, accuracy: 5, parryBonus: 0.05 } } },
+            { weight: 30, weapon: null },
+        ],
+    },
+    mogul_guard: {
+        name: 'Mogul Guard',
+        glyph: 'M',
+        color: '#aa3333',
+        stats: { strength: 13, agility: 10, endurance: 12, intelligence: 8, perception: 9 },
+        speed: 70, attackCost: 110, moveCost: 110,
+        visionRange: 9, hearingRange: 12,
+        hostile: true, aggression: 0.8, courage: 0.3,
+        leashRange: 20, giveUpTurns: 12, wanderChance: 0.2,
+        weaponTable: [
+            { weight: 60, weapon: { name: 'Knife', type: 'weapon', baseDamage: '1d6', weaponStats: { attackType: 'sharp', bleedChance: 0.40, accuracy: 10, critBonus: 3, parryBonus: 0.12 } } },
+            { weight: 40, weapon: { name: 'Pipe', type: 'weapon', baseDamage: '1d8', weaponStats: { attackType: 'blunt', accuracy: -5, critBonus: -1, staggerChance: 0.20 } } },
+        ],
+    },
+    drifter: {
+        name: 'Drifter',
+        glyph: 'd',
+        color: '#bbbbbb',
+        stats: { strength: 7, agility: 11, endurance: 7, intelligence: 8, perception: 10 },
+        speed: 85, attackCost: 100, moveCost: 100,
+        visionRange: 8, hearingRange: 14,
+        hostile: false, aggression: 0.0, courage: 0.6,
+        leashRange: 8, giveUpTurns: 5, wanderChance: 0.4,
+        weaponTable: null,
+        needsItem: true,
+    },
 };
 
 // Detection states — controls NPC awareness and behavior
@@ -194,9 +265,14 @@ export class NPC extends Entity {
         // Weapon item (null = unarmed)
         this.weapon = this.rollWeapon();
 
-        // Delivery request for survivor NPCs
+        // Quest state (new — Milestone 1)
+        this.questId = null;        // which quest definition id (e.g. 'rook_supplies')
+        this.questRole = null;      // 'giver' | 'receiver' | 'target' | null
+        this.questDialogue = null;  // { offer, remind, complete, denied } strings
+
+        // Old random delivery errands are inactive while objectives are rebuilt.
         this.deliveryRequest = null;
-        if (this.profile.needsItem) {
+        if (false && this.profile.needsItem) {
             const requests = [
                 { itemId: 'medkit',     label: 'a medkit',      reward: 'food'      },
                 { itemId: 'bandage',    label: 'bandages',       reward: 'ammo'      },
@@ -693,7 +769,8 @@ export class NPC extends Entity {
             this.game.ui.log(`${this.name} ${cause}.`, 'combat');
         }
         // Goal tracking: heavy NPCs count as gang leaders
-        if ((this.type === 'brute' || this.type === 'armed_raider') && this.game.player) {
+        const heavyTypes = ['brute', 'armed_raider', 'ganger', 'mogul_guard'];
+        if (heavyTypes.includes(this.type) && this.game.player) {
             if (!this.game.player.goalsData) this.game.player.goalsData = {};
             this.game.player.goalsData.gangLeaderKilled = true;
         }

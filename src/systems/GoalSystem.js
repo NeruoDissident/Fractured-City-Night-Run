@@ -15,6 +15,7 @@ export const ARCHETYPES = {
             'reach_extraction',
             'kill_gang_leader',
             'avoid_kills',
+            'complete_quest',
         ],
         factionStanding: {
             downstairs:    'welcome',
@@ -225,6 +226,12 @@ export const FLOOR_GOALS = {
         text: 'Deliver a needed item.',
         xp: 20,
         check: (game) => game.player.goalsData.itemDelivered === true
+    },
+    complete_quest: {
+        id: 'complete_quest',
+        text: 'Complete a quest.',
+        xp: 25,
+        check: (game) => game.player.goalsData.questCompleted === true
     },
 };
 

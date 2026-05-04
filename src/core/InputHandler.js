@@ -53,6 +53,12 @@ export class InputHandler {
             this.game.ui.toggleCraftingScreen();
             return;
         }
+
+        if (e.key === 'j' || e.key === 'J') {
+            e.preventDefault();
+            this.game.ui.toggleQuestJournal();
+            return;
+        }
         
         if (e.key === '?') {
             e.preventDefault();

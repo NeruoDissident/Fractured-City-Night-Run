@@ -19,6 +19,7 @@ import { LightingSystem } from '../systems/LightingSystem.js';
 import { MobileControls } from '../ui/MobileControls.js';
 import { OverworldMap } from '../world/OverworldMap.js';
 import { GoalSystem } from '../systems/GoalSystem.js';
+import { QuestSystem } from '../systems/QuestSystem.js';
 
 export class Game {
     constructor() {
@@ -34,6 +35,8 @@ export class Game {
         this.lightingSystem = null;
         this.mobileControls = null;
         this.goalSystem = null;
+        this.questSystem = null;
+        this.graphicsMode = 'ascii';
         
         this.isRunning = false;
         this.turnCount = 0;
@@ -69,6 +72,7 @@ export class Game {
         this.renderer = new Renderer();
         this.renderer.init();
         this.renderer.setSpriteManager(this.spriteManager);
+        this.renderer.setGraphicsMode(this.graphicsMode);
         
         this.ui = new UIManager(this);
         this.ui.init();
@@ -92,22 +96,111 @@ export class Game {
         this.player = new Player(this, characterData);
         this._loadoutGiven = false;
 
-        // Init goal system
+        // Init goals and the first occupation-driven quest chain.
         this.goalSystem = new GoalSystem(this);
         this.goalSystem.initGoals(this.player);
+        this.questSystem = new QuestSystem(this);
+        this.questSystem.initPlayer(this.player);
 
-        // Create the overworld
+        // Create the overworld (exists but player starts in the hub)
         const runSeed = Date.now() & 0x7FFFFFFF;
         this.overworldMap = new OverworldMap(runSeed);
+        this._installStarterQuestZones();
 
         this.isRunning = true;
-        this.gameState = 'overworld';
 
-        this.ui.log('Welcome to Fractured City.', 'info');
-        this.ui.log(`Archetype: ${this.player.archetypeLabel} — ${this.player.primaryGoal.text}`, 'info');
-        this.ui.log('Navigate the overworld. [Enter] or [Space] to drop into a zone.', 'info');
-        this.ui.log('Walk to a zone edge to move to the adjacent zone.', 'info');
+        // Start in the hub town zone instead of the overworld
+        this._enterHubZone();
+    }
+
+    // ── Enter the hub town zone (safe starting area) ────────────────────────────
+    _enterHubZone() {
+        // Create a small safe world. The zone generator owns layout, NPCs, and POIs.
+        this.world = new World(this);
+        this.world.zoneMode = true;
+        this.world.forcedBiome = 'suburbs';
+        this.world.worldSeed = (this.overworldMap?.seed || Date.now()) & 0x7FFFFFFF;
+        this.world.zoneWidth = 80;
+        this.world.zoneHeight = 80;
+        this.world.zoneBounds = { minCx: 0, maxCx: 0, minCy: 0, maxCy: 0 };
+        this.world.init();
+
+        // Spawn player near center
+        const spawn = this._findOpenNear(this.world.getSpawnPosition().x, this.world.getSpawnPosition().y);
+        this.player.x = spawn.x;
+        this.player.y = spawn.y;
+        this.player.z = 0;
+        this.world.addEntity(this.player);
+
+        // Give starting gear on first drop
+        if (!this._loadoutGiven) {
+            this.giveStartingLoadout();
+            this._loadoutGiven = true;
+        }
+
+        // Track hub as current zone (center of overworld)
+        this._currentZoneCol = this.overworldMap ? Math.floor(this.overworldMap.cols / 2) : 0;
+        this._currentZoneRow = this.overworldMap ? Math.floor(this.overworldMap.rows / 2) : 0;
+        this.overworldMap?.markExplored(this._currentZoneCol, this._currentZoneRow);
+
+        this.gameState = 'playing';
+        this._initZoneSystems();
+
+        this.ui.log('Welcome to Downstairs — a small settlement in the fractured city.', 'info');
+        this.ui.log('Talk to survivors for work. Press [Tab] to view the overworld map.', 'info');
+
+        this.updateFoV();
         this.render();
+    }
+
+    _installStarterQuestZones() {
+        if (!this.overworldMap) return;
+
+        const centerCol = Math.floor(this.overworldMap.cols / 2);
+        const centerRow = Math.floor(this.overworldMap.rows / 2);
+        const targetCol = Math.min(this.overworldMap.cols - 1, centerCol + 1);
+        const targetRow = centerRow;
+        const tile = this.overworldMap.getTile(targetCol, targetRow);
+        if (!tile) return;
+
+        tile.biome = 'urban_core';
+        tile.playBiome = 'urban_core';
+        tile.terrain = 'urban_core';
+        tile.region = 'inner_city';
+        tile.tags = [...new Set([...(tile.tags || []), 'urban', 'retail', 'medical', 'starter_quest'])];
+        tile.road = true;
+        tile.type = 'settlement';
+        tile.threatLevel = Math.max(1, Math.min(2, tile.threatLevel || 1));
+        tile.zone = {
+            id: 'urban_market_corner',
+            name: 'Market Corner',
+            width: 128,
+            height: 128,
+            weight: 1,
+            faction: 'independent',
+            purpose: 'starter_quest',
+            threatMod: 0,
+            keyFeature: 'street_market',
+            npcSignature: ['survivor', 'drifter', 'scavenger'],
+            tags: ['urban', 'retail', 'medical', 'starter_quest']
+        };
+
+        this.streetKidIntroTarget = { col: targetCol, row: targetRow, zoneId: 'urban_market_corner', name: 'Market Corner' };
+    }
+
+    getQuestTargetHint(zoneId) {
+        if (this.streetKidIntroTarget?.zoneId === zoneId) {
+            const dx = this.streetKidIntroTarget.col - this._currentZoneCol;
+            const dy = this.streetKidIntroTarget.row - this._currentZoneRow;
+            const parts = [];
+            if (dy < 0) parts.push('north');
+            if (dy > 0) parts.push('south');
+            if (dx < 0) parts.push('west');
+            if (dx > 0) parts.push('east');
+            const direction = parts.length ? parts.join('-') : 'here';
+            return `${this.streetKidIntroTarget.name}, ${direction} of Downstairs. Press [Tab] for the overworld or walk off the zone edge.`;
+        }
+        return null;
     }
 
     // ── Zone systems init (called on every zone entry) ─────────────────────────
@@ -141,12 +234,13 @@ export class Game {
 
         // Build the zone world
         this.world = new World(this);
-        this.world.zoneMode    = true;
-        this.world.forcedBiome = owTile.biome;
+        this.world.zoneMode     = true;
+        this.world.forcedBiome = owTile.playBiome || owTile.biome;
         this.world.worldSeed   = owTile.seed;
         this.world.zoneWidth   = zw;
         this.world.zoneHeight  = zh;
         this.world.zoneBounds  = { minCx: 0, maxCx: chunksX - 1, minCy: 0, maxCy: chunksY - 1 };
+        this.world.zoneTemplate = owTile.zone; // faction, purpose, npcSignature, keyFeature
         this.world.init();
 
         // Init all zone-dependent systems
@@ -184,8 +278,9 @@ export class Game {
 
         this.gameState = 'playing';
 
-        const threat = owTile.threatLevel;
-        this.ui.log(`Entering: ${owTile.zone.name} [${owTile.biome.replace('_', ' ')}]  Threat: ${'★'.repeat(threat)}`, 'info');
+        const threatMod = owTile.zone.threatMod || 0;
+        const threat = Math.max(1, Math.min(5, owTile.threatLevel + threatMod));
+        this.ui.log(`Entering: ${owTile.zone.name} [${(owTile.terrain || owTile.biome).replace('_', ' ')}]  Threat: ${'★'.repeat(threat)}`, 'info');
         if (this.timeSystem) {
             this.ui.log(`Time: ${this.timeSystem.getTimeString()} - ${this.timeSystem.getTimePeriod()}`, 'info');
         }
@@ -207,6 +302,7 @@ export class Game {
                     strip_electronics:'Loot containers to strip electronics.',
                     salvage_gear:     'Loot gear from bodies or containers.',
                     find_fragment:    'Search for an Echo fragment in this zone.',
+                    complete_quest:   'Find a Survivor (green @) with a job — press [E] to talk.',
                 };
                 const hint = hints[goal.id];
                 if (hint) this.ui.log(`Goal: ${hint}`, 'warning');
@@ -400,6 +496,7 @@ export class Game {
             : baseVisionRange;
         
         this.fov.calculate(this.player.x, this.player.y, effectiveRange, this.player.z);
+        this.world.updatePointOfInterestDiscovery?.(this.fov.exploredTiles);
         
         // Calculate lighting for the visible area
         if (this.lightingSystem) {
@@ -584,12 +681,10 @@ export class Game {
     }
 
     _talkToNPC(npc) {
-        // Hostile NPCs — attempt intimidation
+        // Hostile NPCs — attempt intimidation (kept as immediate action, not dialogue)
         if (npc.hostile) {
-            const { DETECTION_STATE } = npc.constructor ? {} : {};
             const playerStr = (this.player.stats?.strength || 10);
             const npcCourage = (npc.profile?.courage || 0.5);
-            // Chance = player STR scaled against NPC courage (0=fearless,1=coward)
             const chance = Math.min(0.9, Math.max(0.05, (playerStr / 20) * (1 - npcCourage)));
             if (Math.random() < chance) {
                 npc.detectionState = 'fleeing';
@@ -602,38 +697,135 @@ export class Game {
             }
             return;
         }
-        if (npc.deliveryRequest && !npc.deliveryRequest.fulfilled) {
+
+        // Build dialogue state machine
+        const qs = this.questSystem;
+        let text = '';
+        let choices = [];
+
+        // ── Quest giver path ───────────────────────────────────────────────
+        if (npc.questRole === 'giver' && npc.questId && qs) {
+            if (!qs.hasQuest(this.player, npc.questId)) {
+                text = npc.questDialogue?.offer || `"I need help with something."`;
+                choices = [
+                    { id: 'accept_quest', label: `<span style="color:#ffaa00;">[Accept]</span> Take the job` },
+                    { id: 'decline_quest', label: `<span style="color:#888;">[Decline]</span> Not now` }
+                ];
+                this.ui.showNPCDialogue(npc, text, choices, (choice) => {
+                    if (choice === 'accept_quest') {
+                        qs.startQuest(this.player, npc.questId, npc);
+                    } else {
+                        this.ui.log(`${npc.name}: "Your loss. It'll be here if you change your mind."`, 'info');
+                    }
+                });
+                return;
+            }
+            if (qs.hasActive(this.player, npc.questId)) {
+                const active = qs.getActive(this.player, npc.questId);
+                const def = qs.getDef(npc.questId);
+                const stage = def?.stages?.[active.stageIndex];
+                const canComplete = stage?.checkCanComplete ? stage.checkCanComplete(this, this.player) : false;
+                if (canComplete) {
+                    text = npc.questDialogue?.complete || `"You got it? Hand it over."`;
+                    choices = [
+                        { id: 'complete_quest', label: `<span style="color:#44ff44;">[Complete]</span> Hand over the item` },
+                        { id: 'keep_it', label: `<span style="color:#888;">[Keep it]</span> Not yet` }
+                    ];
+                    this.ui.showNPCDialogue(npc, text, choices, (choice) => {
+                        if (choice === 'complete_quest') {
+                            qs.tryAdvanceByTalk(this.player, npc.questId, npc);
+                        }
+                    });
+                    return;
+                }
+                text = npc.questDialogue?.remind || stage?.description || `"Come back when you have it."`;
+                choices = [{ id: 'goodbye', label: `<span style="color:#888;">[Goodbye]</span>` }];
+                this.ui.showNPCDialogue(npc, text, choices, () => {});
+                return;
+            }
+            if (qs.hasCompleted(this.player, npc.questId)) {
+                text = npc.questDialogue?.complete || `"Thanks again for your help."`;
+                choices = [{ id: 'goodbye', label: `<span style="color:#888;">[Goodbye]</span>` }];
+                this.ui.showNPCDialogue(npc, text, choices, () => {});
+                return;
+            }
+        }
+
+        // ── Delivery request path ──────────────────────────────────────────
+        if (false && npc.deliveryRequest && !npc.deliveryRequest.fulfilled) {
             const req = npc.deliveryRequest;
             const item = this.player.inventory.find(i => i.id === req.itemId);
             if (item) {
-                this.player.removeFromInventory(item);
-                npc.deliveryRequest.fulfilled = true;
-                if (!this.player.goalsData) this.player.goalsData = {};
-                this.player.goalsData.itemDelivered = true;
-                this.ui.log(`${npc.name}: "Thank you... this means everything." [Delivered ${req.label}]`, 'info');
-                if (this.goalSystem) this.goalSystem.checkGoals(this.player);
-            } else {
-                this.ui.log(`${npc.name}: "Please... I need ${req.label}. Can you help me?"`, 'info');
+                text = `"You have ${req.label}? Please... I need it."`;
+                choices = [
+                    { id: 'deliver', label: `<span style="color:#44ff44;">[Deliver]</span> Give ${req.label}` },
+                    { id: 'keep', label: `<span style="color:#888;">[Keep it]</span>` }
+                ];
+                this.ui.showNPCDialogue(npc, text, choices, (choice) => {
+                    if (choice === 'deliver') {
+                        this.player.removeFromInventory(item);
+                        npc.deliveryRequest.fulfilled = true;
+                        if (!this.player.goalsData) this.player.goalsData = {};
+                        this.player.goalsData.itemDelivered = true;
+                        if (this.questSystem) this.questSystem.fulfillDelivery(this.player, npc, req.itemId);
+                        this.ui.log(`${npc.name}: "Thank you... this means everything." [Delivered ${req.label}]`, 'info');
+                        if (this.goalSystem) this.goalSystem.checkGoals(this.player);
+                    }
+                });
+                return;
             }
-        } else if (npc.deliveryRequest?.fulfilled) {
-            this.ui.log(`${npc.name}: "You already helped me. Stay safe out there."`, 'info');
-        } else {
-            // Treatment path — Field Medic goal
-            const medicalIds = ['medkit', 'bandage', 'antiseptic', 'painkiller'];
-            const medItem = this.player.inventory.find(i => medicalIds.includes(i.id) || i.medicalEffect);
-            if (medItem && !npc.treated) {
-                this.player.removeFromInventory(medItem);
-                npc.treated = true;
-                if (!this.player.goalsData) this.player.goalsData = {};
-                this.player.goalsData.npcsSaved = (this.player.goalsData.npcsSaved || 0) + 1;
-                this.ui.log(`${npc.name}: "I... thank you. I thought I wouldn't make it." [Treated with ${medItem.name}]`, 'info');
-                if (this.goalSystem) this.goalSystem.checkGoals(this.player);
-            } else if (npc.treated) {
-                this.ui.log(`${npc.name}: "You've already patched me up. Thank you."`, 'info');
-            } else {
-                this.ui.log(`${npc.name}: "..." They don't respond.`, 'info');
-            }
+            text = `"Please... I need ${req.label}. Can you help me?"`;
+            choices = [
+                { id: 'help', label: `<span style="color:#ffaa00;">[Help]</span> I'll look for it` },
+                { id: 'decline', label: `<span style="color:#888;">[Decline]</span> Not now` }
+            ];
+            this.ui.showNPCDialogue(npc, text, choices, (choice) => {
+                if (choice === 'help' && this.questSystem) {
+                    this.questSystem.registerDelivery(this.player, npc, req.itemId, req.label);
+                    this.ui.log(`Journal updated: Find ${req.label} for ${npc.name}`, 'info');
+                }
+            });
+            return;
         }
+        if (false && npc.deliveryRequest?.fulfilled) {
+            text = `"You already helped me. Stay safe out there."`;
+            choices = [{ id: 'goodbye', label: `<span style="color:#888;">[Goodbye]</span>` }];
+            this.ui.showNPCDialogue(npc, text, choices, () => {});
+            return;
+        }
+
+        // ── Treatment path ─────────────────────────────────────────────────
+        const medicalIds = ['medkit', 'bandage', 'antiseptic', 'painkiller'];
+        const medItem = this.player.inventory.find(i => medicalIds.includes(i.id) || i.medicalEffect);
+        if (medItem && !npc.treated) {
+            text = `"I... I'm hurt. Do you have anything?"`;
+            choices = [
+                { id: 'treat', label: `<span style="color:#44ff44;">[Treat]</span> Give ${medItem.name}` },
+                { id: 'leave', label: `<span style="color:#888;">[Leave]</span>` }
+            ];
+            this.ui.showNPCDialogue(npc, text, choices, (choice) => {
+                if (choice === 'treat') {
+                    this.player.removeFromInventory(medItem);
+                    npc.treated = true;
+                    if (!this.player.goalsData) this.player.goalsData = {};
+                    this.player.goalsData.npcsSaved = (this.player.goalsData.npcsSaved || 0) + 1;
+                    this.ui.log(`${npc.name}: "I... thank you. I thought I wouldn't make it." [Treated with ${medItem.name}]`, 'info');
+                    if (this.goalSystem) this.goalSystem.checkGoals(this.player);
+                }
+            });
+            return;
+        }
+        if (npc.treated) {
+            text = `"You've already patched me up. Thank you."`;
+            choices = [{ id: 'goodbye', label: `<span style="color:#888;">[Goodbye]</span>` }];
+            this.ui.showNPCDialogue(npc, text, choices, () => {});
+            return;
+        }
+
+        // ── Default greeting ────────────────────────────────────────────────
+        text = `"..." They don't respond.`;
+        choices = [{ id: 'goodbye', label: `<span style="color:#888;">[Leave]</span>` }];
+        this.ui.showNPCDialogue(npc, text, choices, () => {});
     }
     
     checkGameOver() {
@@ -728,7 +920,7 @@ export class Game {
                     continue;
                 }
 
-                const visual      = OverworldMap.getBiomeVisual(tile.biome);
+                const visual      = OverworldMap.getTileVisual ? OverworldMap.getTileVisual(tile) : OverworldMap.getBiomeVisual(tile.biome);
                 const isCursor    = col === ow.cursorCol && row === ow.cursorRow;
                 const isActiveZone = col === this._currentZoneCol && row === this._currentZoneRow && this.world;
 

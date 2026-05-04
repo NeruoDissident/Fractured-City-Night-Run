@@ -1,7 +1,5 @@
 import { Chunk } from './Chunk.js';
-import { NPC } from '../entities/NPC.js';
-import { ExtractionPoint } from './ExtractionPoint.js';
-import { createFurniture, OBJECT_SPRITE_INDEX } from './objects/Furniture.js';
+import { ZoneGenerator } from './gen/ZoneGenerator.js';
 
 // Biome tint colors for wall sprites (applied over neutral gray spritesheet)
 const BIOME_WALL_TINTS = {
@@ -22,27 +20,31 @@ export class World {
         this.entities = [];
         this.items = [];
         this.worldObjects = []; // Doors, furniture, etc.
+        this.pointsOfInterest = [];
         this.extractionPoint = null;
+        this.spawnPoint = null;
         this.activeRadius = 2;
         this.worldSeed = Date.now() & 0x7FFFFFFF; // Seeded RNG for deterministic generation
 
         // ── Zone mode ────────────────────────────────────────────────────────
         // When true, generation is bounded to a single zone (no infinite expansion)
         this.zoneMode    = false;
-        this.forcedBiome = null;  // override Chunk.selectBiome() for whole zone
+        this.forcedBiome = null;  // zone palette/renderer biome
         this.zoneBounds  = null;  // { minCx, maxCx, minCy, maxCy }
         this.zoneWidth   = 128;   // tile width  of this zone
         this.zoneHeight  = 128;   // tile height of this zone
+        this.zoneTemplate = null; // { faction, purpose, npcSignature, keyFeature } from OverworldMap
         this._voidChunk  = null;  // lazy-built solid-wall chunk for out-of-bounds
     }
     
     init() {
+        if (this.zoneMode) {
+            this.generateInitialChunks();
+            ZoneGenerator.generate(this);
+            return;
+        }
+
         this.generateInitialChunks();
-        // NPCs spawn per-chunk via district-aware system in getOrCreateChunk()
-        this.spawnExtractionPoint();
-        this.spawnAccessCard();
-        this.spawnTerminal();
-        this.spawnEchoFragment();
     }
     
     generateInitialChunks() {
@@ -82,15 +84,31 @@ export class World {
         const key = `${cx},${cy}`;
         if (!this.chunks.has(key)) {
             const chunk = new Chunk(this, cx, cy);
-            chunk.generate();
-            this.chunks.set(key, chunk);
-
-            // Spawn district-aware NPCs from chunk generation
-            if (chunk.npcSpawnRequests && chunk.npcSpawnRequests.length > 0) {
-                this.spawnChunkNPCs(chunk);
+            if (this.zoneMode) {
+                chunk.biome = this.forcedBiome || 'urban_core';
+                chunk.district = 'zone';
+                chunk.tiles[0] = [];
+                for (let y = 0; y < this.chunkSize; y++) {
+                    chunk.tiles[0][y] = [];
+                    for (let x = 0; x < this.chunkSize; x++) {
+                        chunk.tiles[0][y][x] = this._getVoidTile();
+                    }
+                }
+            } else {
+                chunk.generate();
             }
+            this.chunks.set(key, chunk);
         }
         return this.chunks.get(key);
+    }
+
+    // Returns a single wall tile for out-of-zone coordinates
+    _getVoidTile() {
+        return {
+            glyph: '#', fgColor: '#444444', bgColor: '#111111',
+            blocked: true, blocksLight: true, isWall: true,
+            isExterior: true
+        };
     }
 
     // Returns a pre-built chunk filled entirely with solid walls (used as zone boundary)
@@ -114,28 +132,6 @@ export class World {
         return this._voidChunk;
     }
     
-    spawnChunkNPCs(chunk) {
-        const S = this.chunkSize;
-        const baseX = chunk.cx * S;
-        const baseY = chunk.cy * S;
-        
-        for (const req of chunk.npcSpawnRequests) {
-            if (req.count <= 0) continue;
-            for (let i = 0; i < req.count; i++) {
-                for (let attempt = 0; attempt < 15; attempt++) {
-                    const x = baseX + Math.floor(Math.random() * S);
-                    const y = baseY + Math.floor(Math.random() * S);
-                    
-                    if (!this.isBlocked(x, y, 0)) {
-                        const npc = new NPC(this.game, req.type, x, y);
-                        this.addEntity(npc);
-                        break;
-                    }
-                }
-            }
-        }
-    }
-    
     getBiomeAt(x, y) {
         const cx = Math.floor(x / this.chunkSize);
         const cy = Math.floor(y / this.chunkSize);
@@ -144,13 +140,19 @@ export class World {
     }
     
     getTile(x, y, z = 0) {
+        // In zone mode, anything outside the declared zone bounds is solid wall
+        if (this.zoneMode) {
+            if (x < 0 || x >= this.zoneWidth || y < 0 || y >= this.zoneHeight) {
+                return this._getVoidTile();
+            }
+        }
         const cx = Math.floor(x / this.chunkSize);
         const cy = Math.floor(y / this.chunkSize);
         const chunk = this.getOrCreateChunk(cx, cy);
-        
+
         const localX = x - cx * this.chunkSize;
         const localY = y - cy * this.chunkSize;
-        
+
         return chunk.getTile(localX, localY, z);
     }
     
@@ -167,8 +169,8 @@ export class World {
     
     isBlocked(x, y, z = 0) {
         const tile = this.getTile(x, y, z);
-        if (tile.blocked) return true;
-        
+        if (!tile || tile.blocked) return true;
+
         return this.entities.some(e => e.x === x && e.y === y && e.z === z && e.blocksMovement);
     }
     
@@ -207,146 +209,30 @@ export class World {
     }
     
     getSpawnPosition() {
+        if (this.spawnPoint) return { ...this.spawnPoint };
         return { x: 5, y: 5 };
     }
     
-    spawnInitialNPCs() {
-        const npcTypes = [
-            { type: 'scavenger', count: 8 },
-            { type: 'raider', count: 5 },
-            { type: 'armed_raider', count: 3 },
-            { type: 'brute', count: 2 },
-            { type: 'stalker', count: 2 },
-        ];
-        
-        for (const npcDef of npcTypes) {
-            let spawned = 0;
-            for (let i = 0; i < npcDef.count; i++) {
-                // Retry up to 10 times to find an unblocked position
-                for (let attempt = 0; attempt < 10; attempt++) {
-                    const x = Math.floor(Math.random() * 160) - 40;
-                    const y = Math.floor(Math.random() * 160) - 40;
-                    
-                    if (!this.isBlocked(x, y, 0)) {
-                        const npc = new NPC(this.game, npcDef.type, x, y);
-                        this.addEntity(npc);
-                        spawned++;
-                        break;
+    getPointsOfInterest(discoveredOnly = false) {
+        if (!discoveredOnly) return [...this.pointsOfInterest];
+        return this.pointsOfInterest.filter(poi => poi.discovered);
+    }
+
+    updatePointOfInterestDiscovery(exploredTiles) {
+        if (!exploredTiles || !this.pointsOfInterest.length) return;
+
+        for (const poi of this.pointsOfInterest) {
+            if (poi.discovered) continue;
+            scanPoi:
+            for (let y = poi.y - poi.radius; y <= poi.y + poi.radius; y++) {
+                for (let x = poi.x - poi.radius; x <= poi.x + poi.radius; x++) {
+                    if (Math.abs(x - poi.x) + Math.abs(y - poi.y) > poi.radius) continue;
+                    if (exploredTiles.has(`${x},${y},0`) || exploredTiles.has(`${x},${y}`)) {
+                        poi.discovered = true;
+                        break scanPoi;
                     }
                 }
             }
-            console.log(`[World] Spawned ${spawned}/${npcDef.count} ${npcDef.type}s`);
-        }
-    }
-    
-    spawnExtractionPoint() {
-        const angle = Math.random() * Math.PI * 2;
-        const distance = 25 + Math.floor(Math.random() * 15);
-        
-        const spawnPos = this.getSpawnPosition();
-        const x = Math.floor(spawnPos.x + Math.cos(angle) * distance);
-        const y = Math.floor(spawnPos.y + Math.sin(angle) * distance);
-        
-        for (let attempts = 0; attempts < 50; attempts++) {
-            const testX = x + Math.floor(Math.random() * 10) - 5;
-            const testY = y + Math.floor(Math.random() * 10) - 5;
-            
-            if (!this.isBlocked(testX, testY, 0)) {
-                const types = ['transit_gate', 'safehouse', 'elevator', 'escape_tunnel'];
-                const type = types[Math.floor(Math.random() * types.length)];
-                this.extractionPoint = new ExtractionPoint(testX, testY, type);
-                console.log(`Extraction spawned at (${testX}, ${testY}), distance: ${Math.floor(distance)} tiles`);
-                this.game.ui.log(`Extraction point located: ${this.extractionPoint.name} (${Math.floor(distance)} tiles away)`, 'info');
-                return;
-            }
-        }
-        
-        this.extractionPoint = new ExtractionPoint(x, y, 'transit_gate');
-        console.log(`Extraction spawned at (${x}, ${y}) - fallback`);
-    }
-    
-    spawnAccessCard() {
-        const angle = Math.random() * Math.PI * 2;
-        const distance = 15 + Math.floor(Math.random() * 15);
-        
-        const spawnPos = this.getSpawnPosition();
-        const x = Math.floor(spawnPos.x + Math.cos(angle) * distance);
-        const y = Math.floor(spawnPos.y + Math.sin(angle) * distance);
-        
-        for (let attempts = 0; attempts < 50; attempts++) {
-            const testX = x + Math.floor(Math.random() * 10) - 5;
-            const testY = y + Math.floor(Math.random() * 10) - 5;
-            
-            if (!this.isBlocked(testX, testY, 0)) {
-                const card = {
-                    id: 'access_card',
-                    name: 'Access Card',
-                    type: 'key_item',
-                    glyph: '▪',
-                    color: '#00ff00',
-                    x: testX,
-                    y: testY,
-                    z: 0
-                };
-                this.addItem(card);
-                console.log(`Access card spawned at (${testX}, ${testY}), distance: ${Math.floor(distance)} tiles`);
-                this.game.ui.log(`Access card detected in the area (${Math.floor(distance)} tiles away).`, 'info');
-                return;
-            }
-        }
-        console.warn('Failed to spawn access card after 50 attempts');
-    }
-
-    spawnTerminal() {
-        const spawnPos = this.getSpawnPosition();
-        const angle = Math.random() * Math.PI * 2;
-        const distance = 10 + Math.floor(Math.random() * 20);
-        const bx = Math.floor(spawnPos.x + Math.cos(angle) * distance);
-        const by = Math.floor(spawnPos.y + Math.sin(angle) * distance);
-
-        for (let attempt = 0; attempt < 50; attempt++) {
-            const tx = bx + Math.floor(Math.random() * 10) - 5;
-            const ty = by + Math.floor(Math.random() * 10) - 5;
-            if (this.isBlocked(tx, ty, 0)) continue;
-            if (this.getWorldObjectAt(tx, ty, 0)) continue;
-            const terminal = createFurniture('terminal', tx, ty, 0);
-            this.addWorldObject(terminal);
-            const spriteIdx = OBJECT_SPRITE_INDEX['terminal'];
-            this.updateTileAt(tx, ty, 0, {
-                glyph: terminal.glyph,
-                fgColor: terminal.fgColor,
-                bgColor: '#3a3a3a',
-                blocked: terminal.blocked,
-                blocksVision: terminal.blocksVision,
-                name: terminal.name,
-                worldObjectId: terminal.id,
-                spriteData: spriteIdx !== undefined ? { sheet: 'objects', index: spriteIdx } : null
-            });
-            this.game.ui.log('A terminal is active somewhere in this zone.', 'info');
-            return;
-        }
-    }
-
-    spawnEchoFragment() {
-        if (!this.game.content) return;
-        const spawnPos = this.getSpawnPosition();
-        const angle = Math.random() * Math.PI * 2;
-        const distance = 15 + Math.floor(Math.random() * 20);
-        const bx = Math.floor(spawnPos.x + Math.cos(angle) * distance);
-        const by = Math.floor(spawnPos.y + Math.sin(angle) * distance);
-
-        for (let attempt = 0; attempt < 50; attempt++) {
-            const tx = bx + Math.floor(Math.random() * 10) - 5;
-            const ty = by + Math.floor(Math.random() * 10) - 5;
-            if (this.isBlocked(tx, ty, 0)) continue;
-            const fragment = this.game.content.createItem('echo_fragment');
-            if (!fragment) return;
-            fragment.x = tx;
-            fragment.y = ty;
-            fragment.z = 0;
-            this.addItem(fragment);
-            this.game.ui.log('You sense a faint resonance nearby — an Echo Fragment.', 'info');
-            return;
         }
     }
 
@@ -498,8 +384,11 @@ export class World {
      * Returns { sheet, index } or null for ASCII fallback.
      */
     getEntitySpriteData(entity) {
-        // Player character
-        if (entity.glyph === '@') {
+        if (this.game.graphicsMode !== 'sprites') return null;
+
+        // Player character only. Survivor-style NPCs also use '@', so glyph is
+        // not a safe way to identify the player sprite.
+        if (entity === this.game.player) {
             return { sheet: 'player', index: 0 };
         }
         // NPCs by type — indices match npc.png spritesheet order
@@ -517,6 +406,8 @@ export class World {
     }
     
     render(renderer, cameraX, cameraY, viewWidth, viewHeight, fov, z = 0, lighting = null) {
+        const useSprites = this.game.graphicsMode === 'sprites' && renderer.graphicsMode === 'sprites';
+
         for (let y = 0; y < viewHeight; y++) {
             for (let x = 0; x < viewWidth; x++) {
                 const worldX = cameraX + x;
@@ -525,9 +416,9 @@ export class World {
                 const tile = this.getTile(worldX, worldY, z);
                 
                 // Get sprite data: walls use autotile bitmask, furniture/doors use tile.spriteData
-                const spriteData = tile.isWall
-                    ? this.getWallSpriteData(worldX, worldY, z)
-                    : (tile.spriteData || null);
+                const spriteData = useSprites
+                    ? (tile.isWall ? this.getWallSpriteData(worldX, worldY, z) : (tile.spriteData || null))
+                    : null;
                 
                 if (!fov) {
                     renderer.drawTileSprite(x, y, tile.glyph, tile.fgColor, tile.bgColor, spriteData);
@@ -594,7 +485,7 @@ export class World {
                     const pixelY = screenY * renderer.tileSize + shake.dy;
                     
                     // Determine sprite data for entity
-                    const entitySprite = this.getEntitySpriteData(entity);
+                    const entitySprite = useSprites ? this.getEntitySpriteData(entity) : null;
                     if (entitySprite && renderer.spriteManager) {
                         renderer.spriteManager.drawSprite(
                             renderer.ctx, entitySprite.sheet, entitySprite.index,
