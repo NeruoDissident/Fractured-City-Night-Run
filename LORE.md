@@ -1,5 +1,16 @@
 # Fractured City: Night Run - Lore & Setting
 
+## Current Setting Direction
+
+The game now takes place roughly **40 years after the infrastructure collapse**. The world is not a clean post-apocalypse where everything has stopped. It is still in motion, running on fumes:
+
+- Schools, shops, clinics, construction sites, markets, and security outfits still exist in damaged local forms.
+- There is no stable national law enforcement and no meaningful national border control. Local authority is private security, faction power, old automated systems, and neighborhood agreements.
+- Factions rise, fall, merge, and shift balance between runs. Run history should be generated before play so the same city can feel politically different each time.
+- The player begins from an occupation/background perspective: street kid, teacher, doctor, cashier, clown, cop/security, carpenter, etc. Each occupation asks, "How does this person survive, and what do they want?"
+
+The intended feel is **Caves of Qud depth + Cataclysm survival systems + Streets of Rogue-style local situation density**, without turning every zone into a rigid stage-completion level. The world remains freely traversable, but individual zones should be dense, legible, and meaningful.
+
 ## The Fall of Humanity
 
 The world didn't end with a bang. There was no nuclear holocaust, no asteroid impact, no zombie outbreak. Humanity simply... failed.
@@ -29,6 +40,14 @@ You are in one of the megacities - now a sprawling urban wasteland. The power is
 Scavengers pick through the ruins, fighting over scraps. Raiders take what they want by force. Factions form and dissolve like smoke. Corporations that survived the collapse maintain fortified enclaves, hoarding resources and technology. And through it all, the Echo watches, interferes, possesses, manifests.
 
 **This is the Fractured City. This is where you survive. Or die trying.**
+
+## Daily Life After the Fall
+
+Civilization did not vanish all at once. It decayed into improvised continuity. A teacher may still be holding class in a converted room when the next alert comes in. A cashier may still be managing inventory in a half-stocked corner store. A doctor may still be triaging patients in a clinic protected by hired guards. Construction crews still patch walls, reinforce shelters, and build faction checkpoints.
+
+That is the tension: people are trying to maintain a new normal while the larger world keeps slipping.
+
+The starting stories should lean into this. A background is not just a stat package. It is a starting situation, a social network, a skill bias, and a personal motive.
 
 ## Extraction: The Goal
 
@@ -62,8 +81,8 @@ The Echo is unpredictable. It can appear as:
 
 ## The Question
 
-**Why are you here?** That's for you to discover. Or decide. The Fractured City doesn't care about your backstory. It only cares if you can survive another night.
+**Why are you here?** That depends on who you were when the alert came, who still depends on you, and what you are willing to become.
 
 ---
 
-*Fractured City: Night Run is a spin-off of the colony sim Fractured City, focusing on roguelike survival in a single night's desperate run through the ruins.*
+*Fractured City: Night Run is a spin-off of the colony sim Fractured City, focusing on occupation-driven roguelike survival inside a fractured but still-moving world.*

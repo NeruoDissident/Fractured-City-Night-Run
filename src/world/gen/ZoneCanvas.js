@@ -28,6 +28,11 @@ function asciiForFurniture(type, name) {
     if (lower.includes('fridge') || lower.includes('cooler')) return { glyph: 'F', fgColor: '#a8d8ff' };
     if (lower.includes('dumpster')) return { glyph: 'D', fgColor: '#7c8a78' };
     if (lower.includes('vending')) return { glyph: 'V', fgColor: '#ff8a80' };
+    if (lower.includes('barricade')) return { glyph: 'X', fgColor: '#d0a060' };
+    if (lower.includes('stall')) return { glyph: 'm', fgColor: '#d8c06a' };
+    if (lower.includes('cart')) return { glyph: 'a', fgColor: '#c8c8a0' };
+    if (lower.includes('car') || lower.includes('vehicle')) return { glyph: 'v', fgColor: '#8f9a9a' };
+    if (lower.includes('notice')) return { glyph: 'n', fgColor: '#ffaa44' };
     return FURNITURE_ASCII[type] || { glyph: '?', fgColor: '#cccccc' };
 }
 

@@ -4,9 +4,78 @@
 
 This document details how every system in Fractured City works and how they interact with each other.
 
+## Current Active Direction
+
+The active development path is now **occupation starts + dense zone generation + POI travel**.
+
+The older systems below are still useful, but future work should assume:
+- `World.zoneMode` and `src/world/gen` are the main map-generation direction.
+- `QuestSystem` is a prototype objective system and should be reshaped around occupations.
+- Backgrounds are becoming occupations with starting stories, motives, talents, social hooks, and first objective chains.
+- POIs are registered by zone generation, discovered through FoV explored tiles, shown through Known Places, and can be auto-traveled to.
+- ASCII readability comes first. Sprites are optional and must keep fallback glyphs.
+
 ---
 
 ## Core Systems
+
+### Zone / POI / Auto-Travel System
+**Files:** `src/world/World.js`, `src/world/gen/ZoneGenerator.js`, `src/world/gen/ZoneCanvas.js`, `src/world/gen/UrbanFragments.js`, `src/core/Game.js`, `src/ui/UIManager.js`
+
+**Purpose:** Builds bounded, readable zones and records meaningful places inside them.
+
+**Current Flow:**
+1. `OverworldMap` supplies a zone tile/template.
+2. `Game.dropIntoZone()` creates a `World` with `zoneMode = true`.
+3. `World.init()` calls `ZoneGenerator.generate(world)`.
+4. `ZoneCanvas` draws terrain, walls, furniture, NPC placements, and POIs.
+5. `Game.updateFoV()` calls `World.updatePointOfInterestDiscovery(exploredTiles)`.
+6. `P` opens Known Places and can start auto-travel to a discovered POI.
+7. `O` starts auto-explore toward reachable unexplored edges.
+
+**Current POI Methods:**
+- `ZoneCanvas.addPoi(id, name, type, x, y, radius)`
+- `World.getPointsOfInterest(discoveredOnly = false)`
+- `World.updatePointOfInterestDiscovery(exploredTiles)`
+- `Game.startAutoTravelToPoi(poiId)`
+- `Game.startAutoExplore()`
+- `Game.findPathTo(targetX, targetY, z)`
+
+**Auto-Travel Rules:**
+- Stops on visible hostile danger.
+- Stops if the path is blocked.
+- Stops on overworld/zone transition.
+- `Esc` cancels travel.
+
+**Design Rule:** POIs should name real places in the zone, not abstract goals. Examples: Crew Bunks, Food Cage, Clinic Workshop, Street Market Stalls, Fuel Pump Canopy, Break Room, Stockroom, Service Alley.
+
+---
+
+### Objective / Quest Prototype
+**File:** `src/systems/QuestSystem.js`
+
+**Purpose:** Temporary objective/journal framework for NPC-driven chains.
+
+**Current Status:**
+- Working starter loop exists.
+- NPCs can own one or more quest IDs.
+- Journal can show current entries, starts, errands, and completed entries.
+- Overworld can mark active target zones.
+
+**Known Direction Change:**
+- The intro objective currently starts universally and needs to become Street Kid-specific.
+- Future starts should be owned by an occupation-start registry.
+- Surface wording may move away from "quest" toward journal entries, objectives, work, favors, or another in-world term.
+
+**Occupation Start Registry Should Define:**
+- Occupation/background id.
+- Starting zone or zone generator hook.
+- Starting NPC/contact.
+- Starting journal entry.
+- Talent/loadout hooks.
+- First objective chain.
+
+---
 
 ### Player System
 **File:** `src/entities/Player.js`

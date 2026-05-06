@@ -1,12 +1,37 @@
 # Fractured City - Game Design Philosophy
 
-**Last Updated:** April 28, 2026
+**Last Updated:** May 2026
+
+---
+
+## Current Direction: Occupations, Dense Zones, Living Collapse
+
+The game has pivoted away from a primarily endless procedural-map feel. The current goal is a **whole world made of traversable zones**, where each zone is a dense local place rather than a generic stretch of terrain.
+
+Important corrections to older design notes:
+
+- The world is roughly **40 years after collapse**, but daily life is still in motion. Schools, stores, clinics, construction, private security, markets, and local crews still exist in damaged forms.
+- Backgrounds are becoming **occupations**: teacher, street kid, doctor, cashier, clown, carpenter, cop/security, etc.
+- Occupations should define starting situation, motive, social hooks, talent bias, and early objective chains.
+- Zones are not Streets of Rogue-style forced stages. They can contain goals, but not every zone has a goal and not every goal is completed inside one zone.
+- The overworld remains important, but individual zones should be legible and explorable: hideouts, corner stores, supermarkets, schools, malls, gas stations, clinics, alleys, parks, factories, and civic buildings.
+- Skills and abilities should support strange class-building. Example: a magician splits an enemy into weaker copies; a clown juggles more items for scaling damage and attack speed. These abilities live in learnable skill trees, so occupations are starting biases, not hard classes.
+
+### Current Locked Milestone
+
+1. Street Kid intro flow
+2. Journal/objective readability
+3. One polished zone chain
+4. POI / auto-explore tools
+5. Occupation framework
+
+Street Kid is the current tutorial-like baseline. Quick Start defaults to Street Kid while this milestone is being built.
 
 ---
 
 ## Core Vision
 
-**Fractured City** is a deterministic, knowledge-based survival roguelike in the vein of **Cataclysm: Dark Days Ahead**. The game rewards player mastery through understanding systems, not fighting RNG. Every action has predictable outcomes that the player can learn and exploit.
+**Fractured City** is a knowledge-based survival roguelike. The game rewards player mastery through understanding systems, not fighting arbitrary RNG. Every action should either have predictable outcomes or clearly communicated risk.
 
 ---
 

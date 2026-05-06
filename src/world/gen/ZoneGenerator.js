@@ -80,37 +80,84 @@ export class ZoneGenerator {
 
 function generateSafeHub(z) {
     z.fill(ZoneTiles.grass);
-    z.fillRect(0, Math.floor(z.height / 2) - 3, z.width, 7, ZoneTiles.road);
-    z.fillRect(Math.floor(z.width / 2) - 3, 0, 7, z.height, ZoneTiles.road);
-    z.sidewalkAroundRoad(0, Math.floor(z.height / 2) - 6, z.width - 1, Math.floor(z.height / 2) + 6, [
-        { x: 0, y: Math.floor(z.height / 2) - 3, w: z.width, h: 7 },
-        { x: Math.floor(z.width / 2) - 3, y: 0, w: 7, h: z.height }
-    ]);
+    z.fillRect(0, 37, z.width, 7, ZoneTiles.road);
+    z.fillRect(37, 0, 7, z.height, ZoneTiles.road);
 
-    z.drawRect(10, 10, 22, 16, ZoneTiles.wall, ZoneTiles.storeFloor, 'Downstairs Commons');
-    z.placeDoor('wood_basic', 21, 25, { name: 'Commons Door' });
-    z.placeFurniture('table', 18, 17, 'commercial_store', 'Shared Table');
-    z.placeFurniture('chair', 17, 17, 'commercial_store', 'Mismatched Chair');
-    z.placeFurniture('chair', 20, 17, 'commercial_store', 'Mismatched Chair');
-    z.placeFurniture('cabinet', 28, 14, 'commercial_store', 'Community Cabinet');
-    z.addPoi('downstairs_commons', 'Downstairs Commons', 'settlement', 21, 18, 8);
+    z.fillRect(8, 8, 64, 64, ZoneTiles.dirt, { name: 'Downstairs Yard' });
+    z.fillRect(36, 8, 8, 64, ZoneTiles.concrete, { name: 'Main Walk' });
+    z.fillRect(8, 36, 64, 8, ZoneTiles.concrete, { name: 'Main Walk' });
 
-    z.drawRect(48, 46, 22, 18, ZoneTiles.wall, ZoneTiles.garageFloor, 'Clinic Workshop');
-    z.placeDoor('wood_basic', 58, 46, { name: 'Workshop Door' });
-    z.placeFurniture('workbench', 62, 54, 'garage_tools', 'Patchwork Bench');
-    z.placeFurniture('cabinet', 52, 54, 'medical_storage', 'Medical Cabinet');
-    z.addPoi('clinic_workshop', 'Clinic Workshop', 'settlement', 59, 55, 8);
+    z.hLine(8, 8, 64, ZoneTiles.fence, { name: 'Downstairs Fence' });
+    z.hLine(8, 71, 64, ZoneTiles.fence, { name: 'Downstairs Fence' });
+    z.vLine(8, 8, 64, ZoneTiles.fence, { name: 'Downstairs Fence' });
+    z.vLine(71, 8, 64, ZoneTiles.fence, { name: 'Downstairs Fence' });
+    z.fillRect(37, 8, 7, 1, ZoneTiles.concrete, { name: 'North Gate' });
+    z.fillRect(37, 71, 7, 1, ZoneTiles.concrete, { name: 'South Gate' });
+    z.fillRect(8, 37, 1, 7, ZoneTiles.concrete, { name: 'West Gate' });
+    z.fillRect(71, 37, 1, 7, ZoneTiles.concrete, { name: 'East Gate' });
+    for (const [x, y] of [[34, 9], [45, 9], [34, 70], [45, 70], [9, 34], [9, 45], [70, 34], [70, 45]]) {
+        z.set(x, y, ZoneTiles.barricade);
+    }
 
-    const rook = z.addNpc('survivor', 35, 35, 'Rook', '!', '#ffcc44');
-    rook.questId = 'streetkid_rations';
+    z.drawRect(12, 12, 24, 18, ZoneTiles.wall, ZoneTiles.storeFloor, 'Downstairs Commons');
+    z.placeDoor('wood_basic', 24, 29, { name: 'Commons Door' });
+    z.placeFurniture('table', 20, 20, 'commercial_store', 'Shared Table');
+    z.placeFurniture('table', 25, 20, 'commercial_store', 'Shared Table');
+    z.placeFurniture('chair', 19, 20, 'commercial_store', 'Mismatched Chair');
+    z.placeFurniture('chair', 26, 20, 'commercial_store', 'Mismatched Chair');
+    z.placeFurniture('cabinet', 32, 15, 'commercial_store', 'Community Cabinet');
+    z.placeFurniture('filing_cabinet', 15, 15, 'office', 'Notice Board');
+    z.addPoi('downstairs_commons', 'Downstairs Commons', 'settlement', 24, 20, 9);
+
+    z.drawRect(46, 12, 20, 18, ZoneTiles.wall, ZoneTiles.breakFloor, 'Crew Bunks');
+    z.placeDoor('wood_basic', 56, 29, { name: 'Bunkroom Door', open: true });
+    for (const [x, y] of [[50, 17], [57, 17], [50, 23], [57, 23]]) {
+        z.placeFurniture('bed', x, y, 'residential_bedroom', 'Thin Bunk');
+    }
+    z.placeFurniture('locker', 63, 17, 'residential_bedroom', 'Crew Locker');
+    z.addPoi('crew_bunks', 'Crew Bunks', 'settlement', 56, 21, 7);
+
+    z.drawRect(12, 50, 22, 16, ZoneTiles.wall, ZoneTiles.stockFloor, 'Food Cage');
+    z.placeDoor('metal', 23, 50, { name: 'Food Cage Door', locked: true });
+    z.placeFurniture('crate', 18, 58, 'commercial_backroom', 'Ration Crate');
+    z.placeFurniture('shelf', 28, 57, 'commercial_backroom', 'Dry Shelf');
+    z.addPoi('food_cage', 'Food Cage', 'storage', 23, 58, 7);
+
+    z.drawRect(48, 48, 20, 18, ZoneTiles.wall, ZoneTiles.garageFloor, 'Clinic Workshop');
+    z.placeDoor('wood_basic', 58, 48, { name: 'Workshop Door' });
+    z.placeFurniture('workbench', 62, 56, 'garage_tools', 'Patchwork Bench');
+    z.placeFurniture('cabinet', 52, 56, 'medical_storage', 'Medical Cabinet');
+    z.placeFurniture('sink', 52, 61, 'medical_storage', 'Wash Basin');
+    z.addPoi('clinic_workshop', 'Clinic Workshop', 'settlement', 59, 57, 8);
+
+    z.fillRect(14, 33, 16, 10, ZoneTiles.dirt, { name: 'Planter Beds' });
+    for (let x = 15; x < 29; x += 3) z.vLine(x, 34, 8, ZoneTiles.grass, { name: 'Planter Row' });
+    z.fillRect(52, 34, 12, 8, ZoneTiles.parking, { name: 'Repair Pad' });
+    z.placeFurniture('crate', 54, 37, 'garage_tools', 'Parts Crate');
+    z.placeFurniture('workbench', 61, 38, 'garage_tools', 'Outdoor Workbench');
+
+    const rook = z.addNpc('survivor', 24, 54, 'Rook', '!', '#ffcc44');
+    rook.questId = 'streetkid_intro';
+    rook.questIds = ['streetkid_intro', 'streetkid_rations'];
     rook.questRole = 'giver';
-    rook.questDialogue = {
-        offer: `"You're up. Inez is holding a ration bundle for us at the market corner. Roads shifted again, so keep your eyes open. Bring it back and we eat tonight."`,
-        remind: `"Market corner, bodega counter. Ask around if you need to, but don't come back empty."`,
-        complete: `"That's it. Good. You kept the crew fed one more day."`
+    rook.questDialogues = {
+        streetkid_intro: {
+            complete: `"You made it back. Good. We are down to scraps, and people are starting to count cans out loud. Inez is holding a ration bundle for us at the market corner. Bring it back and we eat tonight."`,
+            after: `"Market corner. Bodega counter. Keep your eyes open on the way."`
+        },
+        streetkid_rations: {
+            offer: `"Inez is holding a ration bundle for us at the market corner. Bring it back and we eat tonight."`,
+            remind: `"Market corner, bodega counter. Ask around if you need to, but don't come back empty."`,
+            complete: `"That's it. Good. You kept the crew fed one more day."`,
+            after: `"Take a breath. We bought ourselves one more day."`
+        }
     };
-    z.addNpc('survivor', 50, 40, 'Scavenger', '@', '#aaffaa');
-    z.world.spawnPoint = { x: 40, y: 40 };
+    z.addNpc('survivor', 26, 23, 'Mara, Cook', '@', '#aaffaa');
+    z.addNpc('survivor', 57, 21, 'Sleepless Runner', 'r', '#aaffaa');
+    z.addNpc('scavenger', 59, 39, 'Parts Kid', 's', '#c8b080');
+    z.addNpc('survivor', 39, 66, 'South Gate Watch', 'w', '#9fd8ff');
+    z.addNpc('survivor', 68, 39, 'East Gate Watch', 'w', '#9fd8ff');
+    z.world.spawnPoint = { x: 54, y: 27 };
 }
 
 function generateUrbanCornerBlock(z) {
@@ -157,10 +204,11 @@ function generateUrbanMarketCorner(z) {
     z.sidewalkAroundRoad(34, 0, 55, z.height - 1, [verticalRoad, horizontalRoad]);
     z.sidewalkAroundRoad(0, 68, z.width - 1, 89, [verticalRoad, horizontalRoad]);
 
-    z.fillRect(58, 12, 62, 48, ZoneTiles.sidewalk);
-    z.fillRect(6, 12, 30, 42, ZoneTiles.sidewalk);
-    z.fillRect(8, 92, 48, 30, ZoneTiles.sidewalk);
-    z.fillRect(70, 92, 48, 30, ZoneTiles.sidewalk);
+    z.fillRect(58, 12, 62, 48, ZoneTiles.sidewalk, { name: 'North Market Walk' });
+    z.fillRect(6, 12, 30, 42, ZoneTiles.sidewalk, { name: 'West Bodega Walk' });
+    z.fillRect(8, 92, 48, 30, ZoneTiles.sidewalk, { name: 'South Laundry Walk' });
+    z.fillRect(70, 92, 48, 30, ZoneTiles.sidewalk, { name: 'South Pawn Walk' });
+    z.fillRect(56, 56, 30, 16, ZoneTiles.concrete, { name: 'Street Market' });
 
     for (let y = 5; y < z.height - 5; y += 6) {
         z.set(44, y, ZoneTiles.lanePaint);
@@ -170,6 +218,7 @@ function generateUrbanMarketCorner(z) {
     }
 
     drawBodega(z, 7, 18, { idPrefix: 'west_bodega', name: 'West Bodega', clerkName: 'Inez, Bodega Clerk' });
+    z.placeFurniture('crate', 19, 37, 'commercial_backroom', 'Marked Ration Crate');
     z.placeItem({
         id: 'crew_rations',
         familyId: 'crew_rations',
@@ -181,18 +230,47 @@ function generateUrbanMarketCorner(z) {
         volume: 1200,
         stackable: false,
         description: 'A wrapped bundle of sealed cans, water, and old protein bars marked for Rook.'
-    }, 18, 37);
+    }, 22, 37);
     drawClinic(z, 63, 18, { idPrefix: 'street_clinic', name: 'Street Clinic' });
     drawGasStation(z, 88, 58, { idPrefix: 'mini_gas', attendantName: 'Patch, Pump Watcher' });
     drawLaundromat(z, 10, 94, { idPrefix: 'south_laundry' });
     drawPawnShop(z, 76, 94, { idPrefix: 'south_pawn' });
     drawServiceAlley(z, 56, 16, 40, { idPrefix: 'market_alley' });
 
+    for (const y of [59, 63, 67]) {
+        z.placeFurniture('table', 60, y, 'commercial_store', 'Street Market Stall');
+        z.placeFurniture('table', 70, y, 'commercial_store', 'Street Market Stall');
+        z.placeFurniture('crate', 63, y, 'commercial_backroom', 'Market Cart');
+        z.placeFurniture('crate', 73, y, 'commercial_backroom', 'Market Cart');
+    }
+    z.addPoi('street_market_stalls', 'Street Market Stalls', 'market', 68, 64, 9);
+
+    z.placeFurniture('crate', 37, 72, 'garage_tools', 'Street Barricade');
+    z.placeFurniture('crate', 51, 72, 'garage_tools', 'Street Barricade');
+    z.placeFurniture('crate', 37, 86, 'garage_tools', 'Street Barricade');
+    z.placeFurniture('crate', 51, 86, 'garage_tools', 'Street Barricade');
+    z.placeFurniture('locker', 31, 78, 'garage_tools', 'Car Husk');
+    z.placeFurniture('locker', 58, 78, 'garage_tools', 'Car Husk');
+    z.set(44, 72, ZoneTiles.hazard);
+    z.set(44, 86, ZoneTiles.hazard);
+
+    z.fillRect(84, 46, 34, 6, ZoneTiles.alley, { name: 'Rear Cut-Through' });
+    z.hLine(84, 45, 34, ZoneTiles.fence, { name: 'Cut-Through Fence' });
+    z.hLine(84, 52, 34, ZoneTiles.fence, { name: 'Cut-Through Fence' });
+    z.fillRect(96, 45, 4, 1, ZoneTiles.alley, { name: 'Fence Gap' });
+    z.fillRect(108, 52, 4, 1, ZoneTiles.alley, { name: 'Fence Gap' });
+    z.placeFurniture('crate', 92, 49, 'commercial_backroom', 'Trash Barricade');
+    z.placeFurniture('locker', 114, 49, 'garage_tools', 'Utility Cage');
+    z.addPoi('rear_cut_through', 'Rear Cut-Through', 'route', 101, 49, 8);
+
     z.placeSign(46, 87, 'Bus Stop Marker');
     z.placeFurniture('chair', 32, 88, 'commercial_store', 'Bus Stop Bench');
     z.placeFurniture('chair', 35, 88, 'commercial_store', 'Bus Stop Bench');
     z.addPoi('bus_stop', 'Bus Stop', 'transit', 34, 88, 5);
     z.addNpc('drifter', 47, 86, 'Bus Stop Prophet', 'p', '#d8d0a0');
+    z.addNpc('scavenger', 69, 64, 'Stall Picker', 's', '#c8b080');
+    z.addNpc('ganger', 88, 50, 'Alley Shakedown', 'l', '#d06a5f');
+    z.addNpc('ganger', 113, 48, 'Fence Lookout', 'l', '#d06a5f');
     z.world.spawnPoint = { x: 60, y: 86 };
 }
 

@@ -161,7 +161,7 @@
     
     <div id="quest-journal" class="modal hidden">
         <div class="modal-content" style="max-width: 700px;">
-            <h2>Quest Journal <span style="font-size:13px; color:#888;">[J]</span></h2>
+            <h2>Journal <span style="font-size:13px; color:#888;">[J]</span></h2>
             <div id="quest-journal-content" style="max-height: 60vh; overflow-y: auto;"></div>
             <button id="close-quest-btn">Close [J]</button>
         </div>
@@ -183,8 +183,22 @@
 
     <script type="module" src="src/main.js"></script>
     <script>
+        const isLocalDevHost = ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
+
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('/sw.js').catch(() => {});
+            if (isLocalDevHost) {
+                navigator.serviceWorker.getRegistrations()
+                    .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())))
+                    .catch(() => {});
+
+                if ('caches' in window) {
+                    caches.keys()
+                        .then((keys) => Promise.all(keys.map((key) => caches.delete(key))))
+                        .catch(() => {});
+                }
+            } else {
+                navigator.serviceWorker.register('/sw.js').catch(() => {});
+            }
         }
     </script>
 </body>

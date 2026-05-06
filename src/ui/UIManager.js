@@ -17,6 +17,8 @@ export class UIManager {
         this.disassembleContext = null;
         this.craftingContext = null;
         this.worldObjectContext = null;
+        this.pointOfInterestModal = null;
+        this.pointOfInterestContent = null;
     }
     
     showDisassembleModal(item, sourceType, sourceData) {
@@ -62,20 +64,30 @@ export class UIManager {
 
         const active = qs.getActiveQuests(player);
         if (active.length > 0) {
-            html += `<h3 style="color:#ffaa00;margin:12px 0 8px;">Active</h3>`;
+            html += `<h3 style="color:#ffaa00;margin:12px 0 8px;">Current</h3>`;
             for (const q of active) {
                 html += `<div style="padding:10px;background:#1a1a1a;border-left:3px solid #ffaa00;margin-bottom:8px;">`;
+                const category = q.category === 'intro' ? 'Start' : 'Current';
+                html += `<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">`;
                 html += `<div style="font-weight:bold;color:#fff;">${q.title}</div>`;
+                html += `<div style="font-size:10px;text-transform:uppercase;color:#111;background:#ffaa00;padding:2px 6px;">${category}</div>`;
+                html += `</div>`;
                 html += `<div style="font-size:12px;color:#888;margin-top:3px;">${q.description}</div>`;
                 html += `<div style="font-size:12px;color:#ffaa00;margin-top:4px;">`;
-                html += `Stage ${q.stageIndex + 1}/${q.totalStages}: ${q.stageText}`;
-                html += `</div></div>`;
+                html += `Objective: ${q.stageText}`;
+                html += `</div>`;
+                if (q.targetHint) {
+                    html += `<div style="font-size:12px;color:#ddd;margin-top:6px;border-top:1px solid #333;padding-top:6px;">`;
+                    html += `<span style="color:#ffaa00;">Target:</span> ${q.targetHint}`;
+                    html += `</div>`;
+                }
+                html += `</div>`;
             }
         }
 
         const completed = qs.getCompletedQuests(player);
         if (completed.length > 0) {
-            html += `<h3 style="color:#44ff44;margin:12px 0 8px;">Completed</h3>`;
+            html += `<h3 style="color:#44ff44;margin:12px 0 8px;">Done</h3>`;
             for (const q of completed) {
                 html += `<div style="padding:8px;background:#1a1a1a;border-left:3px solid #44ff44;margin-bottom:6px;">`;
                 html += `<div style="font-size:13px;color:#aaa;">${q.title}</div>`;
@@ -83,10 +95,10 @@ export class UIManager {
             }
         }
 
-        // Side Jobs (delivery requests)
+        // Errands (delivery requests)
         const activeDeliveries = qs.getActiveDeliveries(player);
         if (activeDeliveries.length > 0) {
-            html += `<h3 style="color:#00aaff;margin:12px 0 8px;">Side Jobs</h3>`;
+            html += `<h3 style="color:#00aaff;margin:12px 0 8px;">Errands</h3>`;
             for (const d of activeDeliveries) {
                 html += `<div style="padding:8px;background:#1a1a1a;border-left:3px solid #00aaff;margin-bottom:6px;">`;
                 html += `<div style="font-size:13px;color:#ddd;">Find ${d.label} for ${d.npcName}</div>`;
@@ -96,7 +108,7 @@ export class UIManager {
 
         const completedDeliveries = qs.getCompletedDeliveries(player);
         if (completedDeliveries.length > 0) {
-            html += `<h3 style="color:#888;margin:12px 0 8px;">Completed Jobs</h3>`;
+            html += `<h3 style="color:#888;margin:12px 0 8px;">Finished Errands</h3>`;
             for (const d of completedDeliveries) {
                 html += `<div style="padding:6px;background:#1a1a1a;border-left:3px solid #888;margin-bottom:4px;">`;
                 html += `<div style="font-size:12px;color:#888;">Delivered ${d.label} to ${d.npcName}</div>`;
@@ -105,10 +117,98 @@ export class UIManager {
         }
 
         if (active.length === 0 && completed.length === 0 && activeDeliveries.length === 0 && completedDeliveries.length === 0) {
-            html += `<div style="padding:20px;text-align:center;color:#666;">No active quests.<br>Talk to survivors in the field.</div>`;
+            html += `<div style="padding:20px;text-align:center;color:#666;">No active entries.</div>`;
         }
 
         this.questJournalContent.innerHTML = html;
+    }
+
+    togglePointOfInterestList() {
+        this.ensurePointOfInterestModal();
+        if (!this.pointOfInterestModal) return;
+
+        if (this.pointOfInterestModal.classList.contains('hidden')) {
+            this.renderPointOfInterestList();
+            this.pointOfInterestModal.classList.remove('hidden');
+        } else {
+            this.pointOfInterestModal.classList.add('hidden');
+        }
+    }
+
+    ensurePointOfInterestModal() {
+        if (this.pointOfInterestModal) return;
+
+        let modal = document.getElementById('point-of-interest-list');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'point-of-interest-list';
+            modal.className = 'modal hidden';
+            modal.innerHTML = `
+                <div class="modal-content" style="max-width: 680px;">
+                    <h2>Known Places</h2>
+                    <button id="close-poi-btn" class="small-btn" style="float:right;margin-top:-44px;">Close</button>
+                    <div id="point-of-interest-content"></div>
+                </div>`;
+            document.body.appendChild(modal);
+        }
+
+        this.pointOfInterestModal = modal;
+        this.pointOfInterestContent = document.getElementById('point-of-interest-content');
+        document.getElementById('close-poi-btn')?.addEventListener('click', () => {
+            this.pointOfInterestModal.classList.add('hidden');
+        });
+    }
+
+    renderPointOfInterestList() {
+        this.ensurePointOfInterestModal();
+        if (!this.pointOfInterestContent) return;
+
+        const player = this.game.player;
+        const pois = (this.game.world?.getPointsOfInterest?.(true) || [])
+            .slice()
+            .sort((a, b) => {
+                const da = Math.abs(a.x - player.x) + Math.abs(a.y - player.y);
+                const db = Math.abs(b.x - player.x) + Math.abs(b.y - player.y);
+                return da - db;
+            });
+
+        if (!pois.length) {
+            this.pointOfInterestContent.innerHTML = `
+                <div style="padding:20px;text-align:center;color:#777;">
+                    No known places in this zone yet.
+                </div>`;
+            return;
+        }
+
+        let html = `<div style="font-size:12px;color:#888;margin-bottom:10px;">Places are recorded when you get close enough to reveal them.</div>`;
+        for (const poi of pois) {
+            const dist = Math.abs(poi.x - player.x) + Math.abs(poi.y - player.y);
+            html += `<div style="display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px;background:#1a1a1a;border-left:3px solid #00aaff;margin-bottom:8px;">`;
+            html += `<div style="min-width:0;">`;
+            html += `<div style="font-weight:bold;color:#fff;">${this.escapeHtml(poi.name)}</div>`;
+            html += `<div style="font-size:12px;color:#888;">${this.escapeHtml(poi.type || 'place')} - ${dist} steps</div>`;
+            html += `</div>`;
+            html += `<button class="small-btn" data-travel-poi="${this.escapeHtml(poi.id)}" style="min-width:88px;">Travel</button>`;
+            html += `</div>`;
+        }
+
+        this.pointOfInterestContent.innerHTML = html;
+        this.pointOfInterestContent.querySelectorAll('[data-travel-poi]').forEach(button => {
+            button.addEventListener('click', () => {
+                const poiId = button.getAttribute('data-travel-poi');
+                this.pointOfInterestModal.classList.add('hidden');
+                this.game.startAutoTravelToPoi(poiId);
+            });
+        });
+    }
+
+    escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
     }
 
     showNPCDialogue(npc, text, choices, onChoice) {
@@ -321,6 +421,20 @@ export class UIManager {
             }
             html += '<br>';
         }
+
+        if (this.game.questSystem) {
+            const activeQuests = this.game.questSystem.getActiveQuests(player);
+            if (activeQuests.length > 0) {
+                const q = activeQuests[0];
+                html += `<div style="color:#ffaa00;font-size:12px;text-transform:uppercase;border-bottom:1px solid #333;padding-bottom:3px;margin-bottom:5px;">Current</div>`;
+                html += `<div style="font-size:12px;color:#fff;margin-bottom:3px;">${q.title}</div>`;
+                html += `<div style="font-size:11px;color:#ffaa00;margin-bottom:6px;">${q.stageText}</div>`;
+                if (q.targetHint) {
+                    html += `<div style="font-size:11px;color:#888;margin-bottom:8px;">${q.targetHint}</div>`;
+                }
+                html += '<br>';
+            }
+        }
         
         const encumbrance = player.getEncumbranceLevel();
         const encumbranceColors = {
@@ -472,12 +586,18 @@ export class UIManager {
 
         // Visible survivors
         if (this.game.world && this.game.fov) {
-            const survivors = this.game.world.entities.filter(e =>
+            const visibleNpcs = this.game.world.entities.filter(e =>
                 e !== player &&
-                e.type === 'survivor' &&
                 e.z === player.z &&
                 this.game.fov.isVisible(e.x, e.y, player.z)
             );
+            const questNpcs = visibleNpcs.filter(e => e.questRole === 'giver');
+            for (const qn of questNpcs) {
+                const dist = Math.floor(Math.sqrt(Math.pow(qn.x - player.x, 2) + Math.pow(qn.y - player.y, 2)));
+                html += `<div class="stat-line" style="color:#ffcc44;"><span class="stat-label">Contact:</span> <span class="stat-value">${qn.name} ${dist} tiles [E to talk]</span></div>`;
+            }
+
+            const survivors = visibleNpcs.filter(e => e.type === 'survivor' && e.questRole !== 'giver');
             for (const s of survivors) {
                 const dist = Math.floor(Math.sqrt(Math.pow(s.x - player.x, 2) + Math.pow(s.y - player.y, 2)));
                 const req = s.deliveryRequest;
@@ -622,6 +742,7 @@ export class UIManager {
             const terrainLabel = (tile.terrain || tile.biome).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
             const threatColor = ['#448844','#888844','#aa7722','#cc4422','#ff2222'][tile.threatLevel - 1] || '#888888';
             const stars = '★'.repeat(tile.threatLevel) + '☆'.repeat(5 - tile.threatLevel);
+            const isQuestTarget = this.game.isActiveQuestTarget?.(ow.cursorCol, ow.cursorRow);
 
             // ── Intel tables ─────────────────────────────────────────────────
             const BIOME_INTEL = {
@@ -680,6 +801,9 @@ export class UIManager {
             html += `<div class="stat-line"><span class="stat-label">Size:</span> <span class="stat-value" style="color:#888888;">${tile.zone.width}×${tile.zone.height}</span></div>`;
             if (tile.explored) {
                 html += `<div class="stat-line"><span class="stat-value" style="color:#00ff88;">✓ Visited</span></div>`;
+            }
+            if (isQuestTarget) {
+                html += `<div class="stat-line"><span class="stat-value" style="color:#ffaa00;">! Active target</span></div>`;
             }
 
             html += `<div style="border-top:1px solid #333;margin:6px 0 4px;"></div>`;
@@ -1211,39 +1335,26 @@ export class UIManager {
     }
 
     _cgPlayNow() {
-        const charSys = this.game.charCreationSystem;
-        const bgs = charSys.getAllBackgrounds();
-        const bg = bgs[Math.floor(Math.random() * bgs.length)];
-        const genders = ['male', 'female', 'other'];
-        const stats = { strength:10, agility:10, endurance:10, intelligence:10, perception:10 };
-        const keys = Object.keys(stats);
-        let remaining = 50;
-        for (let i = 0; i < keys.length - 1; i++) {
-            const add = Math.floor(Math.random() * 5);
-            stats[keys[i]] += add;
-            remaining -= 10 + add;
-        }
-        stats[keys[keys.length-1]] = remaining;
-
-        const drawbacks = charSys.getNegativeTraits();
-        const drawback = drawbacks[Math.floor(Math.random() * drawbacks.length)];
-        let pts = 6 + Math.abs(drawback.cost);
-
-        const tier1 = Object.values(TALENT_NODES).filter(n => !n.prerequisites.length && n.cost <= 1).sort(() => Math.random()-0.5);
-        const picked = [];
-        for (const n of tier1) {
-            if (pts >= n.cost && picked.length < 4) { picked.push(n.id); pts -= n.cost; }
-        }
-
-        const allTalents = [...(bg.startingTalents||[]), ...picked];
+        const allTalents = [
+            'stance_opportunistic',
+            'weapon_aptitude',
+            'blades_accuracy',
+            'blades_hamstring',
+            'blades_precision_stab',
+            'blades_flurry'
+        ];
         document.getElementById('character-creation').classList.add('hidden');
         this.game.startGame({
             name: this._cgRandomName(),
-            gender: genders[Math.floor(Math.random()*genders.length)],
-            background: bg.id,
-            traits: [drawback.id],
+            gender: 'other',
+            background: 'streetKid',
+            traits: [],
             unlockedTalents: allTalents,
-            ...stats
+            strength: 9,
+            agility: 13,
+            endurance: 10,
+            intelligence: 8,
+            perception: 10
         });
     }
     
@@ -3437,6 +3548,11 @@ export class UIManager {
 
         if (this.questJournalModal && !this.questJournalModal.classList.contains('hidden')) {
             this.questJournalModal.classList.add('hidden');
+            closedAny = true;
+        }
+
+        if (this.pointOfInterestModal && !this.pointOfInterestModal.classList.contains('hidden')) {
+            this.pointOfInterestModal.classList.add('hidden');
             closedAny = true;
         }
 

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fractured-city-v63';
+const CACHE_NAME = 'fractured-city-v64';
 const ASSETS = [
     '/',
     '/index.html',
@@ -39,6 +39,7 @@ const ASSETS = [
     '/src/systems/WorldObjectSystem.js',
     '/src/systems/TimeSystem.js',
     '/src/systems/LightingSystem.js',
+    '/src/systems/QuestSystem.js',
     '/src/content/ContentManager.js',
     '/src/content/TalentCatalog.js',
     '/src/systems/AbilitySystem.js',
@@ -73,6 +74,25 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+    const url = new URL(event.request.url);
+    const isLocalDevAsset = url.origin === self.location.origin &&
+        (url.pathname.endsWith('.js') || url.pathname.endsWith('.css') || url.pathname === '/index.html');
+
+    if (isLocalDevAsset) {
+        event.respondWith(
+            fetch(event.request).then((response) => {
+                if (response.status === 200) {
+                    const clone = response.clone();
+                    caches.open(CACHE_NAME).then((cache) => {
+                        cache.put(event.request, clone);
+                    });
+                }
+                return response;
+            }).catch(() => caches.match(event.request))
+        );
+        return;
+    }
+
     event.respondWith(
         caches.match(event.request).then((cached) => {
             return cached || fetch(event.request).then((response) => {

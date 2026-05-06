@@ -1,133 +1,136 @@
-# Fractured City - Roguelike
+# Fractured City: Night Run
 
-A traditional turn-based roguelike set in a grimy cyberpunk universe. Pure grid-based movement, permadeath, and invasive cybernetics.
+A browser-based turn-based survival roguelike set in a fractured cyberpunk world that is still running on fumes. The current design pivot is toward **occupation-driven starts**, dense isolated-but-connected zones, ASCII-first readability, and objectives that come from backgrounds, factions, and local situations.
 
-## Features
+The target mix is:
+- **Caves of Qud**: deep character building, strange abilities, rich world texture
+- **Cataclysm: DDA**: grounded survival, item depth, crafting, anatomy, and tactical consequence
+- **Streets of Rogue**: compact local situations, NPC roles, faction hooks, and background-specific motives
 
-### Implemented
-- **Turn-based gameplay**: Every action advances the world by one tick
-- **Multi-level world**: 3 Z-levels (sewers/basements, ground, second floors)
-- **Structured world generation**: Roads, buildings, sewer systems with 9 prefab layouts
-- **Multi-floor buildings**: Staircases, basements, second floors, interactive doors
-- **Character creation**: CoQ-style 3-column (v52) — 6 backgrounds, talent browser, 6pt talent budget, stat allocation
-- **Talent system**: 5 trees, 35+ talents, talent-gated stances & abilities, in-game Q screen
-- **Ability system**: 15 combat abilities across 3 weapon classes, talent-gated, stance bonuses
-- **Combat stances**: Aggressive / Defensive / Opportunistic (talent-gated)
-- **Overworld map**: 60×40 zone grid, Tab to toggle, zone drop-in with biome-matched generation
-- **Deep inventory system**: Weight/volume, nested containers, pockets, encumbrance
-- **Item interactions**: Opening containers, food/drink consumption, tool usage
-- **Food systems**: Hunger/thirst, spoilage, liquid spillage, contamination
-- **Movement modes**: Walk/Run/Crouch/Prone with sound propagation
-- **Field of View**: Z-aware raycasting with explored tiles
-- **Day/night cycle**: 24-hour clock, ambient lighting, flashlight/lantern items
-- **NPC AI**: 5 types (Scavenger/Raider/Armed Raider/Brute/Stalker), energy-based speed, detection state machine
-- **Combat system**: Anatomy-based damage, stat-based hit/crit, stagger, parry, abilities
-- **Anatomy system**: No HP bar — blood level, wounds, organ damage, infection, shock
-- **Medical system**: Bandages, antiseptic, painkillers, infection/sepsis, pain suppression
-- **Crafting system**: Tiered recipes, raw materials, craftable intermediates, property-based requirements
-- **Disassembly system**: Tool-based quality retention, component recovery
-- **Furniture system**: 16 types, searchable storage, loot population
-- **Loot tables**: 16 room types with weighted pools, raw material spawning
-- **Extraction objective**: Access card requirement, win/loss screens
-- **Canvas rendering**: 32x32 tile-based graphics with wall/NPC spritesheets (5 NPC types)
-- **Comprehensive UI**: Character sheet, inventory modal, inspect mode, combat overlay, workshop, talent panel
+Zones are not rigid stages. The player can travel freely between zones and use the overworld, but each zone should feel like a real place: a hideout, market corner, clinic, mall, school, gas station, alley network, construction site, or faction-controlled facility.
 
-## How to Play
+## Current Milestone Direction
 
-### Local Development
-1. Open `index.html` in a modern web browser
-2. Or use a local server:
-   ```bash
-   python -m http.server 8000
-   ```
-   Then navigate to `http://localhost:8000`
+The active locked order is:
 
-### Controls
-- **WASD** or **Arrow Keys**: Move
-- **Space**: Wait/skip turn
-- **G**: Pick up item
-- **E**: Interact with door/object
-- **M**: Cycle movement mode (Walk/Run/Crouch/Prone)
-- **T**: Cycle combat stance (talent-gated)
-- **Q**: Talent & Ability panel
-- **B**: Toggle combat detail overlay
-- **Tab**: Toggle Overworld map
-- **I**: Open inventory
-- **C**: Character sheet
-- **V**: Workshop (craft/disassemble)
-- **X**: Inspect mode
-- **F**: Toggle explore mode
-- **< / >**: Use stairs/manholes
-- **?**: Help screen
+1. Street Kid intro flow
+2. Journal/objective readability
+3. One polished zone chain
+4. POI / auto-explore tools
+5. Occupation framework
 
-### Deploying to Vercel
+Implemented in the current slice:
+- Quick Start defaults to Street Kid with small blade/combat talents.
+- Downstairs is the current start hub.
+- Market Corner is the first starter destination.
+- The intro objective chain has a working NPC handoff loop.
+- POIs are recorded through FoV exploration.
+- `P` opens Known Places and can auto-travel to discovered POIs.
+- `O` auto-explores toward reachable unexplored edges.
+- `Esc` cancels auto-travel.
+- ASCII is the preferred development view for now.
+
+## Implemented Systems
+
+- Turn-based gameplay with action costs and NPC energy processing
+- Anatomy-based combat with blood, wounds, organs, pain, shock, and no real HP bar
+- Movement modes: walk, run, crouch, prone
+- Sound propagation and NPC detection
+- Field of view, explored tiles, lighting, day/night cycle
+- Hunger, thirst, food spoilage, liquid spillage, contamination
+- Deep inventory with weight, volume, nested containers, pockets, equipment, carried items
+- Item actions, opening containers, consumption, tool usage
+- Crafting and disassembly with component properties, quality, intermediates, and tier gates
+- Character creation with backgrounds, traits, stats, talents, stances, and abilities
+- Overworld zone grid with active target markers
+- Zone-mode generation through templates/fragments
+- POI discovery and auto-travel
+- Early QuestSystem/Journal prototype for named NPC objective chains
+- Canvas rendering with ASCII and optional sprites
+
+## Controls
+
+- `WASD` / Arrow Keys: move
+- `Space`: wait
+- `G`: pick up item
+- `E`: interact with nearby object/NPC
+- `M`: cycle movement mode
+- `T`: cycle combat stance
+- `Q`: talent and ability panel
+- `J`: journal/current entries
+- `P`: Known Places / discovered POIs
+- `O`: auto-explore
+- `B`: combat detail overlay
+- `Tab`: overworld map
+- `I`: inventory
+- `C`: character sheet
+- `V`: workshop
+- `X`: inspect mode
+- `F`: debug explore mode, freezes hunger/thirst
+- `<` / `>`: stairs/manholes/ladders
+- `?`: help
+- `Esc`: close modal/cancel mode/cancel auto-travel
+
+## Local Development
+
+Open `index.html` directly, or run a local server:
+
 ```bash
-vercel deploy
+python -m http.server 8000
 ```
 
-No build step required - this is a pure static site.
+Then open `http://localhost:8000`.
 
-## Architecture
+For cache problems during local testing, use `dev-reset.html` or hard-refresh. The service worker is disabled for localhost.
 
-### Core Systems
-- `src/core/Game.js` - Main game loop and state management
-- `src/core/Renderer.js` - Canvas 2D rendering with 32x32 tiles
-- `src/core/InputHandler.js` - Turn-based input processing
+## Architecture Map
+
+### Core
+- `src/core/Game.js` - main game state, turn processing, zone transitions, auto-travel
+- `src/core/InputHandler.js` - keyboard mapping
+- `src/core/Renderer.js` - canvas tile renderer
+- `src/core/SpriteManager.js` - optional spritesheet loading
 
 ### World
-- `src/world/World.js` - Chunk management, entity tracking, Z-level support
-- `src/world/Chunk.js` - Procedural generation: roads, buildings, sewers
-- `src/world/ExtractionPoint.js` - Win condition system
-- `src/world/objects/Door.js` - Interactive doors with lock/HP
-- `src/world/objects/Furniture.js` - 16 furniture types with storage
-
-### Entities
-- `src/entities/Player.js` - Player character with stats, anatomy, inventory
-- `src/entities/NPC.js` - AI-driven NPCs with Z-aware pathfinding
-- `src/entities/Anatomy.js` - Detailed body part and organ tracking, blood/wound system
+- `src/world/World.js` - chunk manager, entities/items/objects, zone mode, POIs
+- `src/world/OverworldMap.js` - overworld zone grid
+- `src/world/gen/ZoneGenerator.js` - current zone generation entrypoint
+- `src/world/gen/ZoneCanvas.js` - zone drawing helper and POI registration
+- `src/world/gen/UrbanFragments.js` - reusable urban sub-zone fragments
+- `src/world/Chunk.js` - older procedural chunk generation, still present but no longer the main design direction
 
 ### Systems
-- `src/systems/EquipmentSystem.js` - Equip/unequip, damage/defense calculations
-- `src/systems/CombatSystem.js` - Anatomy-based combat, wounds, bleeding
-- `src/systems/CraftingSystem.js` - Tiered crafting with property matching and maxValue gating
-- `src/systems/FoVSystem.js` - Z-aware field of view with raycasting
-- `src/systems/SoundSystem.js` - Sound propagation and NPC detection
-- `src/systems/ItemSystem.js` - Item interactions and consumption
-- `src/systems/ContainerSystem.js` - Weight/volume, nested containers
-- `src/systems/TimeSystem.js` - Day/night cycle, 24-hour clock
-- `src/systems/LightingSystem.js` - Ambient + point light sources
-- `src/systems/WorldObjectSystem.js` - Door/furniture interactions
-- `src/systems/CharacterCreationSystem.js` - Backgrounds, traits, CoQ chargen
-- `src/systems/AbilitySystem.js` - Combat abilities with talent/stance gating
-- `src/systems/CombatEffects.js` - Visual feedback (shake, floating text)
-
-### Content
-- `src/content/ContentManager.js` - Data-driven items, components, materials, modifiers
-- `src/content/BuildingPrefabs.js` - 18 validated ASCII building layouts
-- `src/content/LootTables.js` - 16 room-type loot pools + raw material spawning
-- `src/content/TalentCatalog.js` - Talent trees, nodes, and TalentEffects helper
+- `src/systems/QuestSystem.js` - current objective/journal prototype, slated to become occupation-specific
+- `src/systems/CharacterCreationSystem.js` - backgrounds/traits/stat setup
+- `src/content/TalentCatalog.js` - talent trees, nodes, effects
+- `src/systems/AbilitySystem.js` - talent-gated abilities and effects
+- `src/systems/CombatSystem.js` - anatomy combat resolution
+- `src/systems/CraftingSystem.js` - crafting/disassembly
+- `src/systems/FoVSystem.js` - visible/explored tiles
+- `src/systems/SoundSystem.js` - sound events and detection
+- `src/systems/TimeSystem.js` / `LightingSystem.js` - time and light
 
 ### UI
-- `src/ui/UIManager.js` - All UI rendering and interactions
-- `src/ui/CraftingUI.js` - Workshop with sub-recipe drill-down
-- `src/ui/DisassembleModal.js` - Disassembly interface
-- `src/ui/WorldObjectModal.js` - Door/furniture interaction modals
-- `src/ui/MobileControls.js` - Touch controls for mobile
+- `src/ui/UIManager.js` - panels, modals, journal, POI list, chargen
+- `src/ui/CraftingUI.js` - workshop
+- `src/ui/DisassembleModal.js` - disassembly
+- `src/ui/WorldObjectModal.js` - world object/furniture interactions
+- `src/ui/MobileControls.js` - touch controls
 
-## Design Philosophy
+## Current Design Rules
 
-- **Data-driven**: Content scales through families, materials, and modifiers
-- **No libraries**: Pure vanilla JavaScript with ES6 modules
-- **Permadeath**: No meta progression, only player skill
-- **Systemic**: Anatomy, cybernetics, and items interact through rules
-- **Vercel-ready**: Static site, instant deployment
+- Build zones as dense scenario containers, not endless noise.
+- Alive zones should feel inhabited; abandoned zones should feel abandoned.
+- Backgrounds are evolving into occupations with motives, starting situations, social hooks, and skill bias.
+- Skills/abilities should unlock new actions, not just small stat bumps.
+- Use ASCII first while zone readability is being rebuilt.
+- Use existing sprites only when they are actually correct; new entities should start as ASCII.
+- Preserve ASCII fallback for every sprite/tile/entity path.
 
 ## Next Steps
 
-1. Town building / world gen improvements (districts, POIs, named locations)
-2. NPC dialogue and lore integration
-3. Three Origins system: **Flesh / Metal (Chrome) / Echo** — system-locking origin choice at chargen
-4. Cybernetic installation (Chrome path)
-5. Faction and reputation mechanics
-
-See `DEVLOG.md` for detailed development progress and roadmap.
+1. Move the current intro from universal start to Street Kid-specific start.
+2. Add an occupation-start registry for future Teacher/Cop/Doctor/Cashier/Clown/etc. starts.
+3. Continue polishing the Downstairs -> Market Corner starter chain.
+4. Build new zones only when the current starting story needs them.
+5. Keep objective/quest wording flexible; the system is still being renamed and reshaped.

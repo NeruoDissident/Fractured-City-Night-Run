@@ -4,6 +4,49 @@
 
 ---
 
+## May 2026 Direction Update
+
+The current pivot keeps the useful parts of this brainstorm but changes the framing:
+
+- "Archetypes/backgrounds" are becoming **occupations**. The current examples can remain as early roles, but future naming should fit the world: Street Kid, Teacher, Doctor, Cashier, Clown, Carpenter, Cop/Security, etc.
+- Occupations are not hard classes. Every ability should be learnable through skill trees or other world methods. Starting occupation gives talents, knowledge, contacts, motives, and starting context that would otherwise take more work to acquire.
+- The world should not become rigid Streets of Rogue stage progression. Zones can contain goals, NPCs, faction hooks, and local stories, but travel remains free and objectives can send the player between zones.
+- The desired scale is a large world with oceans, lakes, rivers, wilderness, towns, and urban areas. The playable feel should come from **detailed zone slices** rather than endless samey procedural terrain.
+- Current first occupation template is **Street Kid**, used as a vanilla/tutorial-like start.
+
+### Occupation Examples
+
+- **Street Kid:** starts in/near a crew hideout, knows local shortcuts and people, first loop teaches talking to contacts, reading objectives, traveling to another zone, finding supplies, and returning.
+- **Teacher:** could start mid-class when a notification or local crisis interrupts the day. Motives may involve students, school supplies, evacuation, records, or protecting a learning space.
+- **Doctor:** triage, medicine, patient obligations, clinic politics, medical supply chains.
+- **Cashier:** inventory, store security, customers, ration arguments, supply runs.
+- **Clown/Performer:** performance tree hooks; juggling as scaling combat engine; social misdirection.
+- **Magician/Performer:** stage magic as combat/control abilities; example skill splits an enemy into weaker copies and scales with small weapons/agility.
+- **Carpenter:** tools, repair, barricades, structure knowledge; can branch into performance/combat trees for hybrid builds.
+
+### Zone Rule
+
+Each designed zone should be readable as a place first, then as a combat map:
+
+`Zone = Location + Situation + Actors + Optional Objectives`
+
+Not every zone needs an objective. Some are barren, dangerous, loot-heavy, faction-held, or purely connective. But important zones should support exploration, combat geometry, social hooks, and POIs.
+
+Current zone direction:
+- Downstairs: starter hideout/crew hub.
+- Market Corner: first external starter objective zone.
+- Future examples: urban corner store, supermarket, alley, indoor mall, school, gas station, clinic, park, corporate building, construction site.
+
+### Current Locked Milestone
+
+1. Street Kid intro flow
+2. Journal/objective readability
+3. One polished zone chain
+4. POI / auto-explore tools
+5. Occupation framework
+
+Do not jump ahead to broader factions/origins/cybernetics until this milestone is stable.
+
 ## Core Design Philosophy
 
 > Same map. Same combat. Same items. Different character goals make it a different game.

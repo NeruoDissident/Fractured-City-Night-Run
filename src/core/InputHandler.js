@@ -59,6 +59,22 @@ export class InputHandler {
             this.game.ui.toggleQuestJournal();
             return;
         }
+
+        if (e.key === 'p' || e.key === 'P') {
+            e.preventDefault();
+            if (this.game.gameState === 'playing') {
+                this.game.ui.togglePointOfInterestList();
+            }
+            return;
+        }
+
+        if (e.key === 'o' || e.key === 'O') {
+            e.preventDefault();
+            if (this.game.gameState === 'playing' && !this.game.inspectMode && !this.game.interactMode) {
+                this.game.startAutoExplore();
+            }
+            return;
+        }
         
         if (e.key === '?') {
             e.preventDefault();
@@ -156,6 +172,10 @@ export class InputHandler {
             if (this.game.ui.closeAllModals()) {
                 return;
             }
+            if (this.game.autoTravelTarget) {
+                this.game.cancelAutoTravel('Auto-travel cancelled.');
+                return;
+            }
             // Cancel interact mode
             if (this.game.interactMode) {
                 this.game.cancelInteractMode();
@@ -235,6 +255,9 @@ export class InputHandler {
         const action = this.keyMap[e.key];
         if (action) {
             e.preventDefault();
+            if (this.game.autoTravelTarget) {
+                this.game.cancelAutoTravel();
+            }
             this.game.processTurn(action);
         }
     }

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reset Local Cache</title>
+    <style>
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            background: #0b0b0b;
+            color: #ddd;
+            font: 16px monospace;
+        }
+        main {
+            width: min(560px, calc(100vw - 32px));
+            border: 1px solid #333;
+            background: #141414;
+            padding: 20px;
+        }
+        h1 {
+            margin: 0 0 12px;
+            color: #ffaa00;
+            font-size: 20px;
+        }
+        #status {
+            color: #aaffaa;
+            line-height: 1.6;
+            white-space: pre-line;
+        }
+    </style>
+</head>
+<body>
+    <main>
+        <h1>Local Cache Reset</h1>
+        <div id="status">Clearing service workers and caches...</div>
+    </main>
+    <script>
+        const status = document.getElementById('status');
+
+        async function resetLocalCache() {
+            const lines = [];
+
+            if ('serviceWorker' in navigator) {
+                const registrations = await navigator.serviceWorker.getRegistrations();
+                await Promise.all(registrations.map((registration) => registration.unregister()));
+                lines.push(`Unregistered service workers: ${registrations.length}`);
+            } else {
+                lines.push('Service workers unavailable.');
+            }
+
+            if ('caches' in window) {
+                const keys = await caches.keys();
+                await Promise.all(keys.map((key) => caches.delete(key)));
+                lines.push(`Deleted caches: ${keys.length}`);
+            } else {
+                lines.push('Cache Storage unavailable.');
+            }
+
+            lines.push('Reloading game...');
+            status.textContent = lines.join('\n');
+            window.setTimeout(() => {
+                window.location.replace('/?dev=' + Date.now());
+            }, 700);
+        }
+
+        resetLocalCache().catch((error) => {
+            status.style.color = '#ff7777';
+            status.textContent = 'Reset failed:\n' + error.message;
+        });
+    </script>
+</body>
+</html>

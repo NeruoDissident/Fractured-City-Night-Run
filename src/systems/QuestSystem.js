@@ -11,6 +11,24 @@
 
 export const QUESTS = {
     // ─── Street Kid starter chain ───────────────────────────────────────────
+    streetkid_intro: {
+        id: 'streetkid_intro',
+        title: 'New Normal',
+        description: 'You made it back to Downstairs, the closest thing your crew has to a home. Check in with Rook and find out what still needs doing.',
+        occupation: 'streetKid',
+        category: 'intro',
+        stages: [
+            {
+                id: 'check_in_with_rook',
+                description: 'Find Rook in Downstairs and check in with the crew.',
+                completeChoiceLabel: 'Check in',
+                checkCanComplete: (game, player, npc) => npc?.name === 'Rook'
+            }
+        ],
+        startsQuest: 'streetkid_rations',
+        oncePerRun: true
+    },
+
     streetkid_rations: {
         id: 'streetkid_rations',
         title: 'One More Day',
@@ -22,6 +40,7 @@ export const QUESTS = {
             {
                 id: 'recover_rations',
                 description: 'Travel to the marked Market Corner, find the Crew Ration Bundle in the bodega, and return it to Rook.',
+                completeChoiceLabel: 'Hand over the ration bundle',
                 checkCanComplete: (game, player) => {
                     return player.inventory.some(i => i.id === 'crew_rations' || i.familyId === 'crew_rations');
                 },
@@ -52,6 +71,10 @@ export class QuestSystem {
                 knownDeliveries: []  // { npcId, npcName, itemId, label, fulfilled }
             };
         }
+    }
+
+    startIntroQuest(player) {
+        return this.startQuest(player, 'streetkid_intro');
     }
 
     // ─── Quest queries ──────────────────────────────────────────────────────
@@ -154,7 +177,7 @@ export class QuestSystem {
         const stage = this.getCurrentStage(player, questId);
         if (!q || !stage) return false;
 
-        if (stage.checkCanComplete && !stage.checkCanComplete(this.game, player)) {
+        if (stage.checkCanComplete && !stage.checkCanComplete(this.game, player, npc)) {
             return false;
         }
 
@@ -207,6 +230,10 @@ export class QuestSystem {
         player.goalsData.questCompleted = true;
         if (this.game.goalSystem) {
             this.game.goalSystem.checkGoals(player);
+        }
+
+        if (def.startsQuest) {
+            this.startQuest(player, def.startsQuest, this.game.getQuestNpcForQuest?.(def.startsQuest) || null);
         }
 
         return true;
@@ -268,6 +295,11 @@ export class QuestSystem {
                 questId: q.questId,
                 title: def?.title || q.questId,
                 description: def?.description || '',
+                category: def?.category || 'story',
+                targetZoneId: def?.targetZoneId || null,
+                targetHint: def?.targetZoneId && this.game.getQuestTargetHint
+                    ? this.game.getQuestTargetHint(def.targetZoneId)
+                    : null,
                 stageIndex: q.stageIndex,
                 stageText: stage?.description || 'Unknown objective',
                 totalStages: def?.stages?.length || 0

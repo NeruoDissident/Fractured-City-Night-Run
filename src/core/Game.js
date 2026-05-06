@@ -48,6 +48,9 @@ export class Game {
         this.interactMode = false;
         this.interactCandidates = null;
 
+        this.autoTravelTarget = null;
+        this._autoTravelTimer = null;
+
         // ── Overworld ────────────────────────────────────────────────────
         this.overworldMap    = null;
         this._loadoutGiven   = false;  // starting gear given once per run
@@ -101,6 +104,7 @@ export class Game {
         this.goalSystem.initGoals(this.player);
         this.questSystem = new QuestSystem(this);
         this.questSystem.initPlayer(this.player);
+        this.questSystem.startIntroQuest(this.player);
 
         // Create the overworld (exists but player starts in the hub)
         const runSeed = Date.now() & 0x7FFFFFFF;
@@ -203,6 +207,36 @@ export class Game {
         return null;
     }
 
+    getQuestNpcForQuest(questId) {
+        if (!this.world?.entities) return null;
+        return this.world.entities.find(npc => {
+            const ids = npc.questIds || (npc.questId ? [npc.questId] : []);
+            return ids.includes(questId);
+        }) || null;
+    }
+
+    _getNpcQuestId(npc) {
+        if (!npc || !this.questSystem || !this.player) return null;
+        const ids = npc.questIds || (npc.questId ? [npc.questId] : []);
+        if (!ids.length) return null;
+
+        const active = ids.find(id => this.questSystem.hasActive(this.player, id));
+        if (active) return active;
+
+        const available = ids.find(id => !this.questSystem.hasQuest(this.player, id));
+        if (available) return available;
+
+        return ids.find(id => this.questSystem.hasCompleted(this.player, id)) || ids[0];
+    }
+
+    isActiveQuestTarget(col, row) {
+        if (!this.questSystem || !this.player?.questData) return false;
+        const tile = this.overworldMap?.getTile(col, row);
+        if (!tile?.zone?.id) return false;
+        return this.questSystem.getActiveQuests(this.player)
+            .some(q => q.targetZoneId && q.targetZoneId === tile.zone.id);
+    }
+
     // ── Zone systems init (called on every zone entry) ─────────────────────────
     _initZoneSystems() {
         this.fov              = new FoVSystem(this.world);
@@ -219,6 +253,7 @@ export class Game {
 
     // ── Drop into an overworld tile ───────────────────────────────────────────
     dropIntoZone(col, row, entryEdge = null) {
+        this.cancelAutoTravel();
         const owTile = this.overworldMap.getTile(col, row);
         if (!owTile) return;
 
@@ -375,6 +410,7 @@ export class Game {
 
     // ── Open overworld map (non-destructive — zone state is preserved) ─────────
     returnToOverworld() {
+        this.cancelAutoTravel();
         // Sync the overworld cursor back to wherever the player currently is
         if (this.overworldMap) {
             this.overworldMap.cursorCol = this._currentZoneCol;
@@ -459,6 +495,229 @@ export class Game {
         }
         
         this.render();
+    }
+
+    startAutoTravelToPoi(poiId) {
+        if (!this.world || !this.player) return false;
+        const discoveredPois = this.world.getPointsOfInterest?.(true) || [];
+        const poi = discoveredPois.find(p => p.id === poiId);
+        if (!poi) {
+            this.ui.log('That point is not on your known map yet.', 'warning');
+            return false;
+        }
+
+        const destination = this._findOpenNear(poi.x, poi.y);
+        const path = this.findPathTo(destination.x, destination.y, this.player.z);
+        if (path && path.length === 1) {
+            this.ui.log(`Already at ${poi.name}.`, 'info');
+            return true;
+        }
+        if (!path || path.length < 2) {
+            this.ui.log(`No clear path to ${poi.name}.`, 'warning');
+            return false;
+        }
+
+        this.cancelAutoTravel();
+        this.autoTravelTarget = {
+            poiId,
+            name: poi.name,
+            x: destination.x,
+            y: destination.y
+        };
+        this.ui.log(`Auto-travel: ${poi.name}. Press [Esc] to stop.`, 'info');
+        this.scheduleAutoTravelStep();
+        return true;
+    }
+
+    startAutoExplore() {
+        if (!this.world || !this.player || !this.fov) return false;
+        const destination = this.findAutoExploreDestination();
+        if (!destination) {
+            this.ui.log('Auto-explore: no reachable unexplored edge in this zone.', 'info');
+            return false;
+        }
+
+        this.cancelAutoTravel();
+        this.autoTravelTarget = {
+            type: 'explore',
+            name: 'unexplored area',
+            x: destination.x,
+            y: destination.y
+        };
+        this.ui.log('Auto-explore started. Press [Esc] to stop.', 'info');
+        this.scheduleAutoTravelStep();
+        return true;
+    }
+
+    scheduleAutoTravelStep() {
+        if (!this.autoTravelTarget || typeof window === 'undefined') return;
+        this._autoTravelTimer = window.setTimeout(() => this.stepAutoTravel(), 70);
+    }
+
+    stepAutoTravel() {
+        if (!this.autoTravelTarget || this.gameState !== 'playing' || !this.isRunning) return;
+
+        const danger = this.world.entities.some(entity => (
+            entity !== this.player &&
+            entity.hostile &&
+            entity.z === this.player.z &&
+            this.fov?.isVisible(entity.x, entity.y, entity.z)
+        ));
+        if (danger) {
+            this.cancelAutoTravel('Auto-travel stopped: danger nearby.');
+            return;
+        }
+
+        const target = this.autoTravelTarget;
+        if (this.player.x === target.x && this.player.y === target.y) {
+            if (target.type === 'explore') {
+                const destination = this.findAutoExploreDestination();
+                if (!destination) {
+                    this.cancelAutoTravel('Auto-explore complete.');
+                    return;
+                }
+                this.autoTravelTarget = {
+                    type: 'explore',
+                    name: 'unexplored area',
+                    x: destination.x,
+                    y: destination.y
+                };
+            } else {
+                this.cancelAutoTravel(`Arrived: ${target.name}.`);
+                return;
+            }
+        }
+
+        const currentTarget = this.autoTravelTarget;
+        if (!currentTarget) {
+            return;
+        }
+
+        const path = this.findPathTo(currentTarget.x, currentTarget.y, this.player.z);
+        if (!path || path.length < 2) {
+            this.cancelAutoTravel(`Auto-travel stopped: no clear path to ${currentTarget.name}.`);
+            return;
+        }
+
+        const next = path[1];
+        const beforeX = this.player.x;
+        const beforeY = this.player.y;
+        this.processTurn({
+            type: 'move',
+            dx: Math.sign(next.x - beforeX),
+            dy: Math.sign(next.y - beforeY)
+        });
+
+        if (!this.autoTravelTarget) return;
+        if (this.player.x === beforeX && this.player.y === beforeY) {
+            this.cancelAutoTravel(`Auto-travel stopped: path blocked.`);
+            return;
+        }
+        this.scheduleAutoTravelStep();
+    }
+
+    cancelAutoTravel(message = null) {
+        if (this._autoTravelTimer && typeof window !== 'undefined') {
+            window.clearTimeout(this._autoTravelTimer);
+        }
+        this._autoTravelTimer = null;
+        const wasTraveling = !!this.autoTravelTarget;
+        this.autoTravelTarget = null;
+        if (message && wasTraveling && this.ui) {
+            this.ui.log(message, 'info');
+        }
+    }
+
+    findPathTo(targetX, targetY, z = 0, maxNodes = 5000) {
+        if (!this.world || !this.player) return null;
+        const startX = this.player.x;
+        const startY = this.player.y;
+        if (startX === targetX && startY === targetY) {
+            return [{ x: startX, y: startY }];
+        }
+
+        const width = this.world.zoneMode ? this.world.zoneWidth : this.world.chunkSize * 3;
+        const height = this.world.zoneMode ? this.world.zoneHeight : this.world.chunkSize * 3;
+        const inBounds = (x, y) => !this.world.zoneMode || (x >= 0 && y >= 0 && x < width && y < height);
+        const key = (x, y) => `${x},${y}`;
+        const queue = [{ x: startX, y: startY }];
+        const cameFrom = new Map([[key(startX, startY), null]]);
+        const dirs = [
+            { dx: 0, dy: -1 },
+            { dx: 1, dy: 0 },
+            { dx: 0, dy: 1 },
+            { dx: -1, dy: 0 }
+        ];
+
+        for (let head = 0; head < queue.length && queue.length <= maxNodes; head++) {
+            const current = queue[head];
+            for (const dir of dirs) {
+                const nx = current.x + dir.dx;
+                const ny = current.y + dir.dy;
+                const nextKey = key(nx, ny);
+                if (cameFrom.has(nextKey) || !inBounds(nx, ny)) continue;
+                const isTarget = nx === targetX && ny === targetY;
+                if (!isTarget && this.world.isBlocked(nx, ny, z)) continue;
+
+                cameFrom.set(nextKey, current);
+                if (isTarget) {
+                    const path = [{ x: nx, y: ny }];
+                    let step = current;
+                    while (step) {
+                        path.push({ x: step.x, y: step.y });
+                        step = cameFrom.get(key(step.x, step.y));
+                    }
+                    return path.reverse();
+                }
+                queue.push({ x: nx, y: ny });
+            }
+        }
+
+        return null;
+    }
+
+    findAutoExploreDestination(maxNodes = 5000) {
+        const z = this.player.z;
+        const startX = this.player.x;
+        const startY = this.player.y;
+        const key = (x, y) => `${x},${y}`;
+        const isExplored = (x, y) => this.fov.isExplored?.(x, y, z);
+        const inBounds = (x, y) => !this.world.zoneMode || (
+            x >= 0 && y >= 0 && x < this.world.zoneWidth && y < this.world.zoneHeight
+        );
+        const dirs = [
+            { dx: 0, dy: -1 },
+            { dx: 1, dy: 0 },
+            { dx: 0, dy: 1 },
+            { dx: -1, dy: 0 }
+        ];
+        const hasUnexploredNeighbor = (x, y) => dirs.some(dir => {
+            const nx = x + dir.dx;
+            const ny = y + dir.dy;
+            return inBounds(nx, ny) && !isExplored(nx, ny);
+        });
+
+        const queue = [{ x: startX, y: startY }];
+        const seen = new Set([key(startX, startY)]);
+
+        for (let head = 0; head < queue.length && queue.length <= maxNodes; head++) {
+            const current = queue[head];
+            if ((current.x !== startX || current.y !== startY) && hasUnexploredNeighbor(current.x, current.y)) {
+                return current;
+            }
+
+            for (const dir of dirs) {
+                const nx = current.x + dir.dx;
+                const ny = current.y + dir.dy;
+                const nextKey = key(nx, ny);
+                if (seen.has(nextKey) || !inBounds(nx, ny) || !isExplored(nx, ny)) continue;
+                if (this.world.isBlocked(nx, ny, z)) continue;
+                seen.add(nextKey);
+                queue.push({ x: nx, y: ny });
+            }
+        }
+
+        return null;
     }
     
     /**
@@ -704,47 +963,49 @@ export class Game {
         let choices = [];
 
         // ── Quest giver path ───────────────────────────────────────────────
-        if (npc.questRole === 'giver' && npc.questId && qs) {
-            if (!qs.hasQuest(this.player, npc.questId)) {
-                text = npc.questDialogue?.offer || `"I need help with something."`;
+        const npcQuestId = this._getNpcQuestId(npc);
+        const questDialogue = npc.questDialogues?.[npcQuestId] || npc.questDialogue;
+        if (npc.questRole === 'giver' && npcQuestId && qs) {
+            if (!qs.hasQuest(this.player, npcQuestId)) {
+                text = questDialogue?.offer || `"I need help with something."`;
                 choices = [
                     { id: 'accept_quest', label: `<span style="color:#ffaa00;">[Accept]</span> Take the job` },
                     { id: 'decline_quest', label: `<span style="color:#888;">[Decline]</span> Not now` }
                 ];
                 this.ui.showNPCDialogue(npc, text, choices, (choice) => {
                     if (choice === 'accept_quest') {
-                        qs.startQuest(this.player, npc.questId, npc);
+                        qs.startQuest(this.player, npcQuestId, npc);
                     } else {
                         this.ui.log(`${npc.name}: "Your loss. It'll be here if you change your mind."`, 'info');
                     }
                 });
                 return;
             }
-            if (qs.hasActive(this.player, npc.questId)) {
-                const active = qs.getActive(this.player, npc.questId);
-                const def = qs.getDef(npc.questId);
+            if (qs.hasActive(this.player, npcQuestId)) {
+                const active = qs.getActive(this.player, npcQuestId);
+                const def = qs.getDef(npcQuestId);
                 const stage = def?.stages?.[active.stageIndex];
-                const canComplete = stage?.checkCanComplete ? stage.checkCanComplete(this, this.player) : false;
+                const canComplete = stage?.checkCanComplete ? stage.checkCanComplete(this, this.player, npc) : false;
                 if (canComplete) {
-                    text = npc.questDialogue?.complete || `"You got it? Hand it over."`;
+                    text = questDialogue?.complete || `"You got it? Hand it over."`;
                     choices = [
-                        { id: 'complete_quest', label: `<span style="color:#44ff44;">[Complete]</span> Hand over the item` },
+                        { id: 'complete_quest', label: `<span style="color:#44ff44;">[Complete]</span> ${stage?.completeChoiceLabel || 'Complete objective'}` },
                         { id: 'keep_it', label: `<span style="color:#888;">[Keep it]</span> Not yet` }
                     ];
                     this.ui.showNPCDialogue(npc, text, choices, (choice) => {
                         if (choice === 'complete_quest') {
-                            qs.tryAdvanceByTalk(this.player, npc.questId, npc);
+                            qs.tryAdvanceByTalk(this.player, npcQuestId, npc);
                         }
                     });
                     return;
                 }
-                text = npc.questDialogue?.remind || stage?.description || `"Come back when you have it."`;
+                text = questDialogue?.remind || stage?.description || `"Come back when you have it."`;
                 choices = [{ id: 'goodbye', label: `<span style="color:#888;">[Goodbye]</span>` }];
                 this.ui.showNPCDialogue(npc, text, choices, () => {});
                 return;
             }
-            if (qs.hasCompleted(this.player, npc.questId)) {
-                text = npc.questDialogue?.complete || `"Thanks again for your help."`;
+            if (qs.hasCompleted(this.player, npcQuestId)) {
+                text = questDialogue?.after || questDialogue?.complete || `"Thanks again for your help."`;
                 choices = [{ id: 'goodbye', label: `<span style="color:#888;">[Goodbye]</span>` }];
                 this.ui.showNPCDialogue(npc, text, choices, () => {});
                 return;
@@ -923,6 +1184,7 @@ export class Game {
                 const visual      = OverworldMap.getTileVisual ? OverworldMap.getTileVisual(tile) : OverworldMap.getBiomeVisual(tile.biome);
                 const isCursor    = col === ow.cursorCol && row === ow.cursorRow;
                 const isActiveZone = col === this._currentZoneCol && row === this._currentZoneRow && this.world;
+                const isQuestTarget = this.isActiveQuestTarget(col, row);
 
                 let fgColor = visible ? visual.color : '#3a3a3a';
                 let bgColor = '#000000';
@@ -937,6 +1199,8 @@ export class Game {
                 } else if (isActiveZone) {
                     // Active zone tile (cursor elsewhere)
                     glyph = '@'; fg = '#00aa55'; bgColor = '#111a11';
+                } else if (isQuestTarget) {
+                    glyph = '!'; fg = '#ffaa00'; bgColor = '#221600';
                 } else {
                     glyph = visual.glyph; fg = fgColor;
                 }

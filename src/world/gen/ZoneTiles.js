@@ -26,6 +26,7 @@ export const ZoneTiles = {
     wall: tile('#', '#b8b8aa', '#101010', 'Wall', { blocked: true, blocksLight: true, blocksVision: true, isExterior: false, isWall: true }),
     glass: tile('"', '#9fd8ff', '#17232a', 'Cracked Window', { blocked: true, blocksLight: false, blocksVision: false, isExterior: false }),
     fence: tile('|', '#8a7a55', '#111111', 'Chain Fence', { blocked: true, blocksLight: false, blocksVision: false }),
+    barricade: tile('X', '#c08a55', '#17110b', 'Barricade', { blocked: true, blocksLight: false, blocksVision: false }),
     rubble: tile('%', '#7a6a5a', '#15100d', 'Rubble', { blocked: true, blocksLight: false, blocksVision: false }),
     pipe: tile('o', '#a88a66', '#16100c', 'Pipework', { blocked: true, blocksLight: false, blocksVision: false }),
     hazard: tile('x', '#d8b45f', '#241b08', 'Hazard Marking'),

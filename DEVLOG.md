@@ -3,18 +3,30 @@
 **Project:** Fractured City - Browser-based Cyberpunk Roguelike  
 **Engine:** Vanilla JavaScript + HTML5 Canvas 2D  
 **Status:** Active Development  
-**Last Updated:** April 28, 2026
+**Last Updated:** May 2026
+
+## Current Pivot
+
+The project has shifted toward an occupation-driven survival roguelike with dense traversable zones.
+
+Current design commitments:
+- The setting is roughly 40 years after collapse, but society is still running on fumes.
+- Backgrounds are becoming occupations with starting motives, social hooks, talents, loadouts, and objective chains.
+- Street Kid is the first/tutorial-like occupation template.
+- The old endless procedural map feel is being replaced by detailed zone slices connected by the overworld.
+- Zones are not mandatory stages. Travel remains free; objectives can cross zones; some zones may be empty, dangerous, or loot-focused.
+- ASCII-first development is preferred until zone readability is solid. Sprites remain optional and must have ASCII fallbacks.
 
 ---
 
 ## 🎯 Project Vision
 
-A traditional turn-based roguelike set in a cyberpunk dystopia. Features permadeath, procedural generation, deep character customization, detailed anatomy simulation, robust crafting, and tactical combat. Runs entirely in the browser with no dependencies.
+A turn-based survival roguelike set in a cyberpunk dystopia that is still barely functioning. Features permadeath, detailed character/occupation starts, dense zone exploration, deep simulation, robust crafting, and tactical combat. Runs entirely in the browser with no dependencies.
 
 ### Core Pillars
 - **Turn-Based Gameplay:** One action = one world tick
 - **Permadeath:** Death ends the run
-- **Procedural Content:** Infinite world, randomized items, dynamic encounters
+- **Procedural Content:** overworld-connected zones, randomized details, dynamic encounters
 - **Deep Simulation:** Anatomy tracking, item interactions, crafting/disassembly
 - **Tactical Depth:** Stealth, sound propagation, equipment choices matter
 
@@ -26,7 +38,7 @@ A traditional turn-based roguelike set in a cyberpunk dystopia. Features permade
 - [x] **Core Game Loop** - Turn-based system, game state management
 - [x] **Canvas Renderer** - 32x32 tile grid, colored ASCII glyphs
 - [x] **Input Handler** - Keyboard controls, action mapping
-- [x] **World System** - Chunked infinite world (32x32 chunks)
+- [x] **World System** - Chunked world foundation; current direction uses bounded zone-mode maps
 - [x] **Biome Generation** - Ruins, Industrial, Wasteland with unique tiles
 - [x] **Entity System** - Base entity class, player, NPCs
 - [x] **Detailed Anatomy** - Organs, limbs, eyes, ears with health tracking
@@ -108,13 +120,29 @@ A traditional turn-based roguelike set in a cyberpunk dystopia. Features permade
 
 ## 🚧 Current Sprint
 
-### Active: Testing / Next Priority TBD
-**Status:** Planning  
+### Active: Street Kid Starter Milestone
+**Status:** In Progress  
 **Priority:** HIGH  
-**Options:**
-- Town building / world gen improvements (named districts, POIs)
-- NPC dialogue and lore
-- Three Origins system: Flesh / Metal / Echo at chargen
+
+Locked order:
+1. Street Kid intro flow
+2. Journal/objective readability
+3. One polished zone chain
+4. POI / auto-explore tools
+5. Occupation framework
+
+Completed in this milestone so far:
+- Quick Start defaults to Street Kid with small blade/combat talents.
+- Downstairs rebuilt as starter hub/hideout.
+- Market Corner rebuilt as the first starter objective zone.
+- Rook moved away from immediate spawn and functions as a quest/contact NPC.
+- Current journal wording moved away from "story quest" framing.
+- Overworld active target marker added.
+- POI discovery, Known Places list, auto-travel to POI, and auto-explore added.
+
+Next planned slice:
+- Make the current intro/background start Street Kid-specific instead of universal.
+- Add an occupation-start registry for future starts.
 
 #### Previous Sprint: v52 — Character Creation Overhaul (CoQ-style) ✅
 **Status:** ✅ Complete  
@@ -385,6 +413,31 @@ A roguelike where every run feels different, player choices matter, and the worl
 ---
 
 ## 📝 Session Notes
+
+### Session: May 2026
+**Completed / Updated:**
+- Major design pivot documented: occupation-driven starts, dense zone slices, large world with freely traversable zones.
+- Current focus is `src/world/gen` zone generation rather than the older endless procedural map feel.
+- Rebuilt current starter flow around Street Kid testing:
+  - Quick Start now defaults to Street Kid.
+  - Starting talents include Opportunistic stance, Weapon Aptitude, and several small blade talents.
+  - Downstairs functions as the current start hub.
+  - Market Corner functions as the first external objective zone.
+- Added/continued early objective loop:
+  - Working NPC handoff loop through `QuestSystem`.
+  - Rook can handle starter objective flow.
+  - Journal wording softened to "Current", "Start", "Errands", "Done".
+- Added exploration support:
+  - POIs discovered through FoV/explored tiles.
+  - `P` Known Places modal.
+  - Auto-travel to discovered POIs.
+  - `O` auto-explore.
+  - Auto-travel cancels on danger, blocked paths, overworld/zone transitions, or `Esc`.
+- Current caveat:
+  - Intro objective is still universal in code and needs to become Street Kid-specific next.
+
+**Next Session Goal:**
+- Build the occupation-start registry and move the current intro into the Street Kid start definition.
 
 ### Session: April 28, 2026
 **Completed:**
