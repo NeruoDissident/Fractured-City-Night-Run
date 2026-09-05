@@ -37,15 +37,15 @@ Current zone direction:
 - Market Corner: first external starter objective zone.
 - Future examples: urban corner store, supermarket, alley, indoor mall, school, gas station, clinic, park, corporate building, construction site.
 
-### Current Locked Milestone
+### September 2026 Note
 
-1. Street Kid intro flow
-2. Journal/objective readability
-3. One polished zone chain
-4. POI / auto-explore tools
-5. Occupation framework
-
-Do not jump ahead to broader factions/origins/cybernetics until this milestone is stable.
+The locked milestone that used to sit here (Street Kid intro flow, journal,
+one polished zone chain, POI tools) was removed with the first-person pivot.
+The current direction and roadmap are in `REDESIGN_BRIEF.md`: hub and run,
+streets as corridors with enterable storefronts, routes that lean abstract,
+hub needs and projects as the colony layer. The occupation, faction, and
+zone-tag ideas below are still the intended flavour and feed Phase 3 and
+Phase 5 of that roadmap.
 
 ## Core Design Philosophy
 

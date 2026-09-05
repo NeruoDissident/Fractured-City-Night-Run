@@ -134,6 +134,11 @@ export class MobileControls {
     handleMove(dx, dy) {
         if (!this.game.isRunning) return;
 
+        if (this.game.gameState === 'travel') {
+            this.game.travelSelect(dx > 0 || dy > 0 ? 1 : -1);
+            return;
+        }
+
         if (this.game.gameState === 'overworld') {
             this.game.overworldMap.moveCursor(dx, dy);
             this.game.render();
@@ -180,7 +185,9 @@ export class MobileControls {
     handleAction(action) {
         switch (action) {
             case 'wait':
-                if (this.game.gameState === 'overworld') {
+                if (this.game.gameState === 'travel') {
+                    this.game.travelGo();
+                } else if (this.game.gameState === 'overworld') {
                     // On overworld, wait/center = drop into zone or close overworld
                     const cur = this.game.overworldMap.getCurrentTile();
                     if (cur && this.game._currentZoneCol === this.game.overworldMap.cursorCol
@@ -195,7 +202,9 @@ export class MobileControls {
                 break;
 
             case 'interact':
-                if (this.game.gameState === 'overworld') {
+                if (this.game.gameState === 'travel') {
+                    this.game.travelGo();
+                } else if (this.game.gameState === 'overworld') {
                     // ACT on overworld = drop into / return to current zone
                     if (this.game._currentZoneCol === this.game.overworldMap.cursorCol
                         && this.game._currentZoneRow === this.game.overworldMap.cursorRow
@@ -307,7 +316,9 @@ export class MobileControls {
 
             case 'overworld':
                 if (this.game.gameState === 'playing') {
-                    this.game.returnToOverworld();
+                    this.game.openTravel();
+                } else if (this.game.gameState === 'travel') {
+                    this.game.closeTravel();
                 } else if (this.game.gameState === 'overworld') {
                     this.game.closeOverworld();
                 }

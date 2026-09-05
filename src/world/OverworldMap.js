@@ -138,6 +138,37 @@ const ZONE_POOLS = {
 
 const FALLBACK_ZONE = { id: 'wilds', name: 'Empty Lot', width: 96, height: 96, weight: 1, faction: 'none', purpose: 'travel', tags: ['wild'] };
 
+// The hub. One per run, pinned to the centre tile so it is a real node the
+// player can leave and come back to (ZoneGenerator builds 'safe_hub').
+export const HUB_ZONE = {
+    id: 'safe_hub', name: 'Downstairs', width: 80, height: 80, weight: 0,
+    faction: 'downstairs', purpose: 'hub', threatMod: -3, keyFeature: 'crew_yard',
+    npcSignature: [], tags: ['hub', 'safe', 'settled']
+};
+
+/**
+ * Look a zone template up by id across every pool (and the hub). Used by the
+ * district graph, whose nodes name zone templates rather than tiles.
+ * Returns { template, biome } or null.
+ */
+export function findZoneTemplate(zoneId) {
+    if (zoneId === HUB_ZONE.id) return { template: { ...HUB_ZONE }, biome: 'suburbs' };
+    for (const [biome, pool] of Object.entries(ZONE_POOLS)) {
+        const hit = pool.find(z => z.id === zoneId);
+        if (hit) return { template: { ...hit }, biome };
+    }
+    return null;
+}
+
+/** Stable per-node seed derived from the run seed. */
+export function hashString(str, seed = 0) {
+    let h = seed | 0;
+    for (let i = 0; i < str.length; i++) {
+        h = Math.imul(h ^ str.charCodeAt(i), 0x01000193);
+    }
+    return (h ^ (h >>> 15)) >>> 0;
+}
+
 function mulberry32(seed) {
     return function() {
         seed |= 0;
@@ -239,14 +270,32 @@ export class OverworldMap {
         this.cols = 160;
         this.rows = 100;
         this.visionRadius = Infinity;
-        this.cursorCol = Math.floor(this.cols / 2);
-        this.cursorRow = Math.floor(this.rows / 2);
+        this.hubCol = Math.floor(this.cols / 2);
+        this.hubRow = Math.floor(this.rows / 2);
+        this.cursorCol = this.hubCol;
+        this.cursorRow = this.hubRow;
         this.tiles = [];
         this._cities = this._makeCityAnchors();
         this._rivers = this._makeRivers();
         this._roads = [];
         this._generate();
+        this._placeHub();
         this.tiles[this.cursorRow][this.cursorCol].explored = true;
+    }
+
+    /** Pin the hub zone to its tile so travel always finds the same place. */
+    _placeHub() {
+        const tile = this.tiles[this.hubRow][this.hubCol];
+        tile.zone = { ...HUB_ZONE };
+        tile.playBiome = 'suburbs';
+        tile.threatLevel = 1;
+        tile.type = 'hub';
+        tile.settlement = tile.settlement || 'Fractured City';
+        tile.tags = [...new Set([...(tile.tags || []), ...HUB_ZONE.tags])];
+    }
+
+    getHubTile() {
+        return this.getTile(this.hubCol, this.hubRow);
     }
 
     _makeCityAnchors() {

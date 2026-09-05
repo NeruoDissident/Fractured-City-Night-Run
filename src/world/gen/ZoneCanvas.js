@@ -20,7 +20,8 @@ const FURNITURE_ASCII = {
     stove: { glyph: 'v', fgColor: '#d0d0d0' },
     dresser: { glyph: 'd', fgColor: '#c2a276' },
     couch: { glyph: 'n', fgColor: '#a88fb0' },
-    shower: { glyph: 'j', fgColor: '#a8d8ff' }
+    shower: { glyph: 'j', fgColor: '#a8d8ff' },
+    stash: { glyph: '$', fgColor: '#ffd36a' }
 };
 
 function asciiForFurniture(type, name) {

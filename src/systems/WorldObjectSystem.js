@@ -24,6 +24,10 @@ export class WorldObjectSystem {
                 return this.smashObject(worldObject, player, tool);
             case 'search':
                 return this.searchFurniture(worldObject, player);
+            case 'rest':
+                return this.restAt(worldObject, player, 60, 'rest');
+            case 'sleep':
+                return this.restAt(worldObject, player, this.getSleepPlan().turns, 'sleep');
             case 'use':
                 return this.useObject(worldObject, player, tool);
             case 'disassemble':
@@ -385,6 +389,66 @@ export class WorldObjectSystem {
         };
     }
     
+    /**
+     * How long "sleep" would last right now: until the next dawn (06:00) or
+     * dusk (18:00), whichever comes first, but never less than an hour.
+     * Also reports what it will cost so the player decides with the numbers.
+     */
+    getSleepPlan(player = this.game.player) {
+        const t = this.game.timeSystem;
+        const now = t.getHour() * 60 + t.getMinute();
+        const DAWN = 6 * 60;
+        const DUSK = 18 * 60;
+        let until, turns;
+        const toDawn = (DAWN - now + 1440) % 1440 || 1440;
+        const toDusk = (DUSK - now + 1440) % 1440 || 1440;
+        if (toDawn <= toDusk) { until = 'dawn'; turns = toDawn; }
+        else { until = 'dusk'; turns = toDusk; }
+        if (turns < 60) {
+            // Too close to bother; sleep through to the one after.
+            until = until === 'dawn' ? 'dusk' : 'dawn';
+            turns = until === 'dawn' ? toDawn + 720 : toDusk + 720;
+            if (turns > 1440) turns -= 1440;
+        }
+        return {
+            until,
+            turns,
+            hungerCost: turns * player.hungerRate * 0.5,
+            thirstCost: turns * player.thirstRate * 0.5
+        };
+    }
+
+    /**
+     * Rest or sleep at a bed. Time passes in one step (Game.passTime), with
+     * metabolism halved. Refused with hostiles nearby; interrupted if one
+     * closes in while you are out.
+     */
+    restAt(furniture, player, turns, mode = 'rest') {
+        if (furniture.furnitureType !== 'bed') {
+            return { success: false, message: 'You can only rest on a bed.' };
+        }
+        if (this.game._hostileWithin(12)) {
+            return { success: false, message: 'Something hostile is too close to rest.' };
+        }
+        const hours = Math.floor(turns / 60);
+        const mins = turns % 60;
+        const span = `${hours ? `${hours}h` : ''}${mins ? ` ${mins}m` : ''}`.trim();
+
+        const result = this.game.passTime(turns, { sleeping: true });
+        const t = this.game.timeSystem;
+
+        if (result.interrupted === 'death') {
+            return { success: true, message: 'You do not wake up.' };
+        }
+        if (result.interrupted === 'hostile') {
+            return { success: true, message: `You jolt awake at ${t.getTimeString()}. Something is moving nearby.` };
+        }
+        if (mode === 'sleep') {
+            return { success: true, message: `You sleep ${span} on the ${furniture.name}. It is ${t.getTimeString()}, ${t.getTimePeriod().toLowerCase()}.` };
+        }
+        return { success: true, message: `You rest ${span} on the ${furniture.name}. It is ${t.getTimeString()}.` };
+    }
+
     /**
      * Use an object — currently handles terminals
      */

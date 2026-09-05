@@ -6,74 +6,66 @@ This document details how every system in Fractured City works and how they inte
 
 ## Current Active Direction
 
-The active development path is now **occupation starts + dense zone generation + POI travel**.
+The active development path is **hub and run**: one persistent town
+(Downstairs), a district of sites reached from it, and a loop of prepare,
+travel, run, return. `REDESIGN_BRIEF.md` is the design record and roadmap;
+`CLAUDE.md` has the working rules.
 
-The older systems below are still useful, but future work should assume:
-- `World.zoneMode` and `src/world/gen` are the main map-generation direction.
-- `QuestSystem` is a prototype objective system and should be reshaped around occupations.
-- Backgrounds are becoming occupations with starting stories, motives, talents, social hooks, and first objective chains.
-- POIs are registered by zone generation, discovered through FoV explored tiles, shown through Known Places, and can be auto-traveled to.
+Assume:
+- `World.zoneMode` and `src/world/gen` are the map-generation direction, with
+  the interior site generator as the model for everything (streets included).
+- Visited zones persist for the run through `Game.zoneCache`.
+- The quest/POI/auto-travel-to-POI systems are gone. Auto-explore (`O`) stays.
+- Occupations return in Phase 3 as a hub contact, a want, and an access tag.
 - ASCII readability comes first. Sprites are optional and must keep fallback glyphs.
 
 ---
 
 ## Core Systems
 
-### Zone / POI / Auto-Travel System
-**Files:** `src/world/World.js`, `src/world/gen/ZoneGenerator.js`, `src/world/gen/ZoneCanvas.js`, `src/world/gen/UrbanFragments.js`, `src/core/Game.js`, `src/ui/UIManager.js`
+### Zone Persistence and the Hub
+**Files:** `src/core/Game.js`, `src/world/OverworldMap.js`, `src/world/gen/ZoneGenerator.js`, `src/systems/WorldObjectSystem.js`, `src/world/objects/Furniture.js`
 
-**Purpose:** Builds bounded, readable zones and records meaningful places inside them.
+**Purpose:** Places remember you; the hub is always there to return to.
 
-**Current Flow:**
-1. `OverworldMap` supplies a zone tile/template.
-2. `Game.dropIntoZone()` creates a `World` with `zoneMode = true`.
-3. `World.init()` calls `ZoneGenerator.generate(world)`.
-4. `ZoneCanvas` draws terrain, walls, furniture, NPC placements, and POIs.
-5. `Game.updateFoV()` calls `World.updatePointOfInterestDiscovery(exploredTiles)`.
-6. `P` opens Known Places and can start auto-travel to a discovered POI.
-7. `O` starts auto-explore toward reachable unexplored edges.
+**Flow:**
+1. `Game.startGame()` drops into the hub tile (`OverworldMap.hubCol/hubRow`, zone `safe_hub`).
+2. `Game.dropIntoZone(col, row, entryEdge)` removes the player from the current `World`, then reuses `zoneCache.get(zoneKey(col,row))` or builds a new `World` + `FoVSystem` and stores them.
+3. `_initZoneSystems(fov)` rebuilds the transient per-zone systems.
+4. Edge transitions land on the edge facing the direction of travel; entrance arrivals use `world.spawnFacing` (the hub: South Gate, north).
 
-**Current POI Methods:**
-- `ZoneCanvas.addPoi(id, name, type, x, y, radius)`
-- `World.getPointsOfInterest(discoveredOnly = false)`
-- `World.updatePointOfInterestDiscovery(exploredTiles)`
-- `Game.startAutoTravelToPoi(poiId)`
-- `Game.startAutoExplore()`
-- `Game.findPathTo(targetX, targetY, z)`
+**What persists:** tiles, world objects (door state, furniture contents), ground items, NPCs, explored tiles. **What does not:** sound events, lighting map, combat engagement, ability effects. NPCs in a parked zone do not act.
 
-**Auto-Travel Rules:**
-- Stops on visible hostile danger.
-- Stops if the path is blocked.
-- Stops on overworld/zone transition.
-- `Esc` cancels travel.
+**Hub furniture:**
+- `stash` (Crew Stash): container with no `FURNITURE_LOOT` entry; Search moves items in and out via the furniture-contents UI.
+- `bed` (Thin Bunk): actions `rest` (60 turns) and `sleep` (`getSleepPlan()`: until 06:00 or 18:00, min 1h). Both call `restAt` -> `Game.passTime(turns, { sleeping: true })`: hunger/thirst rates halved, refused with a hostile within 12, interrupted by one within 10. The modal shows predicted hunger/thirst cost.
 
-**Design Rule:** POIs should name real places in the zone, not abstract goals. Examples: Crew Bunks, Food Cage, Clinic Workshop, Street Market Stalls, Fuel Pump Canopy, Break Room, Stockroom, Service Alley.
+**Bulk time:** `Game.passTime(turns, opts)` is the single entry point for advancing many turns (sleep now, route travel in Phase 1). It ticks time, fuel, status effects, world, sound, abilities, and redraws once.
 
 ---
 
-### Objective / Quest Prototype
-**File:** `src/systems/QuestSystem.js`
+### District Travel
+**Files:** `src/content/DistrictCatalog.js`, `src/core/Game.js`, `src/ui/UIManager.js`
 
-**Purpose:** Temporary objective/journal framework for NPC-driven chains.
+**Purpose:** Places are nodes on a graph; you move between them on routes that cost time and risk.
 
-**Current Status:**
-- Working starter loop exists.
-- NPCs can own one or more quest IDs.
-- Journal can show current entries, starts, errands, and completed entries.
-- Overworld can mark active target zones.
+**Flow:**
+1. `Tab`, walking off a block's edge, or `<` at a site entrance calls `Game.openTravel()`.
+2. The screen lists `routesFrom(currentNode)`; A/D cycle, Enter goes.
+3. `Game.travelRoute(route, dest)`: locked routes refuse with their reason; otherwise the player detaches, `passTime(turns, { detached: true })` runs the body and fuel, `enterNode(dest)` places you at the destination's arrival point, and a danger roll (`route.danger` × 1.25 at dusk, × 1.6 at night) may place one hostile nearby (Phase 1 stub for slices).
 
-**Known Direction Change:**
-- The intro objective currently starts universally and needs to become Street Kid-specific.
-- Future starts should be owned by an occupation-start registry.
-- Surface wording may move away from "quest" toward journal entries, objectives, work, favors, or another in-world term.
+**What the player sees before committing:** time and arrival clock, danger label, hunger and thirst cost, visited/unvisited, lock reason.
 
-**Occupation Start Registry Should Define:**
-- Occupation/background id.
-- Starting zone or zone generator hook.
-- Starting NPC/contact.
-- Starting journal entry.
-- Talent/loadout hooks.
-- First objective chain.
+**Survival rates:** hunger 0.04/turn, thirst 0.07/turn; halved while sleeping.
+
+---
+
+### Auto-Explore
+**Files:** `src/core/Game.js`
+
+- `O` starts auto-explore toward reachable unexplored edges (BFS over explored walkable tiles).
+- Stops on visible hostile danger, blocked paths, zone changes, overworld entry, or `Esc`.
+- In first person each step sets facing.
 
 ---
 

@@ -17,15 +17,31 @@ Important corrections to older design notes:
 - The overworld remains important, but individual zones should be legible and explorable: hideouts, corner stores, supermarkets, schools, malls, gas stations, clinics, alleys, parks, factories, and civic buildings.
 - Skills and abilities should support strange class-building. Example: a magician splits an enemy into weaker copies; a clown juggles more items for scaling damage and attack speed. These abilities live in learnable skill trees, so occupations are starting biases, not hard classes.
 
-### Current Locked Milestone
+### Current Direction (September 2026): Hub and Run
 
-1. Street Kid intro flow
-2. Journal/objective readability
-3. One polished zone chain
-4. POI / auto-explore tools
-5. Occupation framework
+The game is a **first-person grid crawler** built around one persistent town
+and the places you can reach from it. `REDESIGN_BRIEF.md` is the design
+record; the short version:
 
-Street Kid is the current tutorial-like baseline. Quick Start defaults to Street Kid while this milestone is being built.
+- **Downstairs is the hub.** It persists from turn one, holds your stash and
+  bunks, and will hold the people who want things from you.
+- **Sites are where runs happen.** Multi-floor interiors, and street blocks
+  rebuilt as corridors with sky and enterable storefronts. Every site keeps
+  its state once visited.
+- **Routes connect them.** Travel is mixed but leans abstract: time and
+  survival cost by default, a short encounter slice when a roll goes loud,
+  fully walkable blocks where the place itself is the content.
+- **A run is a day.** Prepare, travel, run, return. Light, weight, and night
+  are the clocks.
+- **Hub needs and projects are the colony layer.** Projects are recipes with
+  a location, evaluated against the stash. The extraction paths below become
+  capstone projects.
+
+The earlier locked milestone (Street Kid intro flow, journal, polished zone
+chain, POI tools) was removed with the first-person pivot. Occupations return
+as a hub contact, a want, and an access tag per background, not as a scripted
+intro. The tile overworld is shelved as the travel surface and returns later
+as a region map.
 
 ---
 

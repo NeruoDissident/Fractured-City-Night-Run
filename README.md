@@ -11,17 +11,30 @@ Zones are not rigid stages. The player can travel freely between zones and use t
 
 ## Current Direction
 
-The game is being rebuilt as a first-person grid crawler. The old quest chain,
-delivery errands, Known Places, and NPC roster were removed; combat, anatomy,
-crafting, inventory, survival, lighting, and zone generation remain. Two
-placeholder NPC types exist for testing (`F9` spawns a hostile, `Shift+F9` a
-bystander).
+The game is being rebuilt as a first-person grid crawler around a **hub and
+run** structure: one persistent town (Downstairs), a district of sites you
+reach from it, and a loop of prepare, travel, run, return. `REDESIGN_BRIEF.md`
+is the design record and roadmap.
 
-Some overworld zones are now **sites**: multi-floor building interiors you drop
-into and explore in first person, joined by a stairwell and left through the
-entrance. Corner stores, streets, and the hub still generate as open zones.
-The next steps are the run flow and a UI pass built around the crawler view.
-See `CLAUDE.md`.
+Where things stand:
+
+- The old quest chain, delivery errands, Known Places, and NPC roster were
+  removed; combat, anatomy, crafting, inventory, survival, lighting, and zone
+  generation remain. Two placeholder NPC types exist for testing (`F9` spawns
+  a hostile, `Shift+F9` a bystander).
+- Some overworld zones are **sites**: multi-floor building interiors you drop
+  into and explore in first person, joined by a stairwell and left through the
+  entrance.
+- **Places persist.** Every zone you visit stays as you left it: looted
+  cabinets stay empty, opened doors stay open, dropped items stay put.
+- **Downstairs is home.** You can always go back. It has a Crew Stash for
+  banking your haul and bunks you can rest or sleep on to pass time.
+- **You travel on a district map.** `Tab` shows the places you can reach from
+  where you stand, what each route costs in time, hunger, thirst, and risk,
+  and takes you there. Night makes every route worse. Two routes start locked.
+
+Next is streets rebuilt as corridors with enterable storefronts, and route
+slices for when a trip goes wrong. See `CLAUDE.md` for the working rules.
 
 ## Implemented Systems
 
@@ -39,6 +52,10 @@ See `CLAUDE.md`.
 - Zone-mode generation through templates/fragments
 - Interior sites: multi-floor buildings with corridors, rooms, doors, stairwells,
   and baked emergency lighting
+- Zone persistence: visited zones keep their state for the whole run
+- District travel graph with timed, risky routes and a travel screen
+- Hub with a player-owned stash and bunks (rest an hour, or sleep until dawn or
+  dusk with the cost shown up front)
 - Auto-explore (`O`) toward unexplored ground
 - Canvas rendering with ASCII and optional sprites
 
@@ -65,14 +82,15 @@ Top-down view:
 - `WASD` / Arrow Keys: move
 - `Space`: wait
 - `G`: pick up item
-- `E`: interact with nearby object/NPC (in first person: `W`/`S`/`A`/`D` pick ahead/behind/left/right, `Space` picks your own tile)
+- `E`: interact with nearby object/NPC (in first person: `W`/`S`/`A`/`D` pick ahead/behind/left/right, `Space` picks your own tile). On a bunk this offers Rest and Sleep; on the Crew Stash, Search moves items in and out.
 - `M`: cycle movement mode
 - `T`: cycle combat stance
 - `Q`: talent and ability panel
 - `O`: auto-explore
 - `F9` / `Shift+F9`: debug spawn a hostile / bystander ahead
 - `B`: combat detail overlay
-- `Tab`: overworld map
+- `Tab`: travel screen (routes from where you are; also opens when you walk off a block's edge or step out of a building)
+- `F8`: region tile map (debug)
 - `I`: inventory
 - `C`: character sheet
 - `V`: workshop
@@ -97,7 +115,7 @@ For cache problems during local testing, use `dev-reset.html` or hard-refresh. T
 ## Architecture Map
 
 ### Core
-- `src/core/Game.js` - main game state, turn processing, zone transitions, auto-travel
+- `src/core/Game.js` - main game state, turn processing, zone transitions and the zone cache, hub entry, bulk time passing, auto-explore
 - `src/core/InputHandler.js` - keyboard mapping
 - `src/core/Renderer.js` - canvas tile renderer
 - `src/core/SpriteManager.js` - optional spritesheet loading
@@ -116,6 +134,7 @@ For cache problems during local testing, use `dev-reset.html` or hard-refresh. T
 - `src/content/TalentCatalog.js` - talent trees, nodes, effects
 - `src/content/NpcCatalog.js` - NPC templates (placeholders until the new roster)
 - `src/content/SiteCatalog.js` - interior site profiles (floors, layouts, lighting)
+- `src/content/DistrictCatalog.js` - the travel graph: places, routes, locks
 - `src/systems/AbilitySystem.js` - talent-gated abilities and effects
 - `src/systems/CombatSystem.js` - anatomy combat resolution
 - `src/systems/CraftingSystem.js` - crafting/disassembly
@@ -142,7 +161,11 @@ For cache problems during local testing, use `dev-reset.html` or hard-refresh. T
 
 ## Next Steps
 
-1. Define the run flow: where a run starts, what pulls the player forward, what ends it.
-2. UI cleanup around the first-person view.
-3. Cone FoV, facing-aware combat, wall textures and billboard sprites.
-4. Set pieces and encounter budgets inside sites, once the NPC roster exists.
+The roadmap lives in `REDESIGN_BRIEF.md`. In order:
+
+1. Streets as corridors with sky and enterable storefronts; route slices;
+   walkable routes near the hub (Phase 2).
+2. Roster, hub needs, contracts, set pieces, encounter budgets (Phase 3).
+3. Projects and one extraction path end to end; save/load (Phase 4).
+
+Cone FoV, facing-aware combat, and wall textures run alongside.
