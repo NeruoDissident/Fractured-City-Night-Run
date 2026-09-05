@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fractured-city-v64';
+const CACHE_NAME = 'fractured-city-v65';
 const ASSETS = [
     '/',
     '/index.html',
@@ -7,6 +7,7 @@ const ASSETS = [
     '/src/main.js',
     '/src/core/Game.js',
     '/src/core/Renderer.js',
+    '/src/core/FirstPersonRenderer.js',
     '/src/core/SpriteManager.js',
     '/assets/walls/walls.png',
     '/assets/objects/objects.png',
@@ -20,6 +21,7 @@ const ASSETS = [
     '/src/world/gen/ZoneGenerator.js',
     '/src/world/gen/ZoneTiles.js',
     '/src/world/gen/UrbanFragments.js',
+    '/src/world/gen/InteriorGenerator.js',
     '/src/world/WorldObject.js',
     '/src/world/objects/Door.js',
     '/src/world/objects/Furniture.js',
@@ -39,11 +41,11 @@ const ASSETS = [
     '/src/systems/WorldObjectSystem.js',
     '/src/systems/TimeSystem.js',
     '/src/systems/LightingSystem.js',
-    '/src/systems/QuestSystem.js',
     '/src/content/ContentManager.js',
     '/src/content/TalentCatalog.js',
+    '/src/content/NpcCatalog.js',
+    '/src/content/SiteCatalog.js',
     '/src/systems/AbilitySystem.js',
-    '/src/systems/GoalSystem.js',
     '/src/ui/UIManager.js',
     '/src/ui/CraftingUI.js',
     '/src/ui/DisassembleModal.js',

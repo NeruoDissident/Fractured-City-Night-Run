@@ -496,6 +496,15 @@ profile, `generateSite()` builds every floor, and the street generators are skip
   shop band outside, corridor-grid core).
 - Rooms are capped at `MAX_ROOM_SPAN` (8). This is a readability constraint, not a
   performance one: larger rooms stop reading as rooms in first person.
+- **Wall invariant.** Every room keeps a one-cell wall on all sides except its
+  doorway. Room strips check their rect plus a one-cell ring; BSP leaves carry two
+  cells of padding (a wall-hall-wall corridor needs three); halls are routed with
+  `bfsCorridor`, which refuses any cell beside a room; `ensureHallsConnected`
+  joins hall pockets without crossing rooms; `sealRoomEdges` walls off anything a
+  blunt fallback still grazed; furniture is only placed if the room's free cells
+  stay one connected region. `countRoomLeaks` audits the result and the count is
+  exposed on `world.siteAudit` (must be zero). `world.siteDebugGrids` carries the
+  raw cell kinds per level for tests.
 - Doors become real `WorldObject`s, so they open, lock, and smash. Locks are
   smash-only until a key system exists.
 - Furniture is placed along walls from `ROOM_FURNITURE`, never on a cell beside a
