@@ -23,11 +23,15 @@
  *   desc      one line
  *   lock      optional { flag, reason }: passable once game.flags[flag] is set
  *
+ *   slice     slice profile id (SLICE_PROFILES) used when a trip goes loud;
+ *             defaults to 'alley'
+ *   walk      when set, the route is walkable: you always get its slice and
+ *             walk it end to end, and trouble (if any) is inside it rather
+ *             than at the destination. Value is the slice profile id.
+ *
  * Route model decision (REDESIGN_BRIEF.md section 6): mixed, leaning
- * abstract. In Phase 1 every route is abstract: time, drain, and a danger
- * roll. Phase 2 adds slices for loud rolls and promotes a few routes near the
- * hub to walkable blocks. Nothing here needs to change for that; a route gains
- * a `slice` or `walkable` field.
+ * abstract. Most routes are abstract (time, drain, a danger roll, a slice only
+ * when the roll goes loud); the two streets that leave the hub are walkable.
  *
  * EXPANSION POINTS:
  * - Per-entrance routes (front door vs service door vs fire escape)
@@ -89,17 +93,17 @@ export const DISTRICT = {
         }
     },
     routes: [
-        { a: 'hub', b: 'corner_block', name: 'Fence Line', turns: 20, danger: 0.05,
+        { a: 'hub', b: 'corner_block', name: 'Fence Line', turns: 20, danger: 0.05, walk: 'street',
           desc: 'Along the yard fence to the corner. You can see the gate the whole way.' },
-        { a: 'hub', b: 'market', name: 'Market Walk', turns: 30, danger: 0.10,
+        { a: 'hub', b: 'market', name: 'Market Walk', turns: 30, danger: 0.10, walk: 'street',
           desc: 'Two blocks north past shuttered fronts to the market.' },
         { a: 'hub', b: 'neon_row', name: 'Under the Signs', turns: 30, danger: 0.15,
           desc: 'East under the dead neon. Lit in patches.' },
-        { a: 'hub', b: 'town_hall', name: 'Civic Steps', turns: 40, danger: 0.20,
+        { a: 'hub', b: 'town_hall', name: 'Civic Steps', turns: 40, danger: 0.20, slice: 'lot',
           desc: 'South across the plaza. Wide open.' },
         { a: 'corner_block', b: 'market', name: 'Bodega Alley', turns: 25, danger: 0.12,
           desc: 'Behind the grocer, through the bins, out at the market.' },
-        { a: 'corner_block', b: 'dead_mall', name: 'Parking Structure', turns: 45, danger: 0.35,
+        { a: 'corner_block', b: 'dead_mall', name: 'Parking Structure', turns: 45, danger: 0.35, slice: 'underpass',
           desc: 'Up through the ramps. Echoes carry.' },
         { a: 'market', b: 'clinic', name: 'Clinic Steps', turns: 25, danger: 0.12,
           desc: 'Past the street clinic to the real one.' },
@@ -109,11 +113,11 @@ export const DISTRICT = {
           desc: 'Fire stairs behind the bar.' },
         { a: 'neon_row', b: 'kiroshi', name: 'Corporate Frontage', turns: 40, danger: 0.25,
           desc: 'Glass and cameras. Some of them still work.' },
-        { a: 'neon_row', b: 'henderson', name: 'Rail Spur', turns: 60, danger: 0.30,
+        { a: 'neon_row', b: 'henderson', name: 'Rail Spur', turns: 60, danger: 0.30, slice: 'lot',
           desc: 'Follow the dead rails out to the plant.' },
-        { a: 'town_hall', b: 'henderson', name: 'Service Road', turns: 50, danger: 0.25,
+        { a: 'town_hall', b: 'henderson', name: 'Service Road', turns: 50, danger: 0.25, slice: 'underpass',
           desc: 'Behind the hall, along the culvert.' },
-        { a: 'town_hall', b: 'metro', name: 'Metro Stairwell', turns: 20, danger: 0.30,
+        { a: 'town_hall', b: 'metro', name: 'Metro Stairwell', turns: 20, danger: 0.30, slice: 'underpass',
           desc: 'Down from the plaza.',
           lock: { flag: 'pumps_fixed', reason: 'Flooded to the landing. Someone has to get the pumps running.' } },
         { a: 'dead_mall', b: 'marina', name: 'Coast Road', turns: 60, danger: 0.30,
@@ -137,6 +141,11 @@ export function routesFrom(nodeId, district = DISTRICT) {
         out.push({ route: r, dest: getNode(destId, district) });
     }
     return out;
+}
+
+/** Stable id for the two ends of a route, order-independent. */
+export function routeKey(route) {
+    return [route.a, route.b].sort().join('~');
 }
 
 /** Plain-language read of an effective danger chance. */

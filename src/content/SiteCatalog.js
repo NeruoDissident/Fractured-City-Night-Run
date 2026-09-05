@@ -32,6 +32,8 @@
  * - Sites that share an entrance with a street zone rather than replacing it
  */
 
+import { CORNER_BLOCK_FRONTS, MARKET_FRONTS, NEON_FRONTS, SLICE_FRONTS } from './StorefrontCatalog.js';
+
 const OFFICE_ROOMS = [
     { type: 'office', weight: 55 },
     { type: 'office_reception', weight: 10 },
@@ -335,6 +337,165 @@ export const SITE_PROFILES = {
     }
 };
 
+// ── Street blocks ─────────────────────────────────────────────────────────────
+// A block is a single sky level: a street wall to wall with exits at both
+// ends, storefront rooms off it, dead-end alleys with back doors. Same
+// generator, same invariants; `sky` paints the halls as exterior.
+
+const blockLevel = (name, opts) => ({
+    z: 0,
+    name,
+    layout: 'block',
+    sky: true,
+    exits: 'all',
+    streetWidth: 3,
+    cross: 'T',
+    alleys: 2,
+    lockChance: 0.15,
+    lightRadius: 6,
+    lightIntensity: 0.7,
+    corridorLightChance: 0.65,
+    roomLightChance: 0.35,
+    lightSpacing: 7,
+    floorLootChance: 0.5,
+    ...opts
+});
+
+Object.assign(SITE_PROFILES, {
+    urban_corner_store: {
+        name: 'Corner Store Block',
+        block: true,
+        width: 48,
+        height: 30,
+        levels: [blockLevel('Corner Street', {
+            wall: 'brickFacade', corridor: 'street', alley: 'alleyFloor', doorType: 'glass',
+            roomTypes: CORNER_BLOCK_FRONTS, lightColor: '#ffb060'
+        })]
+    },
+    urban_market_corner: {
+        name: 'Market Corner',
+        block: true,
+        width: 48,
+        height: 30,
+        levels: [blockLevel('Market Street', {
+            wall: 'concreteFacade', corridor: 'marketPaving', alley: 'alleyFloor', doorType: 'glass',
+            cross: 'full', streetWidth: 4, alleys: 1,
+            roomTypes: MARKET_FRONTS, lightColor: '#ffd9a0', corridorLightChance: 0.75
+        })]
+    },
+    neon_row: {
+        name: 'Neon Row',
+        block: true,
+        width: 44,
+        height: 26,
+        levels: [blockLevel('Neon Row', {
+            wall: 'neonFacade', corridor: 'neonStreet', alley: 'alleyFloor', doorType: 'glass',
+            cross: false, alleys: 2,
+            roomTypes: NEON_FRONTS, lightColor: '#ff66cc', corridorLightChance: 0.85, roomLightChance: 0.5
+        })]
+    },
+
+    metro_depths: {
+        name: 'Metro Depths',
+        width: 44,
+        height: 36,
+        levels: [
+            {
+                z: 0,
+                name: 'Station Concourse',
+                layout: 'ring',
+                wall: 'concreteWall',
+                corridor: 'tileFloor',
+                doorType: 'metal',
+                lockChance: 0.25,
+                roomTypes: [
+                    { type: 'commercial_store', weight: 30, label: 'Kiosk' },
+                    { type: 'office', weight: 25, label: 'Ticket Office' },
+                    { type: 'commercial_backroom', weight: 25, label: 'Store Room' },
+                    { type: 'residential_bathroom', weight: 20, label: 'Public Washroom' }
+                ],
+                lightColor: '#9fe8ff',
+                lightRadius: 6,
+                lightIntensity: 0.6,
+                corridorLightChance: 0.45,
+                roomLightChance: 0.15,
+                lightSpacing: 6
+            },
+            {
+                ...utilitySublevel(-1, 'Platform Level'),
+                lightColor: '#7fd0ff',
+                corridorLightChance: 0.35,
+                roomTypes: [
+                    { type: 'garage_bay', weight: 35, label: 'Pump Room' },
+                    { type: 'commercial_backroom', weight: 35, label: 'Maintenance Store' },
+                    { type: 'office', weight: 30, label: 'Signal Box' }
+                ]
+            }
+        ]
+    }
+});
+
+// ── Route slices ─────────────────────────────────────────────────────────────
+// One screen of street between two places. Exits at both ends lead to the
+// route's two endpoints (Game tags them). Walkable routes always use theirs;
+// abstract routes only when a trip goes loud.
+export const SLICE_PROFILES = {
+    slice_street: {
+        name: 'Street',
+        block: true,
+        slice: true,
+        width: 30,
+        height: 16,
+        levels: [blockLevel('Street', {
+            wall: 'brickFacade', corridor: 'street', alley: 'alleyFloor', doorType: 'metal',
+            cross: false, alleys: 1, minFront: 3, maxFront: 6,
+            roomTypes: SLICE_FRONTS, lightColor: '#ffb060', corridorLightChance: 0.5, roomLightChance: 0.2, floorLootChance: 0.3
+        })]
+    },
+    slice_alley: {
+        name: 'Alley',
+        block: true,
+        slice: true,
+        width: 30,
+        height: 14,
+        levels: [blockLevel('Alley', {
+            wall: 'concreteFacade', corridor: 'alleyFloor', alley: 'alleyFloor', doorType: 'metal',
+            streetWidth: 2, cross: false, alleys: 1, minFront: 3, maxFront: 5, lockChance: 0.4,
+            roomTypes: SLICE_FRONTS, lightColor: '#ffcf8a', corridorLightChance: 0.3, roomLightChance: 0.15, floorLootChance: 0.3
+        })]
+    },
+    slice_underpass: {
+        name: 'Underpass',
+        block: true,
+        slice: true,
+        width: 30,
+        height: 14,
+        levels: [blockLevel('Underpass', {
+            sky: false, wall: 'concreteWall', corridor: 'underpass', alley: 'serviceCorridor', doorType: 'metal',
+            streetWidth: 3, cross: false, alleys: 1, minFront: 3, maxFront: 5, lockChance: 0.35,
+            roomTypes: SLICE_FRONTS, lightColor: '#8fd0ff', lightRadius: 5, lightIntensity: 0.6,
+            corridorLightChance: 0.5, roomLightChance: 0.1, lightSpacing: 6, floorLootChance: 0.25
+        })]
+    },
+    slice_lot: {
+        name: 'Open Lot',
+        block: true,
+        slice: true,
+        width: 32,
+        height: 18,
+        levels: [blockLevel('Lot', {
+            wall: 'concreteFacade', corridor: 'street', alley: 'alleyFloor', doorType: 'metal',
+            streetWidth: 5, cross: false, alleys: 0, minFront: 3, maxFront: 6,
+            roomTypes: SLICE_FRONTS, lightColor: '#ffb060', corridorLightChance: 0.4, roomLightChance: 0.2, floorLootChance: 0.3
+        })]
+    }
+};
+
+/** Profile for a slice kind ('street' | 'alley' | 'underpass' | 'lot'). */
+export function getSliceProfile(kind) {
+    return SLICE_PROFILES[`slice_${kind}`] || SLICE_PROFILES.slice_alley;
+}
+
 // Zone ids that reuse another site's profile.
 const ALIASES = {
     collapsed_mall: 'shopping_strip',
@@ -348,5 +509,5 @@ const ALIASES = {
 export function getSiteProfile(zoneId) {
     if (!zoneId) return null;
     const key = ALIASES[zoneId] || zoneId;
-    return SITE_PROFILES[key] || null;
+    return SITE_PROFILES[key] || SLICE_PROFILES[key] || null;
 }

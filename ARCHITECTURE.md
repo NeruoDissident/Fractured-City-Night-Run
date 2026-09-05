@@ -9,7 +9,7 @@ The project has shifted from primarily infinite chunk generation toward **bounde
 The quest chain, goal board, delivery errands, POIs/Known Places, and the old NPC roster were removed during the first-person pivot. The game is now being built around a hub-and-run structure; `REDESIGN_BRIEF.md` is the design record and roadmap, and `CLAUDE.md` has the working rules. The tile overworld is shelved as the travel surface (a district graph replaces it in Phase 1) but the code stays for a later region map.
 
 Current priority systems:
-- `src/world/gen/ZoneGenerator.js` and `src/world/gen/UrbanFragments.js`: current map design focus.
+- `src/world/gen/InteriorGenerator.js` with `SiteCatalog.js` and `StorefrontCatalog.js`: every site, block, and slice.
 - `Game.startAutoExplore()`: auto-explore toward unexplored ground.
 - `src/content/NpcCatalog.js` + `Game.debugSpawn()`: placeholder NPC templates and the F9 spawner.
 
@@ -131,7 +131,7 @@ Current active path:
 - `World.zoneMode = true` creates bounded zone maps.
 - `ZoneGenerator.generate(world)` selects and builds zone layouts.
 - `ZoneCanvas` provides drawing helpers, fragment placement, furniture, and NPC spawning (`addNpc` skips unknown catalog types).
-- `UrbanFragments` contains reusable urban pieces such as corner stores, gas stations, laundries, pawn shops, alleys, bodegas, and clinics.
+- Street blocks and route slices are site profiles built by `InteriorGenerator` (`block` layout); `ZoneGenerator` itself only builds the hub, a few open-ground debug zones, and the fallback lot.
 
 Legacy/underlying path:
 - World divided into 128×128 tile chunks (increased from 32 in v39)
@@ -525,10 +525,27 @@ profile, `generateSite()` builds every floor, and the street generators are skip
 `isSiteExit` tile returns to the overworld, and drop-in always lands at the
 entrance regardless of travel direction.
 
+**Blocks (Phase 2).** `layoutBlock` carves a street band `streetWidth` wide
+wall to wall, an optional cross street, `alleys` one-wide dead ends, then
+`carveRoomStrip` along every hall for storefronts and back rooms. Exits are
+returned for every street end and, with `level.exits === 'all'`, all become
+`EXIT` cells; `world.siteExits` lists them with a `side`. A `sky` level paints
+halls with exterior tiles (`street`, `alleyFloor`, ...) and rooms with
+interior ones, so the renderer draws sky over the street and ceilings in the
+shops. Single-level profiles have no stair core; the connectivity origin is
+the first hall cell. Room presets from `StorefrontCatalog` override floor,
+furniture, door type, and light per room. Doors facing a hall on a sky level
+get a `daylight` static light; `floorLootChance` drops items on room floors.
+
+**Slices.** `SLICE_PROFILES` are 30x14 to 32x18 single-level blocks with a
+west and an east exit. `Game._enterSlice` caches them by route and writes
+`world.exitTargets` so each end leads to a route endpoint.
+
 **Expansion Points:**
 - More layouts (radial, warehouse aisles, flooded sublevel)
 - Set pieces per site; keyed doors; encounter and loot budgets per level
-- Sites reached through a street zone's door rather than replacing the zone
+- Multiple entrances per site tied to routes
+- Signs and awnings as street props outside storefronts
 
 ---
 
@@ -672,11 +689,10 @@ Fractured-City-Night-Run/
 │   │   ├── WorldObject.js # Base class for interactive objects
 │   │   ├── OverworldMap.js # 160×100 region grid (debug map), hub tile, zone pools, findZoneTemplate
 │   │   ├── gen/
-│   │   │   ├── ZoneGenerator.js   # Zone entrypoint, hub layout, street layouts (being retired)
-│   │   │   ├── InteriorGenerator.js # Multi-floor sites (model for Phase 2 blocks)
+│   │   │   ├── ZoneGenerator.js   # Zone entrypoint, hub layout, debug open-ground zones
+│   │   │   ├── InteriorGenerator.js # Sites, street blocks, route slices
 │   │   │   ├── ZoneCanvas.js      # Tile/door/furniture drawing helpers
-│   │   │   ├── ZoneTiles.js       # Tile palette
-│   │   │   └── UrbanFragments.js  # Storefront pieces (future room presets)
+│   │   │   └── ZoneTiles.js       # Tile palette (incl. facades and street floors)
 │   │   └── objects/
 │   │       ├── Door.js    # Interactive door WorldObject
 │   │       └── Furniture.js # Furniture types (incl. stash, bed), room loot tables
@@ -702,8 +718,9 @@ Fractured-City-Night-Run/
 │   ├── content/
 │   │   ├── ContentManager.js    # Data-driven items, components, materials
 │   │   ├── NpcCatalog.js        # NPC templates (placeholders)
-│   │   ├── SiteCatalog.js       # Interior site profiles
-│   │   ├── DistrictCatalog.js   # Travel graph: nodes, routes, locks
+│   │   ├── SiteCatalog.js       # Site, block, and slice profiles
+│   │   ├── DistrictCatalog.js   # Travel graph: nodes, routes, locks, slices
+│   │   ├── StorefrontCatalog.js # Storefront room presets
 │   │   └── TalentCatalog.js     # Talent trees, nodes, effects
 │   ├── utils/
 │   │   └── noise.js

@@ -109,6 +109,40 @@ Stairwell refuses with its reason and passes once `pumps_fixed` is set; the
 night multiplier lifts a 0.25 route to 0.40 and the trouble stub fired on 3 of
 16 night trips; `F8` opens and closes the region map; zero page errors.
 
+**Phase 2: streets as corridors with sky.**
+- `block` layout in `InteriorGenerator`: a street 3 to 5 wide wall to wall,
+  an optional cross street (T or crossroads), one-wide dead-end alleys with
+  back doors, storefront rooms off every hall, and an exit at every street end.
+  Same cell-kind grid, same BFS routing, same wall invariant, same audit. A
+  `sky` level paints its halls as exterior tiles so the renderer draws sky and
+  lighting treats them as outdoors; rooms stay interior. Single-level profiles
+  skip the stairwell.
+- `StorefrontCatalog.js`: fourteen storefront presets (bodega, pawn and
+  repair, coin laundry, gas kiosk, street clinic, glow bar, noodle stall,
+  parts cage, stockroom, ground flat, squat, shuttered office, utility) with
+  their own floor, furniture pool, door type, and light. Corner Store Block,
+  Market Corner, and Neon Row are now block profiles with their own facade
+  tile; the seven hand-placed street generators and `UrbanFragments.js` are
+  gone. Metro Depths got a two-level profile.
+- Route slices: four one-screen profiles (street, alley, underpass, lot) with
+  a west and an east exit. A loud roll on an abstract route drops you into
+  the route's slice partway with one or two hostiles; the two streets out of
+  the hub are walkable and always use theirs. Slice exits are tagged to the
+  route's endpoints so `<` at an end moves straight on; Tab is refused inside.
+- Daylight: every door facing the street carries a `daylight` static light
+  that `LightingSystem` scales by the outdoor ambient, so a shop is lit from
+  its doorway at noon and dark at 03:00. Site entrances get one too.
+- Floor loot: rooms drop one or two items from their loot pools on the floor.
+
+Verified headless: all three blocks, the metro, and all four slice kinds
+generate with zero leaks and every door reachable (36 stress runs of the
+blocks, zero leaks); a shop cell inside an open door reads 0.58 light at noon
+against 0.30 indoor ambient and 0.34 at 03:05; Fence Line drops you into a
+street slice whose west exit is tagged to the hub and east to the Corner Store
+Block and `<` at the east end lands in the block; a forced loud roll on
+Corporate Frontage produces an alley with two hostiles and an east exit tagged
+to Kiroshi; zero page errors.
+
 ## Current Pivot
 
 The project has shifted toward an occupation-driven survival roguelike with dense traversable zones.
@@ -225,15 +259,15 @@ A turn-based survival roguelike set in a cyberpunk dystopia that is still barely
 ## 🚧 Current Sprint
 
 ### Active: Hub-and-Run Redesign (see REDESIGN_BRIEF.md)
-**Status:** Phases 0 and 1 complete, Phase 2 next  
+**Status:** Phases 0 to 2 complete, Phase 3 next  
 **Priority:** HIGH  
 
 Order:
 0. ✅ Zones persist; the hub is a node; stash; rest and sleep.
 1. ✅ District graph and travel screen replace overworld travel; route
    resolution (time, drain, danger); edges and site exits open the screen.
-2. `block` layout: streets as corridors with sky, enterable storefronts as
-   rooms; route slices; walkable routes near the hub; daylight leak.
+2. ✅ `block` layout: streets as corridors with sky, storefronts as rooms;
+   route slices; walkable routes near the hub; daylight leak; floor loot.
 3. Roster v1 (hub roles first), hub needs, contracts, set pieces, encounter
    budgets, night danger.
 4. Projects as recipes with a location; one extraction path end to end;
@@ -814,7 +848,7 @@ A roguelike where every run feels different, player choices matter, and the worl
 - [x] **Beta 0.11:** Character Creation Overhaul — CoQ-style 3-column, talent chargen (Complete)
 - [x] **Beta 0.12:** First-person crawler view, interior sites, zone persistence, hub node (Complete)
 - [x] **Beta 0.13:** District graph and travel screen (Complete)
-- [ ] **Beta 0.13b:** Streets as corridors with storefronts; route slices
+- [x] **Beta 0.13b:** Streets as corridors with storefronts; route slices (Complete)
 - [ ] **Beta 0.14:** Roster, hub needs, contracts, set pieces
 - [ ] **Beta 0.15:** Projects, one extraction path, save/load
 - [ ] **Later:** Three Origins (Flesh / Metal / Echo), cybernetics, colony layer

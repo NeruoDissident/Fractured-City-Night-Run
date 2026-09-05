@@ -1,7 +1,7 @@
 # Night Run Redesign Brief
 
 **Date:** September 2026
-**Status:** Direction adopted. Phases 0 and 1 shipped. Phases 2 to 5 are the roadmap.
+**Status:** Direction adopted. Phases 0 to 2 shipped. Phases 3 to 5 are the roadmap.
 
 This is the design record for the hub-and-run redesign that followed the
 first-person pivot. It replaces the "Street Kid intro / journal / POI"
@@ -19,9 +19,9 @@ Numbered so the roadmap can refer to them.
 | F-1 | Nothing outside the player persisted between visits. Every drop-in built a fresh `World` from the seed: cabinets refilled, doors relocked, dropped items vanished. **Fixed in Phase 0.** | blocker |
 | F-2 | The starting hub was unreachable once you left it. Downstairs was built by a start-only code path on the centre tile, whose real zone was whatever the pool rolled. **Fixed in Phase 0.** | blocker |
 | F-3 | The overworld is a 160x100 tile grid. 40% is open water. Landmark zones with proper-noun names recur hundreds of times (Old Town Hall 392x in one seed). Fine as a region map, wrong as the travel surface. **Replaced by the district graph in Phase 1.** | friction |
-| F-4 | Street zones are 128x128 lots shaped for a top-down camera. In first person they read as a flat plane fading to fog. Open space is illegible in a grid crawler; walls give you position. | friction |
+| F-4 | Street zones are 128x128 lots shaped for a top-down camera. In first person they read as a flat plane fading to fog. Open space is illegible in a grid crawler; walls give you position. **Replaced by 48x30 block layouts in Phase 2.** | friction |
 | F-5 | Sites exit to the map screen, not to a place. No spatial continuity between buildings. **Sites now exit to the travel screen at their own node (Phase 1); walkable streets come in Phase 2.** | friction |
-| F-6 | No pull and no end: no extraction points generate, no NPCs spawn, sites have furniture but zero floor items. | friction |
+| F-6 | No pull and no end: no extraction points generate, no NPCs spawn, sites have furniture but zero floor items. **Floor loot added in Phase 2; the rest is Phase 3 and 4.** | friction |
 | F-7 | Design docs disagreed with the code (locked milestone referenced removed systems). **Fixed alongside Phase 0.** | friction |
 | F-8 | The simulation stack (anatomy combat, abilities, crafting, containers, survival, time, lighting) is deep and does not need to move. | asset |
 | F-9 | The interior site generator already embodies the map philosophy first person needs: cell-kind grid, BFS halls, wall invariant, capped rooms, baked light. | asset |
@@ -213,12 +213,14 @@ and rolls danger with a night multiplier; a loud roll is stubbed as one
 hostile at the arrival point. Tile grid behind `F8`. Survival drain retuned
 (hunger 0.04, thirst 0.07 per turn) now that travel charges time.
 
-**Phase 2: streets as corridors, slices, and light.**
-`block` layout in the interior generator (wide halls, shopfront rooms,
-alley side-halls, `sky`); retire the seven hand-placed street generators
-and port Corner Block, Market Corner, Neon Row as block profiles with
-fragment-based room presets; route slice profiles; walkable routes; daylight
-leak; wall material per site; floor props per room type.
+**Phase 2 (done): streets as corridors, slices, and light.**
+`block` layout (street 3 to 5 wide, optional cross street, dead-end alleys,
+storefront rooms, exits at every end, `sky`); fourteen storefront presets
+in `StorefrontCatalog`; Corner Store Block, Market Corner, Neon Row as block
+profiles with their own facades; hand-placed street generators and
+`UrbanFragments.js` retired; four slice profiles; loud rolls and the two
+walkable hub streets drop into slices with tagged exits; daylight lights at
+street-facing doors; floor loot per room.
 
 **Phase 3: people, pull, and the run.**
 Roster v1 (five hub roles, three site occupants, two roamers); hub needs;

@@ -42,6 +42,20 @@ export const ZoneTiles = {
     partitionWall: tile('#', '#b4ad9c', '#111010', 'Partition Wall', { blocked: true, blocksLight: true, blocksVision: true, isExterior: false, isWall: true }),
     glassPartition: tile('"', '#9fd8ff', '#141c22', 'Glass Partition', { blocked: true, blocksLight: false, blocksVision: false, isExterior: false }),
 
+    // ── Street blocks (block layout) ─────────────────────────────────────────
+    // Facades are the walls of a street corridor. One per block profile so a
+    // street tells you which block you are on.
+    brickFacade: tile('#', '#a86a58', '#120a08', 'Brick Facade', { blocked: true, blocksLight: true, blocksVision: true, isExterior: false, isWall: true }),
+    concreteFacade: tile('#', '#9a9a90', '#0e0e0c', 'Concrete Facade', { blocked: true, blocksLight: true, blocksVision: true, isExterior: false, isWall: true }),
+    neonFacade: tile('#', '#8a6aa0', '#100a16', 'Neon-Stained Facade', { blocked: true, blocksLight: true, blocksVision: true, isExterior: false, isWall: true }),
+    shutterFacade: tile('#', '#7f8a92', '#0b0e10', 'Steel Shutter', { blocked: true, blocksLight: true, blocksVision: true, isExterior: false, isWall: true }),
+    // Street floors stay exterior: sky above, daylight on them.
+    street: tile('.', '#6e6e6e', '#151515', 'Street', { isExterior: true }),
+    alleyFloor: tile(';', '#5a5548', '#101010', 'Alley', { isExterior: true }),
+    marketPaving: tile(',', '#a0a094', '#222222', 'Market Paving', { isExterior: true }),
+    neonStreet: tile('.', '#c060a0', '#1c1024', 'Neon-Stained Street', { isExterior: true }),
+    underpass: tile('.', '#7d8486', '#111313', 'Underpass', { isExterior: false }),
+
     corridor: tile('.', '#8f8f86', '#171717', 'Corridor', { isExterior: false }),
     serviceCorridor: tile('.', '#7d8486', '#131515', 'Service Corridor', { isExterior: false }),
     carpet: tile('.', '#6f6560', '#1a1618', 'Carpet', { isExterior: false }),
@@ -69,10 +83,11 @@ export function stairsTile(up, down, name = 'Stairwell') {
  * The way back out of a site. Handled by Game before tryAscend so it returns to
  * the overworld instead of changing z-level.
  */
-export function siteExitTile(name = 'Exit') {
+export function siteExitTile(name = 'Exit', options = {}) {
     return tile('\u2302', '#8fffa8', '#0e1a10', name, {
         isExterior: false,
-        isSiteExit: true
+        isSiteExit: true,
+        ...options
     });
 }
 

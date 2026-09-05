@@ -19,8 +19,8 @@ import { TimeSystem } from '../systems/TimeSystem.js';
 import { LightingSystem } from '../systems/LightingSystem.js';
 import { MobileControls } from '../ui/MobileControls.js';
 import { OverworldMap, findZoneTemplate, hashString } from '../world/OverworldMap.js';
-import { DISTRICT, HUB_NODE_ID, getNode, routesFrom, dangerMultiplier } from '../content/DistrictCatalog.js';
-import { getSiteProfile } from '../content/SiteCatalog.js';
+import { DISTRICT, HUB_NODE_ID, getNode, routesFrom, dangerMultiplier, routeKey } from '../content/DistrictCatalog.js';
+import { getSiteProfile, getSliceProfile } from '../content/SiteCatalog.js';
 import { NPC } from '../entities/NPC.js';
 
 export class Game {
@@ -77,6 +77,7 @@ export class Game {
         this.flags          = {};     // run flags (route locks, projects)
         this.travel         = null;   // travel screen state { from, options, index }
         this.runSeed        = 0;
+        this._sliceDescs    = new Map(); // node descriptors for route slices, by id
     }
 
     /** Key fragment for a region-map tile (debug travel). District nodes use their id. */
@@ -227,7 +228,7 @@ export class Game {
 
     // ── Enter a district node ──────────────────────────────────────────────────
     enterNode(nodeId, opts = {}) {
-        const desc = this._describeNode(nodeId);
+        const desc = this._sliceDescs.get(nodeId) || this._describeNode(nodeId);
         if (!desc) {
             this.ui.log(`No such place: ${nodeId}.`, 'warning');
             return false;
@@ -346,7 +347,11 @@ export class Game {
             this.ui.log(`Time: ${this.timeSystem.getTimeString()} - ${this.timeSystem.getTimePeriod()}`, 'info');
         }
         if (this.world.isInterior && !returning) {
-            this.ui.log('Inside. [<] at the entrance to leave, [<] / [>] at the stairwell to change floors.', 'info');
+            if (this.world.isBlock) {
+                this.ui.log('A street. Storefront doors open off it; [<] at either end of the street moves on.', 'info');
+            } else {
+                this.ui.log('Inside. [<] at the entrance to leave, [<] / [>] at the stairwell to change floors.', 'info');
+            }
         }
 
         this.updateFoV();
@@ -418,6 +423,11 @@ export class Game {
         if (!this.world || !this.player) return;
         this.cancelAutoTravel();
         const nodeId = this._currentNodeId;
+        if (this._sliceDescs.has(nodeId)) {
+            // Inside a slice the only ways on are its two ends.
+            this.ui.log('This is a street between places. Walk to either end and use [<] to go on.', 'info');
+            return;
+        }
         if (!getNode(nodeId, this.district)) {
             // On a debug tile the graph does not apply; show the region map.
             this.openDebugMap();
@@ -484,9 +494,14 @@ export class Game {
     }
 
     /**
-     * Resolve travelling a route: refuse if locked, pass the time detached from
-     * any zone, arrive, then roll for trouble. Phase 1 stub: a loud roll drops
-     * a hostile near the arrival point; Phase 2 replaces that with a slice.
+     * Resolve travelling a route.
+     *  - Locked: refuse with the reason.
+     *  - Walkable (`route.walk`): charge the approach, then drop into the
+     *    route's slice at the near end and walk it; trouble, if the roll says
+     *    so, is inside the slice.
+     *  - Abstract: charge the whole time detached from any zone. A quiet roll
+     *    lands you at the destination; a loud one drops you into the route's
+     *    slice partway along, with company.
      */
     travelRoute(route, dest) {
         if (!this.isRunning || !this.player || this.player.isDead()) return false;
@@ -497,32 +512,122 @@ export class Game {
         const est = this.routeEstimate(route);
         const from = this.currentNode();
         const startTime = this.timeSystem.getTimeString();
+        const loud = Math.random() < est.danger;
+        const sliceKind = route.walk || route.slice || 'alley';
+        const useSlice = !!route.walk || loud;
+
+        // Walking the slice itself takes about its length; the rest is approach.
+        const sliceLen = getSliceProfile(sliceKind).width || 30;
+        let turns = est.turns;
+        if (route.walk) turns = Math.max(0, est.turns - sliceLen);
+        else if (loud) turns = Math.max(1, Math.floor(est.turns * 0.6));
 
         // Detach from the zone we are leaving before time passes so its NPCs do
         // not act around a player who is no longer there.
         this.world.removeEntity(this.player);
         this.gameState = 'playing';
-        const passed = this.passTime(est.turns, { detached: true, render: false });
+        const passed = turns > 0 ? this.passTime(turns, { detached: true, render: false }) : { turns: 0, interrupted: null };
         if (passed.interrupted === 'death') return false;
 
-        this.enterNode(dest.id, { quiet: true });
+        if (useSlice) {
+            this._enterSlice(route, sliceKind, from, dest, { trouble: loud });
+            if (route.walk) {
+                this.ui.log(`${route.name}: you set out from ${from?.name || 'here'} toward ${dest.name} on foot.`, 'info');
+                if (loud) this.ui.log('Someone is on the street ahead.', 'warning');
+            } else {
+                this.ui.log(`${route.name}: partway to ${dest.name}, trouble. You are on your own for the last stretch.`, 'warning');
+            }
+            this.render();
+            return true;
+        }
 
+        this.enterNode(dest.id, { quiet: true });
         const h = Math.floor(passed.turns / 60);
         const m = passed.turns % 60;
         const span = `${h ? `${h}h ` : ''}${m}m`.trim();
         this.ui.log(`${route.name}: ${from?.name || 'the road'} to ${dest.name}, ${span}. Left ${startTime}, arrived ${this.timeSystem.getTimeString()}.`, 'info');
-
-        const loud = Math.random() < est.danger;
-        if (!loud) {
-            this.ui.log(est.nightMult > 1 ? 'A dark walk, but a quiet one.' : 'The way was quiet.', 'info');
-        } else if (dest.kind === 'hub') {
-            this.ui.log('Something followed you as far as the gate, then thought better of it.', 'warning');
-        } else {
-            this.ui.log('Trouble found you on the way in.', 'warning');
-            this._spawnArrivalTrouble();
-        }
+        this.ui.log(est.nightMult > 1 ? 'A dark walk, but a quiet one.' : 'The way was quiet.', 'info');
         this.render();
         return true;
+    }
+
+    /**
+     * Enter a route's slice: one screen of street whose two exits lead to the
+     * route's endpoints. Slices persist like any zone, keyed by the route.
+     */
+    _enterSlice(route, kind, from, dest, opts = {}) {
+        const id = `slice:${routeKey(route)}`;
+        if (!this._sliceDescs.has(id)) {
+            const profile = getSliceProfile(kind);
+            const zone = { id: `slice_${kind}`, name: route.name, width: profile.width, height: profile.height, interior: true, tags: ['slice'] };
+            this._sliceDescs.set(id, {
+                id,
+                name: route.name,
+                zone,
+                seed: hashString(id, this.runSeed || 1),
+                biome: 'urban_core',
+                playBiome: 'urban_core',
+                threat: Math.max(1, Math.min(5, Math.round(route.danger * 10))),
+                kind: 'slice',
+                route: { a: route.a, b: route.b }
+            });
+        }
+        this._enterZone(this._sliceDescs.get(id), { quiet: true });
+
+        // West end belongs to route.a, east end to route.b. Tag the exits and
+        // put the player at the end they came from, facing along the street.
+        const w = this.world;
+        const exits = w.siteExits || [];
+        const west = exits.find(e => e.side === 'west') || exits[0];
+        const east = exits.find(e => e.side === 'east') || exits[exits.length - 1];
+        if (west && east) {
+            w.exitTargets = {
+                [`${west.x},${west.y}`]: route.a,
+                [`${east.x},${east.y}`]: route.b
+            };
+            for (const e of exits) {
+                if (e === west || e === east) continue;
+                w.exitTargets[`${e.x},${e.y}`] = from?.id === route.a ? route.a : route.b;
+            }
+            const arrive = (from?.id === route.a) ? west : east;
+            const step = { north: [0, -1], south: [0, 1], east: [1, 0], west: [-1, 0] }[arrive.facing];
+            const spot = this._findOpenNear(arrive.x + step[0], arrive.y + step[1]);
+            this.player.x = spot.x;
+            this.player.y = spot.y;
+            this.player.facing = arrive.facing;
+            this.updateFoV();
+        }
+
+        if (opts.trouble) this._spawnSliceTrouble();
+    }
+
+    /** Company in a slice: one or two hostiles in the street ahead, out of arm's reach. */
+    _spawnSliceTrouble() {
+        const p = this.player;
+        const count = 1 + (Math.random() < 0.35 ? 1 : 0);
+        let placed = 0;
+        const cells = [];
+        for (let y = 0; y < this.world.zoneHeight; y++) {
+            for (let x = 0; x < this.world.zoneWidth; x++) {
+                const t = this.world.getTile(x, y, p.z);
+                if (!t || t.blocked || t.isExterior === false || t.isSiteExit) continue;
+                const d = Math.abs(x - p.x) + Math.abs(y - p.y);
+                if (d < 7) continue;
+                cells.push({ x, y, d });
+            }
+        }
+        cells.sort((a, b) => a.d - b.d);
+        for (const c of cells) {
+            if (placed >= count) break;
+            if (this.world.getEntityAt(c.x, c.y, p.z)) continue;
+            const npc = new NPC(this, 'debug_hostile', c.x, c.y);
+            npc.z = p.z;
+            npc.name = placed === 0 ? 'Street Tough' : 'Lookout';
+            this.world.addEntity(npc);
+            placed++;
+        }
+        if (placed) this.updateFoV();
+        return placed;
     }
 
     /** Phase 1 stand-in for a route slice: one hostile a few cells off. */
@@ -618,6 +723,14 @@ export class Game {
         } else if (action.type === 'ascend') {
             const here = this.world.getTile(this.player.x, this.player.y, this.player.z);
             if (here?.isSiteExit) {
+                const target = this.world.exitTargets?.[`${this.player.x},${this.player.y}`];
+                if (target) {
+                    // A slice's ends lead straight on to the route's endpoints.
+                    const dest = getNode(target, this.district);
+                    this.ui.log(`You come out at ${dest?.name || target}.`, 'info');
+                    this.enterNode(target);
+                    return;
+                }
                 this.ui.log(`You step back out of ${this.world.siteName || 'the building'}.`, 'info');
                 this.openTravel('exit');
                 return;

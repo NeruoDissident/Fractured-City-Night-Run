@@ -354,13 +354,18 @@ export class LightingSystem {
      * Only processes sources within range of the calculation area
      */
     applyWorldLightSources(centerX, centerY, z, viewRadius) {
+        // Daylight sources (doorways, windows) let the outdoors leak in: their
+        // strength follows the sky, so a shop is bright at noon and black at 03:00.
+        const outdoor = this.game.timeSystem ? this.game.timeSystem.getOutdoorAmbient() : 1;
         for (const source of this.worldLightSources) {
             if (source.z !== z) continue;
-            
+
             const dist = Math.abs(source.x - centerX) + Math.abs(source.y - centerY);
             if (dist > viewRadius + source.radius) continue;
-            
-            this.applyPointLight(source.x, source.y, z, source.radius, source.intensity, source.color);
+
+            const intensity = source.daylight ? source.intensity * outdoor : source.intensity;
+            if (intensity <= 0.01) continue;
+            this.applyPointLight(source.x, source.y, z, source.radius, intensity, source.daylight ? null : source.color);
         }
     }
     
