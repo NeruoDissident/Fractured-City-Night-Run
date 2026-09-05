@@ -58,6 +58,20 @@ export class Game {
         this._loadoutGiven   = false;  // starting gear given once per run
         this._currentZoneCol = 0;      // which overworld tile the active zone is
         this._currentZoneRow = 0;
+
+        // ── Zone persistence ─────────────────────────────────────────────
+        // Every zone the player has visited stays alive here, keyed by its
+        // overworld node id ("col,row"). Leaving a zone parks its World and
+        // FoV (explored tiles); coming back reuses them, so looted cabinets
+        // stay looted, opened doors stay open, dropped items stay dropped.
+        // NPCs in a parked zone do not act until the player returns.
+        // Plain data only - this map is what a save file will serialise.
+        this.zoneCache = new Map();
+    }
+
+    /** Node id for an overworld tile. Phase 1 replaces this with graph node ids. */
+    zoneKey(col, row) {
+        return `${col},${row}`;
     }
     
     async init() {
@@ -107,54 +121,34 @@ export class Game {
         this.overworldMap = new OverworldMap(runSeed);
 
         this.isRunning = true;
+        this.zoneCache.clear();
 
-        // Start in the hub town zone instead of the overworld
+        // The run starts at the hub. The hub is an ordinary overworld node
+        // (see OverworldMap.hubCol/hubRow), so leaving and coming back finds
+        // the same yard rather than whatever the tile pool would have rolled.
         this._enterHubZone();
     }
 
-    // ── Enter the hub town zone (safe starting area) ────────────────────────────
+    // ── Enter the hub (safe starting area, and the node you return to) ────────
     _enterHubZone() {
-        // Create a small safe world. The zone generator owns layout, NPCs, and POIs.
-        this.world = new World(this);
-        this.world.zoneMode = true;
-        this.world.forcedBiome = 'suburbs';
-        this.world.worldSeed = (this.overworldMap?.seed || Date.now()) & 0x7FFFFFFF;
-        this.world.zoneWidth = 80;
-        this.world.zoneHeight = 80;
-        this.world.zoneBounds = { minCx: 0, maxCx: 0, minCy: 0, maxCy: 0 };
-        this.world.init();
-
-        // Spawn player near center
-        const spawn = this._findOpenNear(this.world.getSpawnPosition().x, this.world.getSpawnPosition().y);
-        this.player.x = spawn.x;
-        this.player.y = spawn.y;
-        this.player.z = 0;
-        this.world.addEntity(this.player);
-
-        // Give starting gear on first drop
-        if (!this._loadoutGiven) {
-            this.giveStartingLoadout();
-            this._loadoutGiven = true;
-        }
-
-        // Track hub as current zone (center of overworld)
-        this._currentZoneCol = this.overworldMap ? Math.floor(this.overworldMap.cols / 2) : 0;
-        this._currentZoneRow = this.overworldMap ? Math.floor(this.overworldMap.rows / 2) : 0;
-        this.overworldMap?.markExplored(this._currentZoneCol, this._currentZoneRow);
-
-        this.gameState = 'playing';
-        this._initZoneSystems();
+        const ow = this.overworldMap;
+        this.dropIntoZone(ow.hubCol, ow.hubRow);
 
         this.ui.log('Downstairs. A fenced yard, a few shacks, and the city beyond.', 'info');
         this.ui.log('W/S move, A/D turn, E interact, ` toggles the map view, ? for help.', 'info');
+    }
 
-        this.updateFoV();
-        this.render();
+    /** True when the active zone is the hub node. */
+    isAtHub() {
+        const ow = this.overworldMap;
+        return !!ow && this._currentZoneCol === ow.hubCol && this._currentZoneRow === ow.hubRow;
     }
 
     // ── Zone systems init (called on every zone entry) ─────────────────────────
-    _initZoneSystems() {
-        this.fov              = new FoVSystem(this.world);
+    // FoV is per zone (it owns the explored-tile set) and is handed in from the
+    // cache on a return visit. Everything else is transient and rebuilt.
+    _initZoneSystems(fov = null) {
+        this.fov              = fov || new FoVSystem(this.world);
         this.soundSystem      = new SoundSystem(this);
         this.timeSystem       = this.timeSystem || new TimeSystem();
         this.lightingSystem   = new LightingSystem(this);
@@ -172,29 +166,44 @@ export class Game {
         const owTile = this.overworldMap.getTile(col, row);
         if (!owTile) return;
 
+        // Park the zone we are leaving. The player entity travels; the zone stays.
+        if (this.world) {
+            this.world.removeEntity(this.player);
+        }
+
         this._currentZoneCol = col;
         this._currentZoneRow = row;
         this.overworldMap.markExplored(col, row);
 
-        // Compute chunk bounds from zone dimensions
-        const zw = owTile.zone.width;
-        const zh = owTile.zone.height;
-        const chunksX = Math.ceil(zw / 128);
-        const chunksY = Math.ceil(zh / 128);
+        const key = this.zoneKey(col, row);
+        const cached = this.zoneCache.get(key);
+        const returning = !!cached;
 
-        // Build the zone world
-        this.world = new World(this);
-        this.world.zoneMode     = true;
-        this.world.forcedBiome = owTile.playBiome || owTile.biome;
-        this.world.worldSeed   = owTile.seed;
-        this.world.zoneWidth   = zw;
-        this.world.zoneHeight  = zh;
-        this.world.zoneBounds  = { minCx: 0, maxCx: chunksX - 1, minCy: 0, maxCy: chunksY - 1 };
-        this.world.zoneTemplate = owTile.zone; // faction, purpose, npcSignature, keyFeature
-        this.world.init();
+        if (cached) {
+            this.world = cached.world;
+            this._initZoneSystems(cached.fov);
+        } else {
+            // Compute chunk bounds from zone dimensions
+            const zw = owTile.zone.width;
+            const zh = owTile.zone.height;
+            const chunksX = Math.ceil(zw / 128);
+            const chunksY = Math.ceil(zh / 128);
 
-        // Init all zone-dependent systems
-        this._initZoneSystems();
+            // Build the zone world
+            this.world = new World(this);
+            this.world.zoneMode     = true;
+            this.world.forcedBiome = owTile.playBiome || owTile.biome;
+            this.world.worldSeed   = owTile.seed;
+            this.world.zoneWidth   = zw;
+            this.world.zoneHeight  = zh;
+            this.world.zoneBounds  = { minCx: 0, maxCx: chunksX - 1, minCy: 0, maxCy: chunksY - 1 };
+            this.world.zoneTemplate = owTile.zone; // faction, purpose, npcSignature, keyFeature
+            this.world.init();
+
+            // Init all zone-dependent systems
+            this._initZoneSystems();
+            this.zoneCache.set(key, { world: this.world, fov: this.fov, col, row });
+        }
 
         // Generation may resize the zone (interior sites own their footprint),
         // so read the dimensions back off the world rather than the template.
@@ -225,7 +234,12 @@ export class Game {
         this.player.x = found.x;
         this.player.y = found.y;
         this.player.z = 0;
-        if (this.world.spawnFacing) {
+        // Walking in over an edge keeps you facing the way you were going;
+        // arriving at an entrance faces you into the place.
+        const edgeFacing = { west: 'east', east: 'west', north: 'south', south: 'north' }[entryEdge];
+        if (edgeFacing && !this.world.isInterior) {
+            this.player.facing = edgeFacing;
+        } else if (this.world.spawnFacing) {
             this.player.facing = this.world.spawnFacing;
         }
 
@@ -244,11 +258,12 @@ export class Game {
 
         const threatMod = owTile.zone.threatMod || 0;
         const threat = Math.max(1, Math.min(5, owTile.threatLevel + threatMod));
-        this.ui.log(`Entering: ${owTile.zone.name} [${(owTile.terrain || owTile.biome).replace('_', ' ')}]  Threat: ${'★'.repeat(threat)}`, 'info');
+        const verb = returning ? 'Returning to' : 'Entering';
+        this.ui.log(`${verb}: ${owTile.zone.name} [${(owTile.terrain || owTile.biome).replace('_', ' ')}]  Threat: ${'★'.repeat(threat)}`, 'info');
         if (this.timeSystem) {
             this.ui.log(`Time: ${this.timeSystem.getTimeString()} - ${this.timeSystem.getTimePeriod()}`, 'info');
         }
-        if (this.world.isInterior) {
+        if (this.world.isInterior && !returning) {
             this.ui.log('Inside. [<] at the entrance to leave, [<] / [>] at the stairwell to change floors.', 'info');
         }
 
@@ -630,7 +645,76 @@ export class Game {
         
         this.render();
     }
-    
+
+    /**
+     * Pass a long stretch of time in one step (sleeping, resting, later
+     * route travel). Runs the same per-turn systems as advanceTurn but only
+     * redraws at the end, and stops early if the player dies or, while
+     * sleeping, if a hostile closes in.
+     *
+     * @param {number} turns
+     * @param {object} opts
+     *   sleeping     - halves hunger/thirst drain and wakes on nearby hostiles
+     *   wakeRadius   - Manhattan distance at which a hostile wakes a sleeper
+     * @returns {{ turns: number, interrupted: string|null }}
+     */
+    passTime(turns, opts = {}) {
+        if (!this.isRunning) return { turns: 0, interrupted: 'not running' };
+        const sleeping = !!opts.sleeping;
+        const wakeRadius = opts.wakeRadius ?? 10;
+        const p = this.player;
+
+        const savedRates = { hunger: p.hungerRate, thirst: p.thirstRate };
+        if (sleeping) {
+            p.hungerRate *= 0.5;
+            p.thirstRate *= 0.5;
+        }
+
+        let done = 0;
+        let interrupted = null;
+        try {
+            for (; done < turns; done++) {
+                this.turnCount++;
+                this.timeSystem.tick();
+                this.lightingSystem.consumeFuel();
+                p.processStatusEffects();
+                this.world.processTurn(100);
+                this.soundSystem.processTurn();
+                this.abilitySystem?.processTurn();
+                if (p.isDead()) {
+                    interrupted = 'death';
+                    done++;
+                    break;
+                }
+                if (sleeping && done % 5 === 4 && this._hostileWithin(wakeRadius)) {
+                    interrupted = 'hostile';
+                    done++;
+                    break;
+                }
+            }
+        } finally {
+            p.hungerRate = savedRates.hunger;
+            p.thirstRate = savedRates.thirst;
+        }
+
+        this.updateFoV();
+        this.checkGameOver();
+        this.render();
+        return { turns: done, interrupted };
+    }
+
+    /** Any living hostile within `radius` (Manhattan) on the player's floor. */
+    _hostileWithin(radius) {
+        const p = this.player;
+        for (const e of this.world.entities) {
+            if (e === p || !e.hostile) continue;
+            if (e.z !== undefined && e.z !== p.z) continue;
+            if (e.isDead && e.isDead()) continue;
+            if (Math.abs(e.x - p.x) + Math.abs(e.y - p.y) <= radius) return true;
+        }
+        return false;
+    }
+
     updateFoV() {
         if (!this.fov) {
             console.error('FoV system not initialized!');

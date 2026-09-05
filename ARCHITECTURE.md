@@ -4,9 +4,9 @@
 
 The project has shifted from primarily infinite chunk generation toward **bounded zone generation connected by an overworld**. Old `Chunk.js` generation still exists and some sections below describe it historically, but the active design path is:
 
-`OverworldMap` chooses a zone tile -> `Game.dropIntoZone()` creates a zone-mode `World` -> `ZoneGenerator` and `ZoneCanvas` build a detailed map from templates/fragments -> the player explores it in first person.
+`OverworldMap` chooses a zone tile -> `Game.dropIntoZone()` returns the cached zone-mode `World` for that tile or creates one -> on first visit `ZoneGenerator` and `ZoneCanvas` build a detailed map from templates/fragments -> the player explores it in first person -> leaving parks the zone in `Game.zoneCache`.
 
-The quest chain, goal board, delivery errands, POIs/Known Places, and the old NPC roster were removed during the first-person pivot. See `CLAUDE.md` for what is kept, what is placeholder, and what comes next.
+The quest chain, goal board, delivery errands, POIs/Known Places, and the old NPC roster were removed during the first-person pivot. The game is now being built around a hub-and-run structure; `REDESIGN_BRIEF.md` is the design record and roadmap, and `CLAUDE.md` has the working rules. The tile overworld is shelved as the travel surface (a district graph replaces it in Phase 1) but the code stays for a later region map.
 
 Current priority systems:
 - `src/world/gen/ZoneGenerator.js` and `src/world/gen/UrbanFragments.js`: current map design focus.
@@ -32,13 +32,16 @@ ASCII is currently the primary development view. Sprites remain supported, but e
 
 **Key Methods:**
 - `init()` - Initializes all subsystems
-- `startGame(characterData)` - Begins a new run
+- `startGame(characterData)` - Begins a new run at the hub
+- `dropIntoZone(col, row, entryEdge)` - Get-or-create a zone from `zoneCache`, move the player into it
 - `processTurn(action)` - Advances world by one tick
+- `advanceTurn(turns)` - A few turns for an action (open a door, search)
+- `passTime(turns, opts)` - Many turns in one step (sleep; route travel later)
 - `render()` - Triggers rendering pipeline
 
 **Expansion Points:**
 - Add game modes (tutorial, challenge runs)
-- Add save/load system
+- Serialise `zoneCache` for save/load (Phase 4)
 - Add run statistics tracking
 
 ---
@@ -526,6 +529,45 @@ entrance regardless of travel direction.
 
 ---
 
+### 17b. Zone Persistence and the Hub (`src/core/Game.js`, `src/world/OverworldMap.js`)
+**Responsibility:** Every visited zone keeps its state for the run; the hub is
+a node you can always return to.
+
+**Zone cache.** `Game.zoneCache` is a `Map` from `Game.zoneKey(col, row)` to
+`{ world, fov, col, row }`. `dropIntoZone` removes the player from the current
+`World`, then either reuses the cached `World` and `FoVSystem` (explored tiles)
+or builds a new pair and stores it. Per-zone systems that hold no persistent
+state (sound, lighting, items, crafting, combat, effects, abilities, world
+objects) are rebuilt on every entry by `_initZoneSystems(fov)`. Persistent
+state therefore lives only on the `World` and what it owns: tiles, world
+objects (door state, furniture contents), items on the ground, NPCs. NPCs in a
+parked zone do not act.
+
+**Hub node.** `OverworldMap._placeHub` pins `HUB_ZONE` (`safe_hub`,
+"Downstairs") to the centre tile (`hubCol`, `hubRow`) after generation.
+`ZoneGenerator` always builds `generateSafeHub` for that id. `Game.startGame`
+drops into that tile, so the hub is an ordinary cached zone from turn one.
+`generateSafeHub` sets `spawnPoint` at the South Gate with `spawnFacing`
+north, bakes `staticLights` for the shacks and walks, and places a `stash`.
+
+**Arrival facing.** Edge transitions face the player in the direction of
+travel; arrivals at an entrance use the world's `spawnFacing`.
+
+**Passing time.** `Game.passTime(turns, { sleeping })` ticks time, fuel,
+status effects, the world, sound, and abilities without redrawing until the
+end. With `sleeping`, hunger and thirst rates are halved and a living hostile
+within `wakeRadius` (default 10) interrupts. `WorldObjectSystem.restAt` uses
+it for the bed actions `rest` (60 turns) and `sleep`
+(`getSleepPlan()`: until 06:00 or 18:00, whichever is next, minimum an hour).
+
+**Expansion Points:**
+- Graph node ids instead of `col,row` keys (Phase 1)
+- Route travel through `passTime` with drain and danger (Phase 1)
+- Catch-up simulation for parked zones
+- Serialisation of the cache (Phase 4)
+
+---
+
 ### 18. Auto-Explore
 **Files:** `World.js`, `Game.js`, `UIManager.js`, `InputHandler.js`
 
@@ -564,59 +606,74 @@ UIManager.updatePanels()
 Fractured-City-Night-Run/
 ├── index.html              # Entry point
 ├── styles.css              # UI styling
+├── sw.js                   # PWA service worker (bump CACHE_NAME on release)
 ├── vercel.json             # Deployment config
 ├── README.md
+├── CLAUDE.md               # Working rules for Claude Code sessions
+├── REDESIGN_BRIEF.md       # Design record and roadmap (hub and run)
 ├── ARCHITECTURE.md         # This file
-├── DEVLOG.md              # Development progress
-├── GAME_DESIGN.md         # Design principles
-├── SPEED_SYSTEM.md        # Movement mechanics
-├── SYSTEMS_REFERENCE.md   # System documentation
-├── LORE.md                # World lore and narrative
-├── CRAFTING_DATABASE.md   # Crafting recipes reference
+├── DEVLOG.md               # Development progress
+├── GAME_DESIGN.md          # Design principles
+├── DESIGN_BRAINSTORM.md    # Occupation / faction / zone-tag ideas
+├── SPEED_SYSTEM.md         # Movement mechanics
+├── SYSTEMS_REFERENCE.md    # System documentation
+├── LORE.md                 # World lore and narrative
+├── CRAFTING_DATABASE.md    # Crafting recipes reference
+├── ADDING_ITEMS.md         # Item addition checklist
 ├── src/
 │   ├── main.js            # Bootstrap
 │   ├── core/
-│   │   ├── Game.js        # Main loop
-│   │   ├── Renderer.js    # Canvas drawing
+│   │   ├── Game.js        # Main loop, zone cache, hub entry, passTime
+│   │   ├── FirstPersonRenderer.js # Grid-crawler view
+│   │   ├── Renderer.js    # Canvas drawing (top-down)
+│   │   ├── SpriteManager.js # Optional spritesheets
 │   │   └── InputHandler.js # Keyboard
 │   ├── world/
-│   │   ├── World.js       # Chunk manager, Z-level support, zone mode
-│   │   ├── Chunk.js       # Terrain gen, district system, prefab placement, seeded RNG
+│   │   ├── World.js       # Zone-mode world, entities/items/objects, Z-levels
+│   │   ├── Chunk.js       # Legacy chunk generation (not the active path)
 │   │   ├── WorldObject.js # Base class for interactive objects
-│   │   ├── ExtractionPoint.js # Win condition
-│   │   ├── OverworldMap.js # 60×40 zone grid, threat levels, Tab toggle
+│   │   ├── OverworldMap.js # 160×100 region grid, hub tile, zone pools
+│   │   ├── gen/
+│   │   │   ├── ZoneGenerator.js   # Zone entrypoint, hub layout, street layouts (being retired)
+│   │   │   ├── InteriorGenerator.js # Multi-floor sites (model for Phase 2 blocks)
+│   │   │   ├── ZoneCanvas.js      # Tile/door/furniture drawing helpers
+│   │   │   ├── ZoneTiles.js       # Tile palette
+│   │   │   └── UrbanFragments.js  # Storefront pieces (future room presets)
 │   │   └── objects/
 │   │       ├── Door.js    # Interactive door WorldObject
-│   │       └── Furniture.js # 16 furniture types, storage, loot population
+│   │       └── Furniture.js # Furniture types (incl. stash, bed), room loot tables
 │   ├── entities/
 │   │   ├── Entity.js      # Base class
 │   │   ├── Player.js      # Player character
-│   │   ├── NPC.js         # AI entities
+│   │   ├── NPC.js         # AI shell
 │   │   └── Anatomy.js     # Body part system
 │   ├── systems/
 │   │   ├── EquipmentSystem.js # Equip/unequip logic
-│   │   ├── FoVSystem.js   # Field of view
+│   │   ├── FoVSystem.js   # Field of view (cached per zone)
 │   │   ├── SoundSystem.js # Sound propagation
 │   │   ├── ItemSystem.js  # Item interactions
 │   │   ├── ContainerSystem.js # Weight/volume
 │   │   ├── CraftingSystem.js  # Crafting and disassembly
-│   │   ├── WorldObjectSystem.js # WorldObject interactions
-│   │   ├── CharacterCreationSystem.js # Character gen (CoQ-style, v52)
+│   │   ├── WorldObjectSystem.js # WorldObject actions (incl. rest/sleep)
+│   │   ├── CharacterCreationSystem.js # Character gen
 │   │   ├── AbilitySystem.js   # Combat abilities, talent-gated
-│   │   ├── CombatEffects.js   # Shake, floating text, visual feedback
+│   │   ├── CombatSystem.js    # Anatomy combat
+│   │   ├── CombatEffects.js   # Shake, floating text
 │   │   ├── TimeSystem.js  # Day/night cycle, 24-hour clock
 │   │   └── LightingSystem.js # Ambient + point light, fuel consumption
 │   ├── content/
-│   │   ├── ContentManager.js    # Data-driven content
-│   │   ├── BuildingPrefabs.js   # 18 ASCII prefab layouts + biome door types
-│   │   ├── LootTables.js        # 16 room-type loot pools + outdoor loot
-│   │   └── TalentCatalog.js     # TALENT_TREES, TALENT_NODES, TalentEffects
+│   │   ├── ContentManager.js    # Data-driven items, components, materials
+│   │   ├── NpcCatalog.js        # NPC templates (placeholders)
+│   │   ├── SiteCatalog.js       # Interior site profiles
+│   │   └── TalentCatalog.js     # Talent trees, nodes, effects
+│   ├── utils/
+│   │   └── noise.js
 │   └── ui/
-│       ├── UIManager.js         # Panels, modals, location display
-│       ├── CraftingUI.js        # Crafting workshop UI with sub-recipe drill-down
+│       ├── UIManager.js         # Panels, modals, chargen, help
+│       ├── CraftingUI.js        # Workshop
 │       ├── DisassembleModal.js  # Disassembly interface
-│       ├── WorldObjectModal.js  # Door/object interaction modal
-│       └── MobileControls.js   # Touch controls for mobile
+│       ├── WorldObjectModal.js  # Door/furniture actions, furniture contents
+│       └── MobileControls.js   # Touch controls
 ```
 
 ---

@@ -568,6 +568,7 @@ export class UIManager {
                 wetland: { loot: 'Water, scrap, hidden camps',   enemies: 'Stalkers',           npcs: 'Rare',       containers: '*' },
             });
             const ZONE_INTEL = {
+                safe_hub:          { loot: 'Your stash, bunks, bench',        enemies: 'None',     npcs: 'Your crew (soon)', note: 'Home. Persistent. Sleep here to pass the night.' },
                 urban_corner_store:{ loot: 'Food, batteries, register junk', enemies: 'Light',    npcs: 'Survivors', note: 'First target for readable urban zones' },
                 urban_market_corner:{ loot: 'Rations, medicine, tools',      enemies: 'Light',    npcs: 'Clerks, drifters', note: 'Street Kid starter route' },
                 open_water:        { loot: 'Floating salvage',               enemies: 'Rare',     npcs: 'None',      note: 'Placeholder water zone' },
@@ -3948,6 +3949,8 @@ export class UIManager {
         html += '<h4 style="color: #44ff44; margin-bottom: 8px;">Survival Tips</h4>';
         html += '<div style="color: #ccc; font-size: 12px; line-height: 1.5;">';
         html += '• Search furniture (cabinets, lockers, crates) for supplies<br>';
+        html += '• Places remember you: what you loot, open, or drop stays that way when you come back<br>';
+        html += '• Bank your haul in the Crew Stash at Downstairs; rest or sleep on a bunk to pass time<br>';
         html += '• Crouch near enemies to avoid detection<br>';
         html += '• Disassemble junk items for useful components<br>';
         html += '• Craft a Shiv early — any sharp shard + cloth wrap<br>';

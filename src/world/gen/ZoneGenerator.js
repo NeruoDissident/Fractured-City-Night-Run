@@ -94,6 +94,7 @@ export class ZoneGenerator {
             case 'wilds':
                 return generateEmptyLot(canvas);
             case 'safe_hub':
+                return generateSafeHub(canvas);
             default:
                 return world.zoneTemplate ? generateEmptyLot(canvas) : generateSafeHub(canvas);
         }
@@ -129,6 +130,9 @@ function generateSafeHub(z) {
     z.placeFurniture('chair', 26, 20, 'commercial_store', 'Mismatched Chair');
     z.placeFurniture('cabinet', 32, 15, 'commercial_store', 'Community Cabinet');
     z.placeFurniture('filing_cabinet', 15, 15, 'office', 'Notice Board');
+    // The crew stash: persistent storage that is yours, never looted by the
+    // generator. Big enough to bank a run's haul.
+    z.placeFurniture('stash', 28, 15, 'hub', 'Crew Stash');
 
     z.drawRect(46, 12, 20, 18, ZoneTiles.wall, ZoneTiles.breakFloor, 'Crew Bunks');
     z.placeDoor('wood_basic', 56, 29, { name: 'Bunkroom Door', open: true });
@@ -154,7 +158,30 @@ function generateSafeHub(z) {
     z.placeFurniture('crate', 54, 37, 'garage_tools', 'Parts Crate');
     z.placeFurniture('workbench', 61, 38, 'garage_tools', 'Outdoor Workbench');
 
-    z.world.spawnPoint = { x: 54, y: 27 };
+    // Baked light so the hub reads in first person at any hour: a lamp in
+    // each shack and work lights on the yard's main walk and gates.
+    const warm = '#ffcf8a';
+    const lights = [
+        { x: 24, y: 20, radius: 9, intensity: 0.85, color: warm },  // Commons
+        { x: 56, y: 20, radius: 9, intensity: 0.7, color: '#d9c7a8' }, // Bunks
+        { x: 23, y: 58, radius: 8, intensity: 0.6, color: '#cfe8ff' }, // Food Cage
+        { x: 58, y: 57, radius: 9, intensity: 0.8, color: '#e8f4ff' }, // Workshop
+        { x: 40, y: 20, radius: 7, intensity: 0.7, color: warm },   // Main Walk N
+        { x: 40, y: 40, radius: 7, intensity: 0.7, color: warm },   // Crossing
+        { x: 40, y: 60, radius: 7, intensity: 0.7, color: warm },   // Main Walk S
+        { x: 20, y: 40, radius: 6, intensity: 0.6, color: warm },   // West walk
+        { x: 60, y: 40, radius: 6, intensity: 0.6, color: warm },   // East walk
+        { x: 40, y: 70, radius: 5, intensity: 0.8, color: '#a8ffc0' }, // South Gate
+        { x: 40, y: 9, radius: 5, intensity: 0.8, color: '#a8ffc0' },  // North Gate
+        { x: 9, y: 40, radius: 5, intensity: 0.8, color: '#a8ffc0' },  // West Gate
+        { x: 70, y: 40, radius: 5, intensity: 0.8, color: '#a8ffc0' }  // East Gate
+    ];
+    z.world.staticLights = lights.map(l => ({ ...l, z: 0 }));
+
+    // You arrive at the South Gate looking up the Main Walk, whichever way
+    // you travelled here. Edge transitions override this with the edge.
+    z.world.spawnPoint = { x: 40, y: 68 };
+    z.world.spawnFacing = 'north';
 }
 
 function generateUrbanCornerBlock(z) {

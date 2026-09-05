@@ -18,7 +18,7 @@ export function showWorldObjectModal(uiManager, worldObject) {
         cabinet: '🗄', dresser: '🗄', shelf: '📚', locker: '🔒', crate: '📦',
         filing_cabinet: '🗄', table: '🪑', chair: '🪑', couch: '🛋', bed: '🛏',
         sink: '🚰', counter: '🗄', stove: '🔥', toilet: '🚽', shower: '🚿',
-        workbench: '🔨'
+        workbench: '🔨', stash: '🧰'
     };
     const icon = worldObject.type === 'door' ? '🚪' : (furnitureIcons[worldObject.furnitureType] || '📦');
     html += `<h3 style="color: #ff8800; margin-bottom: 15px;">${icon} ${worldObject.name}</h3>`;
@@ -117,6 +117,32 @@ function getActionInfo(action, worldObject, player, game) {
             description: 'Search for items inside (1 turn)',
             available: worldObject.isContainer === true
         },
+        rest: (() => {
+            const cost = restCost(player, 60);
+            return {
+                name: 'Rest an hour',
+                icon: '💤',
+                description: `Lie down for 60 turns. Costs about ${cost.hunger} hunger, ${cost.thirst} thirst.`,
+                available: true,
+                requirement: hostileNear(game) ? 'Something hostile is too close' : null
+            };
+        })(),
+        sleep: (() => {
+            const plan = game.worldObjectSystem?.getSleepPlan(player);
+            if (!plan) return { name: 'Sleep', icon: '🌙', description: 'Sleep until dawn or dusk', available: false };
+            const h = Math.floor(plan.turns / 60);
+            const m = plan.turns % 60;
+            const span = `${h}h${m ? ` ${m}m` : ''}`;
+            const wakeWarn = player.thirst - plan.thirstCost <= 0 ? 'You would wake dehydrated'
+                : player.hunger - plan.hungerCost <= 0 ? 'You would wake starving' : null;
+            return {
+                name: `Sleep until ${plan.until}`,
+                icon: '🌙',
+                description: `${span} until ${plan.until}. Costs about ${Math.round(plan.hungerCost)} hunger, ${Math.round(plan.thirstCost)} thirst. Wakes you if something hostile comes close.`,
+                available: true,
+                requirement: hostileNear(game) ? 'Something hostile is too close' : wakeWarn
+            };
+        })(),
         smash: {
             name: 'Smash',
             icon: '💥',
@@ -160,6 +186,18 @@ function getActionInfo(action, worldObject, player, game) {
         description: 'Unknown action',
         available: false
     };
+}
+
+/** Predicted survival cost of resting `turns` with metabolism halved. */
+function restCost(player, turns) {
+    return {
+        hunger: Math.round(turns * player.hungerRate * 0.5),
+        thirst: Math.round(turns * player.thirstRate * 0.5)
+    };
+}
+
+function hostileNear(game) {
+    return typeof game._hostileWithin === 'function' && game._hostileWithin(12);
 }
 
 /**
@@ -312,7 +350,7 @@ export function showFurnitureContentsModal(uiManager, furniture) {
     
     const furnitureIcons = {
         cabinet: '🗄', dresser: '🗄', shelf: '📚', locker: '🔒', crate: '📦',
-        filing_cabinet: '🗄', counter: '🗄', workbench: '🔨'
+        filing_cabinet: '🗄', counter: '🗄', workbench: '🔨', stash: '🧰'
     };
     const icon = furnitureIcons[furniture.furnitureType] || '📦';
     

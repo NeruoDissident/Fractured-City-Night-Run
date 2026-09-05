@@ -63,10 +63,16 @@ export class Furniture extends WorldObject {
         if (this.isContainer) {
             actions.push('search');
         }
-        
+
+        // Beds pass time: a short rest, or sleep until the next dawn or dusk.
+        if (this.furnitureType === 'bed') {
+            actions.push('rest');
+            actions.push('sleep');
+        }
+
         actions.push('smash');
         actions.push('disassemble');
-        
+
         return actions;
     }
     
@@ -556,6 +562,35 @@ export const FURNITURE_TYPES = {
         }
     },
     
+    // Player-owned storage. No FURNITURE_LOOT entry, so the generator never
+    // fills it; whatever is inside is what the player banked there.
+    stash: {
+        name: 'Stash',
+        furnitureType: 'stash',
+        glyph: '$',
+        fgColor: '#ffd36a',
+        bgColor: '#2a2418',
+        material: 'metal',
+        hp: 160,
+        maxHP: 160,
+        durability: 1.6,
+        blocked: true,
+        blocksVision: false,
+        isContainer: true,
+        pockets: [
+            { name: 'Top Shelf', maxWeight: 60000, maxVolume: 120000 },
+            { name: 'Lower Shelf', maxWeight: 60000, maxVolume: 120000 },
+            { name: 'Floor Space', maxWeight: 120000, maxVolume: 240000 }
+        ],
+        dropTable: {
+            materials: [
+                { name: 'Metal Scraps', quantity: [4, 6], quality: [60, 90] },
+                { name: 'Nails', quantity: [4, 8], quality: [60, 90] }
+            ],
+            disassembleTool: 'screwdriver'
+        }
+    },
+
     workbench: {
         name: 'Workbench',
         furnitureType: 'workbench',

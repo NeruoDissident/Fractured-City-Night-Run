@@ -11,17 +11,29 @@ Zones are not rigid stages. The player can travel freely between zones and use t
 
 ## Current Direction
 
-The game is being rebuilt as a first-person grid crawler. The old quest chain,
-delivery errands, Known Places, and NPC roster were removed; combat, anatomy,
-crafting, inventory, survival, lighting, and zone generation remain. Two
-placeholder NPC types exist for testing (`F9` spawns a hostile, `Shift+F9` a
-bystander).
+The game is being rebuilt as a first-person grid crawler around a **hub and
+run** structure: one persistent town (Downstairs), a district of sites you
+reach from it, and a loop of prepare, travel, run, return. `REDESIGN_BRIEF.md`
+is the design record and roadmap.
 
-Some overworld zones are now **sites**: multi-floor building interiors you drop
-into and explore in first person, joined by a stairwell and left through the
-entrance. Corner stores, streets, and the hub still generate as open zones.
-The next steps are the run flow and a UI pass built around the crawler view.
-See `CLAUDE.md`.
+Where things stand:
+
+- The old quest chain, delivery errands, Known Places, and NPC roster were
+  removed; combat, anatomy, crafting, inventory, survival, lighting, and zone
+  generation remain. Two placeholder NPC types exist for testing (`F9` spawns
+  a hostile, `Shift+F9` a bystander).
+- Some overworld zones are **sites**: multi-floor building interiors you drop
+  into and explore in first person, joined by a stairwell and left through the
+  entrance.
+- **Places persist.** Every zone you visit stays as you left it: looted
+  cabinets stay empty, opened doors stay open, dropped items stay put.
+- **Downstairs is home.** It sits on the centre of the map and you can always
+  go back. It has a Crew Stash for banking your haul and bunks you can rest or
+  sleep on to pass time.
+
+Next is the district graph that replaces overworld travel, then streets
+rebuilt as corridors with enterable storefronts. See `CLAUDE.md` for the
+working rules.
 
 ## Implemented Systems
 
@@ -39,6 +51,9 @@ See `CLAUDE.md`.
 - Zone-mode generation through templates/fragments
 - Interior sites: multi-floor buildings with corridors, rooms, doors, stairwells,
   and baked emergency lighting
+- Zone persistence: visited zones keep their state for the whole run
+- Hub with a player-owned stash and bunks (rest an hour, or sleep until dawn or
+  dusk with the cost shown up front)
 - Auto-explore (`O`) toward unexplored ground
 - Canvas rendering with ASCII and optional sprites
 
@@ -65,7 +80,7 @@ Top-down view:
 - `WASD` / Arrow Keys: move
 - `Space`: wait
 - `G`: pick up item
-- `E`: interact with nearby object/NPC (in first person: `W`/`S`/`A`/`D` pick ahead/behind/left/right, `Space` picks your own tile)
+- `E`: interact with nearby object/NPC (in first person: `W`/`S`/`A`/`D` pick ahead/behind/left/right, `Space` picks your own tile). On a bunk this offers Rest and Sleep; on the Crew Stash, Search moves items in and out.
 - `M`: cycle movement mode
 - `T`: cycle combat stance
 - `Q`: talent and ability panel
@@ -97,7 +112,7 @@ For cache problems during local testing, use `dev-reset.html` or hard-refresh. T
 ## Architecture Map
 
 ### Core
-- `src/core/Game.js` - main game state, turn processing, zone transitions, auto-travel
+- `src/core/Game.js` - main game state, turn processing, zone transitions and the zone cache, hub entry, bulk time passing, auto-explore
 - `src/core/InputHandler.js` - keyboard mapping
 - `src/core/Renderer.js` - canvas tile renderer
 - `src/core/SpriteManager.js` - optional spritesheet loading
@@ -142,7 +157,12 @@ For cache problems during local testing, use `dev-reset.html` or hard-refresh. T
 
 ## Next Steps
 
-1. Define the run flow: where a run starts, what pulls the player forward, what ends it.
-2. UI cleanup around the first-person view.
-3. Cone FoV, facing-aware combat, wall textures and billboard sprites.
-4. Set pieces and encounter budgets inside sites, once the NPC roster exists.
+The roadmap lives in `REDESIGN_BRIEF.md`. In order:
+
+1. District graph and travel screen replace overworld travel (Phase 1).
+2. Streets as corridors with sky and enterable storefronts; route slices;
+   walkable routes near the hub (Phase 2).
+3. Roster, hub needs, contracts, set pieces, encounter budgets (Phase 3).
+4. Projects and one extraction path end to end; save/load (Phase 4).
+
+Cone FoV, facing-aware combat, and wall textures run alongside.

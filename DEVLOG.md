@@ -39,7 +39,43 @@ a room. `world.siteAudit` counts leaks per level; 150 generator runs and 36
 in-game sites audit at zero with no unreachable rooms. Six profiles ship: Kiroshi Data Hub, Aurora Clinic, Old Town Hall, Dead
 Mall, Henderson Plant, Marrow Row, plus five aliases.
 
-Phase 2 was the map redesign: interior-first, corridor-and-room zone generators so the crawler view has geometry to read. Phase 3 is cone FoV, facing-aware combat, textures and sprites for walls and billboards.
+**Redesign brief and Phase 0 (same month):** a full review of the repo after
+the pivot found two blockers under the "sloppy overworld" feeling: nothing
+outside the player persisted between visits (every drop-in rebuilt the zone
+from its seed), and the starting hub was unreachable once you left it (its tile
+regenerated as whatever the pool rolled). The review and the direction that
+came out of it are in `REDESIGN_BRIEF.md`: a hub-and-run structure, streets
+rebuilt as corridors with enterable storefronts, routes that are mixed but lean
+abstract, and hub needs and projects as the colony layer.
+
+Phase 0 shipped:
+- `Game.zoneCache` keeps every visited zone's `World` and `FoVSystem` alive for
+  the run; `dropIntoZone` is get-or-create and the player entity moves between
+  worlds. Looted cabinets stay looted, doors stay open, dropped items stay put,
+  explored tiles are remembered. NPCs in a parked zone do not act.
+- Downstairs is pinned to the overworld centre tile as `safe_hub` (`HUB_ZONE`
+  in `OverworldMap.js`), so leaving and returning finds the same yard. You
+  arrive at the South Gate facing north; edge transitions keep the edge and
+  your direction of travel.
+- Hub buildings and walks have baked lights so the yard reads in first person
+  at any hour (it was pitch black indoors at 08:00 before).
+- Crew Stash: a `stash` furniture type with no loot table, in the Commons.
+- Bunks offer Rest (60 turns) and Sleep (until the next dawn or dusk) through
+  `WorldObjectSystem.restAt` and `Game.passTime`. Metabolism is halved while
+  sleeping, hostiles within 12 cells refuse it and one closing to 10 wakes you,
+  and the modal shows the hunger and thirst cost before you commit.
+- Docs brought in line: the Street Kid / journal / POI milestone that
+  `GAME_DESIGN.md`, `DESIGN_BRAINSTORM.md`, and `SYSTEMS_REFERENCE.md` still
+  locked is retired in favour of the brief's roadmap.
+
+Verified headless: hub tile is `safe_hub`, stash keeps an item and the Commons
+door stays open across an east-and-back edge transition, a Kiroshi Data Hub
+door stays open across exit and re-entry, sleep from 08:02 to 18:00 runs in one
+step (598 turns, hunger 100 to 70, thirst 100 to 40), zero page errors.
+
+Tuning note: thirst drains 0.2 per turn, so a full day awake costs about 290
+thirst and a ten-hour sleep at half rate costs 60. That is the existing rate,
+not a Phase 0 change, but it will need a look when routes start charging time.
 
 ## Current Pivot
 
@@ -156,29 +192,26 @@ A turn-based survival roguelike set in a cyberpunk dystopia that is still barely
 
 ## 🚧 Current Sprint
 
-### Active: Street Kid Starter Milestone
-**Status:** In Progress  
+### Active: Hub-and-Run Redesign (see REDESIGN_BRIEF.md)
+**Status:** Phase 0 complete, Phase 1 next  
 **Priority:** HIGH  
 
-Locked order:
-1. Street Kid intro flow
-2. Journal/objective readability
-3. One polished zone chain
-4. POI / auto-explore tools
-5. Occupation framework
+Order:
+0. ✅ Zones persist; the hub is a node; stash; rest and sleep.
+1. District graph and travel screen replace overworld travel; route
+   resolution (time, drain, danger); site exit returns to a node.
+2. `block` layout: streets as corridors with sky, enterable storefronts as
+   rooms; route slices; walkable routes near the hub; daylight leak.
+3. Roster v1 (hub roles first), hub needs, contracts, set pieces, encounter
+   budgets, night danger.
+4. Projects as recipes with a location; one extraction path end to end;
+   save/load from the zone cache.
+5. Colony layer proper, if Phase 4 earns it.
 
-Completed in this milestone so far:
-- Quick Start defaults to Street Kid with small blade/combat talents.
-- Downstairs rebuilt as starter hub/hideout.
-- Market Corner rebuilt as the first starter objective zone.
-- Rook moved away from immediate spawn and functions as a quest/contact NPC.
-- Current journal wording moved away from "story quest" framing.
-- Overworld active target marker added.
-- POI discovery, Known Places list, auto-travel to POI, and auto-explore added.
-
-Next planned slice:
-- Make the current intro/background start Street Kid-specific instead of universal.
-- Add an occupation-start registry for future starts.
+The earlier "Street Kid Starter Milestone" (intro flow, journal, POIs,
+auto-travel to POI) was removed with the first-person pivot and is not coming
+back in that form. Occupations return in Phase 3 as a hub contact, a want,
+and an access tag per background rather than a scripted intro.
 
 #### Previous Sprint: v52 — Character Creation Overhaul (CoQ-style) ✅
 **Status:** ✅ Complete  
@@ -747,9 +780,11 @@ A roguelike where every run feels different, player choices matter, and the worl
 - [x] **Beta 0.9:** Overworld System — 60×40 zone grid, zone drop-in, Tab toggle (Complete)
 - [x] **Beta 0.10:** Talent System — 5 trees, 35+ nodes, ability/stance gating (Complete)
 - [x] **Beta 0.11:** Character Creation Overhaul — CoQ-style 3-column, talent chargen (Complete)
-- [ ] **Beta 0.12:** Town building / World gen improvements
-- [ ] **Beta 0.13:** Three Origins — Flesh / Metal / Echo system-locking choice
-- [ ] **Beta 0.14:** Cybernetics (Metal/Chrome path), NPC dialogue
+- [x] **Beta 0.12:** First-person crawler view, interior sites, zone persistence, hub node (Complete)
+- [ ] **Beta 0.13:** District graph and travel; streets as corridors with storefronts
+- [ ] **Beta 0.14:** Roster, hub needs, contracts, set pieces
+- [ ] **Beta 0.15:** Projects, one extraction path, save/load
+- [ ] **Later:** Three Origins (Flesh / Metal / Echo), cybernetics, colony layer
 - [ ] **Release 1.0:** Full feature set, polished, balanced
 
 ---
