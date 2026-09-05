@@ -39,6 +39,12 @@ A *site* is a building you enter from the overworld instead of a street map.
   sublevels), `ring` (corridor loop, shops outside, subdivided core).
 - Rooms are capped at 8x8 on purpose. Bigger than that stops reading as a room
   in first person and the floor turns into a warehouse.
+- **Every room keeps a one-cell wall on all sides except its doorway.** Halls
+  are routed by BFS and never run along a room; the hall network is connected
+  on its own (rooms hang off halls, never serve as the way through); furniture
+  can never split a room's free cells. `world.siteAudit` reports leaks per
+  level and must read zero. If a floor ever looks like "open rooms", one of
+  these invariants has been broken - check the audit before touching visuals.
 - Room `type` must be a `FURNITURE_LOOT` key (see `Furniture.js`) so room-aware
   loot and furniture keep working.
 - Emergency lighting is baked at generation time into `world.staticLights` and

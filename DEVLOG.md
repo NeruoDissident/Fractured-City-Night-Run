@@ -28,7 +28,15 @@ wall-hugging furniture keyed to the existing room-aware loot tables, and emergen
 lighting baked into `world.staticLights` so corridors are navigable while rooms
 stay dark. Connectivity is guaranteed by flooding from the stair core and carving
 to anything stranded; verified over 36 generated sites with furniture treated as
-blocking. Six profiles ship: Kiroshi Data Hub, Aurora Clinic, Old Town Hall, Dead
+blocking.
+
+**Wall invariant (follow-up):** the first version left rooms flush against
+cross-corridors and each other, which reads in first person as "all open rooms".
+Fixed structurally: rooms keep a one-cell wall on every side except the door,
+halls are BFS-routed and never graze a room, the hall network is connected on its
+own so a chair in a room can never cut a floor in half, and furniture cannot split
+a room. `world.siteAudit` counts leaks per level; 150 generator runs and 36
+in-game sites audit at zero with no unreachable rooms. Six profiles ship: Kiroshi Data Hub, Aurora Clinic, Old Town Hall, Dead
 Mall, Henderson Plant, Marrow Row, plus five aliases.
 
 Phase 2 was the map redesign: interior-first, corridor-and-room zone generators so the crawler view has geometry to read. Phase 3 is cone FoV, facing-aware combat, textures and sprites for walls and billboards.

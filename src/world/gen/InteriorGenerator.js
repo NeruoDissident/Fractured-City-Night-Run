@@ -33,6 +33,9 @@ const CORRIDOR = 2;
 const DOOR = 3;
 const STAIRS = 4;
 const EXIT = 5;
+// Margin kept clear around the stair core while layouts run. Solid as far as
+// room placement is concerned, but corridors may still be carved through it.
+const RESERVED = 6;
 
 const OPEN_KINDS = new Set([ROOM, CORRIDOR, DOOR, STAIRS, EXIT]);
 
@@ -122,6 +125,7 @@ class LevelGrid {
         this.W = width;
         this.H = height;
         this.cells = new Uint8Array(width * height); // SOLID everywhere
+        this.owner = new Int16Array(width * height).fill(-1); // room index per ROOM cell
         this.rooms = [];
     }
 
@@ -141,13 +145,116 @@ class LevelGrid {
         return OPEN_KINDS.has(this.get(x, y));
     }
 
+    /** Lay corridor floor, but only into rock: rooms and the stairwell are never trampled. */
+    carveHall(x, y) {
+        const kind = this.get(x, y);
+        if (kind === SOLID || kind === RESERVED) this.set(x, y, CORRIDOR);
+    }
+
     carveRoom(x, y, w, h, meta = {}) {
+        const id = this.rooms.length;
         for (let yy = y; yy < y + h; yy++) {
-            for (let xx = x; xx < x + w; xx++) this.set(xx, yy, ROOM);
+            for (let xx = x; xx < x + w; xx++) {
+                this.set(xx, yy, ROOM);
+                if (this.inBounds(xx, yy)) this.owner[idx(this.W, xx, yy)] = id;
+            }
         }
-        const room = { x, y, w, h, cx: x + (w >> 1), cy: y + (h >> 1), ...meta };
+        const room = { id, x, y, w, h, cx: x + (w >> 1), cy: y + (h >> 1), ...meta };
         this.rooms.push(room);
         return room;
+    }
+
+    roomIdAt(x, y) {
+        return this.inBounds(x, y) && this.get(x, y) === ROOM ? this.owner[idx(this.W, x, y)] : -1;
+    }
+
+    /**
+     * True when a cell touches the interior of any room other than `allowId`.
+     * A corridor must never run along a room like this: a room with no wall on
+     * one side stops being a room. Doorways are the only sanctioned contact.
+     */
+    isBesideRoom(x, y, allowId = -1) {
+        for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]]) {
+            const id = this.roomIdAt(x + dx, y + dy);
+            if (id !== -1 && id !== allowId) return true;
+        }
+        return false;
+    }
+
+    /** Cells in the one-cell ring just outside a room. */
+    ringOf(room) {
+        const cells = [];
+        for (let x = room.x; x < room.x + room.w; x++) {
+            cells.push({ x, y: room.y - 1 }, { x, y: room.y + room.h });
+        }
+        for (let y = room.y; y < room.y + room.h; y++) {
+            cells.push({ x: room.x - 1, y }, { x: room.x + room.w, y });
+        }
+        return cells.filter(c => c.x >= 1 && c.y >= 1 && c.x <= this.W - 2 && c.y <= this.H - 2);
+    }
+
+    /**
+     * Breadth-first corridor route. Never passes beside a room, so it cannot
+     * leave a room open on one side; it may reuse existing corridors and doors.
+     * @param {Array<{x,y}>} starts  cells to begin from (always allowed)
+     * @param {(x,y)=>boolean} isGoal
+     * Start cells are always admitted (they sit in the origin room's wall ring);
+     * every later cell must be clear of all rooms, the origin included, or the
+     * route would run along the origin's own wall.
+     * @returns {Array<{x,y}>|null}
+     */
+    bfsCorridor(starts, isGoal) {
+        const prev = new Map();
+        const queue = [];
+        for (const c of starts) {
+            const k = idx(this.W, c.x, c.y);
+            if (prev.has(k)) continue;
+            prev.set(k, -1);
+            queue.push(c);
+        }
+        const allowed = (x, y) => {
+            if (x < 1 || y < 1 || x > this.W - 2 || y > this.H - 2) return false;
+            const kind = this.get(x, y);
+            if (kind === CORRIDOR || kind === DOOR) return true;
+            if (kind === SOLID || kind === RESERVED) return !this.isBesideRoom(x, y);
+            return false;
+        };
+        for (let head = 0; head < queue.length; head++) {
+            const c = queue[head];
+            if (isGoal(c.x, c.y)) {
+                const path = [];
+                let k = idx(this.W, c.x, c.y);
+                while (k !== -1) {
+                    const x = k % this.W;
+                    path.push({ x, y: (k - x) / this.W });
+                    k = prev.get(k);
+                }
+                return path.reverse();
+            }
+            for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]]) {
+                const nx = c.x + dx;
+                const ny = c.y + dy;
+                const k = idx(this.W, nx, ny);
+                if (prev.has(k)) continue;
+                if (!isGoal(nx, ny) && !allowed(nx, ny)) continue;
+                prev.set(k, idx(this.W, c.x, c.y));
+                queue.push({ x: nx, y: ny });
+            }
+        }
+        return null;
+    }
+
+    /** Carve a BFS route: solid cells become corridor, the two ends become doorways. */
+    carveRoute(path) {
+        if (!path || !path.length) return;
+        for (const { x, y } of path) {
+            const kind = this.get(x, y);
+            if (kind === SOLID || kind === RESERVED) this.set(x, y, CORRIDOR);
+        }
+        const ends = path.length === 1 ? [path[0]] : [path[0], path[path.length - 1]];
+        for (const { x, y } of ends) {
+            if (this.get(x, y) === CORRIDOR && this.isBesideRoom(x, y)) this.set(x, y, DOOR);
+        }
     }
 
     /** Cells of an L-shaped path from a to b, inclusive of both ends. */
@@ -264,7 +371,10 @@ function carveRoomStrip(grid, rng, o) {
             ? { x: along, y: depthFrom, w: len, h: depth }
             : { x: depthFrom, y: along, w: depth, h: len };
 
-        if (!areaIsSolid(grid, rect.x, rect.y, rect.w, rect.h)) {
+        // Check the rect plus a one-cell ring, so every room keeps a wall on all
+        // sides. Without this a room can sit flush against a cross-corridor and
+        // read as open on that side.
+        if (!areaIsSolid(grid, rect.x - 1, rect.y - 1, rect.w + 2, rect.h + 2)) {
             along += 1; // slide past whatever is in the way
             continue;
         }
@@ -309,8 +419,8 @@ function corridorGrid(grid, rng, rect, opts = {}) {
     }
 
     const put = (along, cross) => {
-        if (horizontal) grid.set(along, cross, CORRIDOR);
-        else grid.set(cross, along, CORRIDOR);
+        if (horizontal) grid.carveHall(along, cross);
+        else grid.carveHall(cross, along);
     };
 
     for (const line of lines) {
@@ -326,14 +436,33 @@ function corridorGrid(grid, rng, rect, opts = {}) {
         }
     }
 
-    // Rooms in the bands between corridors, split down the middle of each band.
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        const bandStart = i === 0 ? crossFrom : Math.floor((lines[i - 1] + line) / 2) + 1;
-        const bandEnd = i === lines.length - 1 ? crossTo : Math.floor((line + lines[i + 1]) / 2);
-        const axis = horizontal ? 'x' : 'y';
-        carveRoomStrip(grid, rng, { axis, alongFrom, alongTo, depthFrom: bandStart, depthTo: line - 2, doorAt: line - 1, maxLen: opts.maxLen });
-        carveRoomStrip(grid, rng, { axis, alongFrom, alongTo, depthFrom: line + 2, depthTo: bandEnd, doorAt: line + 1, maxLen: opts.maxLen });
+    // Rooms in the bands between corridors. A band deep enough for two facing
+    // strips gets both with a shared party wall; a thin band goes wholly to one
+    // side (alternating), rather than being left as dead rock.
+    const axis = horizontal ? 'x' : 'y';
+    const strip = (depthFrom, depthTo, doorAt) =>
+        carveRoomStrip(grid, rng, { axis, alongFrom, alongTo, depthFrom, depthTo, doorAt, maxLen: opts.maxLen });
+
+    // Outer bands: everything from the edge to the first/last corridor.
+    strip(crossFrom, lines[0] - 2, lines[0] - 1);
+    strip(lines[lines.length - 1] + 2, crossTo, lines[lines.length - 1] + 1);
+
+    for (let i = 0; i + 1 < lines.length; i++) {
+        const a = lines[i];
+        const b = lines[i + 1];
+        const from = a + 2;
+        const to = b - 2;
+        const size = to - from + 1;
+        if (size < MIN_ROOM_SPAN) continue;
+        if (size >= MIN_ROOM_SPAN * 2 + 1) {
+            const lower = Math.floor((size - 1) / 2);      // rows for the strip below a
+            strip(from, from + lower - 1, a + 1);            // wall row sits at from + lower
+            strip(from + lower + 1, to, b - 1);
+        } else if (i % 2 === 0) {
+            strip(from, to, a + 1);
+        } else {
+            strip(from, to, b - 1);
+        }
     }
 
     return { lines, horizontal };
@@ -359,7 +488,7 @@ function layoutSpine(grid, rng) {
 
 /** Recursive subdivision: irregular rooms joined by L-corridors. Sublevels. */
 function layoutBsp(grid, rng) {
-    const MIN = 7;
+    const MIN = 8; // leaf must hold a 3-wide room plus two cells of padding each side
     const leaves = [];
 
     const split = (r, depth) => {
@@ -385,26 +514,27 @@ function layoutBsp(grid, rng) {
     };
     split({ x: 1, y: 1, w: grid.W - 2, h: grid.H - 2 }, 0);
 
+    // Two cells of padding per leaf: neighbouring rooms then sit four apart,
+    // which is what a wall + hall + wall needs. One cell leaves a gap a corridor
+    // can only fill by running along a room, which is exactly what we forbid.
+    const PAD = 2;
     for (const leaf of leaves) {
-        const w = clamp(leaf.w - 2, MIN_ROOM_SPAN, MAX_ROOM_SPAN);
-        const h = clamp(leaf.h - 2, MIN_ROOM_SPAN, MAX_ROOM_SPAN);
-        if (leaf.w - 2 < MIN_ROOM_SPAN || leaf.h - 2 < MIN_ROOM_SPAN) continue;
-        const x = leaf.x + 1 + Math.floor(rng() * (leaf.w - 2 - w + 1));
-        const y = leaf.y + 1 + Math.floor(rng() * (leaf.h - 2 - h + 1));
+        const w = clamp(leaf.w - PAD * 2, MIN_ROOM_SPAN, MAX_ROOM_SPAN);
+        const h = clamp(leaf.h - PAD * 2, MIN_ROOM_SPAN, MAX_ROOM_SPAN);
+        if (leaf.w - PAD * 2 < MIN_ROOM_SPAN || leaf.h - PAD * 2 < MIN_ROOM_SPAN) continue;
+        const x = leaf.x + PAD + Math.floor(rng() * (leaf.w - PAD * 2 - w + 1));
+        const y = leaf.y + PAD + Math.floor(rng() * (leaf.h - PAD * 2 - h + 1));
+        if (!areaIsSolid(grid, x - 1, y - 1, w + 2, h + 2)) continue; // keeps clear of the stair core
         grid.carveRoom(x, y, w, h);
     }
 
     // Chain the rooms, then add a couple of loops so it is not a pure tree.
-    const rooms = grid.rooms;
-    for (let i = 1; i < rooms.length; i++) {
-        const a = rooms[i - 1];
-        const b = rooms[i];
-        grid.carvePath(LevelGrid.lPath({ x: a.cx, y: a.cy }, { x: b.cx, y: b.cy }, rng() < 0.5));
-    }
+    const rooms = grid.rooms.filter(r => !r.isStairCore);
+    for (let i = 1; i < rooms.length; i++) connectRooms(grid, rooms[i - 1], rooms[i]);
     for (let i = 0; i < Math.min(2, Math.max(0, rooms.length - 3)); i++) {
         const a = pick(rng, rooms);
         const b = pick(rng, rooms);
-        if (a !== b) grid.carvePath(LevelGrid.lPath({ x: a.cx, y: a.cy }, { x: b.cx, y: b.cy }, rng() < 0.5));
+        if (a !== b) connectRooms(grid, a, b);
     }
 
     // Entrances: punch a stub from the edge to the nearest carved cell.
@@ -422,27 +552,27 @@ function layoutRing(grid, rng) {
 
     if (x1 - x0 < 9 || y1 - y0 < 9) return layoutSpine(grid, rng);
 
-    for (let x = x0; x <= x1; x++) { grid.set(x, y0, CORRIDOR); grid.set(x, y1, CORRIDOR); }
-    for (let y = y0; y <= y1; y++) { grid.set(x0, y, CORRIDOR); grid.set(x1, y, CORRIDOR); }
+    for (let x = x0; x <= x1; x++) { grid.carveHall(x, y0); grid.carveHall(x, y1); }
+    for (let y = y0; y <= y1; y++) { grid.carveHall(x0, y); grid.carveHall(x1, y); }
 
     // Entry spur from the outside wall through the shop band to the ring.
     const side = pick(rng, ['south', 'north', 'east', 'west']);
     let entry;
     if (side === 'north') {
         const x = clamp(x0 + 2 + Math.floor(rng() * (x1 - x0 - 3)), x0 + 1, x1 - 1);
-        for (let y = 1; y < y0; y++) grid.set(x, y, CORRIDOR);
+        for (let y = 1; y < y0; y++) grid.carveHall(x, y);
         entry = { x, y: 0, facing: 'south' };
     } else if (side === 'south') {
         const x = clamp(x0 + 2 + Math.floor(rng() * (x1 - x0 - 3)), x0 + 1, x1 - 1);
-        for (let y = y1 + 1; y <= H - 2; y++) grid.set(x, y, CORRIDOR);
+        for (let y = y1 + 1; y <= H - 2; y++) grid.carveHall(x, y);
         entry = { x, y: H - 1, facing: 'north' };
     } else if (side === 'west') {
         const y = clamp(y0 + 2 + Math.floor(rng() * (y1 - y0 - 3)), y0 + 1, y1 - 1);
-        for (let x = 1; x < x0; x++) grid.set(x, y, CORRIDOR);
+        for (let x = 1; x < x0; x++) grid.carveHall(x, y);
         entry = { x: 0, y, facing: 'east' };
     } else {
         const y = clamp(y0 + 2 + Math.floor(rng() * (y1 - y0 - 3)), y0 + 1, y1 - 1);
-        for (let x = x1 + 1; x <= W - 2; x++) grid.set(x, y, CORRIDOR);
+        for (let x = x1 + 1; x <= W - 2; x++) grid.carveHall(x, y);
         entry = { x: W - 1, y, facing: 'west' };
     }
 
@@ -458,11 +588,11 @@ function layoutRing(grid, rng) {
         const { lines, horizontal } = corridorGrid(grid, rng, core, { bandDepth: 5 });
         for (const line of lines) {
             if (horizontal) {
-                for (let x = x0; x < core.x; x++) grid.set(x, line, CORRIDOR);
-                for (let x = core.x + core.w; x <= x1; x++) grid.set(x, line, CORRIDOR);
+                for (let x = x0; x < core.x; x++) grid.carveHall(x, line);
+                for (let x = core.x + core.w; x <= x1; x++) grid.carveHall(x, line);
             } else {
-                for (let y = y0; y < core.y; y++) grid.set(line, y, CORRIDOR);
-                for (let y = core.y + core.h; y <= y1; y++) grid.set(line, y, CORRIDOR);
+                for (let y = y0; y < core.y; y++) grid.carveHall(line, y);
+                for (let y = core.y + core.h; y <= y1; y++) grid.carveHall(line, y);
             }
         }
     }
@@ -474,7 +604,80 @@ const LAYOUTS = { spine: layoutSpine, bsp: layoutBsp, ring: layoutRing };
 
 // ── Level assembly ─────────────────────────────────────────────────────────────
 
-/** Carve the stair core, which occupies the same footprint on every level. */
+/**
+ * Join two rooms with a corridor that never grazes a third room. Falls back to
+ * a blunt L-shaped cut only if no such route exists.
+ */
+function connectRooms(grid, a, b) {
+    const starts = grid.ringOf(a).filter(c => {
+        const k = grid.get(c.x, c.y);
+        return (k === SOLID || k === DOOR) && !grid.isBesideRoom(c.x, c.y, a.id);
+    });
+    const goal = (x, y) => {
+        const k = grid.get(x, y);
+        if (k !== SOLID && k !== DOOR) return false;
+        let touchesB = false;
+        for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]]) {
+            const id = grid.roomIdAt(x + dx, y + dy);
+            if (id === b.id) touchesB = true;
+            else if (id !== -1 && id !== a.id) return false;
+        }
+        return touchesB;
+    };
+    const path = grid.bfsCorridor(starts, goal);
+    // A route shorter than door-hall-door would be a doorway with rooms on both
+    // sides and no hall; leave those pairs for the hall network to pick up.
+    if (path && path.length >= 3) grid.carveRoute(path);
+}
+
+/**
+ * Claim the stair core's footprint before the layout runs: the core itself plus
+ * a one-cell margin. Rooms treat the margin as off-limits; corridors may cross it.
+ */
+function reserveStairCore(grid, core) {
+    const { x, y, size } = core;
+    for (let yy = y - 1; yy <= y + size; yy++) {
+        for (let xx = x - 1; xx <= x + size; xx++) {
+            if (grid.get(xx, yy) === SOLID) grid.set(xx, yy, RESERVED);
+        }
+    }
+    grid.carveRoom(x, y, size, size, { isStairCore: true, type: null, name: 'Stairwell' });
+    const cx = x + (size >> 1);
+    const cy = y + (size >> 1);
+    grid.set(cx, cy, STAIRS);
+    return { cx, cy };
+}
+
+/** After the layout: turn the margin back to rock and make sure the core has a way out. */
+function finalizeStairCore(grid, core, stair, hasAbove, hasBelow) {
+    for (let i = 0; i < grid.cells.length; i++) {
+        if (grid.cells[i] === RESERVED) grid.cells[i] = SOLID;
+    }
+    const room = grid.rooms.find(r => r.isStairCore);
+    const ring = grid.ringOf(room);
+    const alreadyOpen = ring.some(c => grid.get(c.x, c.y) === CORRIDOR || grid.get(c.x, c.y) === DOOR);
+    if (!alreadyOpen) {
+        const starts = ring.filter(c => grid.get(c.x, c.y) === SOLID && !grid.isBesideRoom(c.x, c.y, room.id));
+        const path = grid.bfsCorridor(starts, (x, y) => grid.get(x, y) === CORRIDOR);
+        if (path) grid.carveRoute(path);
+        else {
+            // Last resort: cut straight to the nearest corridor.
+            let best = null;
+            let bestDist = Infinity;
+            for (let yy = 1; yy < grid.H - 1; yy++) {
+                for (let xx = 1; xx < grid.W - 1; xx++) {
+                    if (grid.get(xx, yy) !== CORRIDOR) continue;
+                    const dist = Math.abs(xx - stair.cx) + Math.abs(yy - stair.cy);
+                    if (dist < bestDist) { bestDist = dist; best = { x: xx, y: yy }; }
+                }
+            }
+            if (best) grid.carvePath(LevelGrid.lPath({ x: stair.cx, y: stair.cy }, best, true));
+        }
+    }
+    return { cx: stair.cx, cy: stair.cy, hasAbove, hasBelow };
+}
+
+/** Kept for reference; superseded by reserveStairCore + finalizeStairCore. */
 function carveStairCore(grid, core, level, hasAbove, hasBelow) {
     const { x, y, size } = core;
     grid.carveRoom(x, y, size, size, { isStairCore: true, type: null, name: 'Stairwell' });
@@ -525,17 +728,30 @@ function carveEntrance(grid, rng, candidates) {
 
     grid.set(x, y, EXIT);
 
-    // Tunnel inward until we meet the layout.
+    // Route inward to the nearest corridor without running along a room.
     const step = { north: [0, -1], south: [0, 1], east: [1, 0], west: [-1, 0] }[facing];
-    let cx = x + step[0];
-    let cy = y + step[1];
-    for (let i = 0; i < Math.max(W, H); i++) {
-        if (cx < 1 || cy < 1 || cx > W - 2 || cy > H - 2) break;
-        const kind = grid.get(cx, cy);
-        if (kind !== SOLID) break;
-        grid.set(cx, cy, CORRIDOR);
-        cx += step[0];
-        cy += step[1];
+    const first = { x: x + step[0], y: y + step[1] };
+    const isHall = (cx, cy) => { const k = grid.get(cx, cy); return k === CORRIDOR || k === DOOR; };
+    let path = grid.bfsCorridor([first], isHall);
+    if (!path) {
+        // No corridor reachable cleanly; settle for a doorway into a room.
+        path = grid.bfsCorridor([first], (cx, cy) => grid.get(cx, cy) === SOLID && grid.isBesideRoom(cx, cy));
+    }
+    if (path) {
+        for (const c of path) if (grid.get(c.x, c.y) === SOLID || grid.get(c.x, c.y) === RESERVED) grid.set(c.x, c.y, CORRIDOR);
+        const last = path[path.length - 1];
+        if (grid.get(last.x, last.y) === CORRIDOR && grid.isBesideRoom(last.x, last.y)) grid.set(last.x, last.y, DOOR);
+    } else {
+        // Tunnel straight in as a last resort.
+        let cx = first.x;
+        let cy = first.y;
+        for (let i = 0; i < Math.max(W, H); i++) {
+            if (cx < 1 || cy < 1 || cx > W - 2 || cy > H - 2) break;
+            if (grid.get(cx, cy) !== SOLID) break;
+            grid.set(cx, cy, CORRIDOR);
+            cx += step[0];
+            cy += step[1];
+        }
     }
     return { x, y, facing };
 }
@@ -550,7 +766,25 @@ function ensureConnected(grid, from) {
         if (stranded.length === 0) return;
 
         for (const room of stranded) {
-            // Nearest reachable open cell, by Manhattan distance.
+            // Route from the room's own wall ring to any reachable hall cell, or to
+            // a wall cell of a reachable room (which becomes a connecting door).
+            const starts = grid.ringOf(room).filter(c => {
+                const k = grid.get(c.x, c.y);
+                return (k === SOLID || k === DOOR) && !grid.isBesideRoom(c.x, c.y, room.id);
+            });
+            // Only a reachable hall counts as a goal. A door straight into another
+            // room would leave a doorway with no hall on either side, which the
+            // hall-connectivity pass then has to cut into with a blunt corridor.
+            const goal = (x, y) => {
+                const k = grid.get(x, y);
+                return (k === CORRIDOR || k === DOOR || k === STAIRS) && reachable.has(idx(grid.W, x, y));
+            };
+            const path = grid.bfsCorridor(starts, goal);
+            if (path) {
+                grid.carveRoute(path);
+                continue;
+            }
+            // Blunt fallback so a floor can never be left with an unreachable room.
             let best = null;
             let bestDist = Infinity;
             for (const key of reachable) {
@@ -565,6 +799,115 @@ function ensureConnected(grid, from) {
     }
 }
 
+/**
+ * The halls must form one connected network on their own. Room-to-room links
+ * (the BSP chain especially) can leave the only route between two wings running
+ * through a room's interior, and a chair in that room then cuts the floor in
+ * half. Rooms hang off halls; they are never the way through.
+ */
+function ensureHallsConnected(grid, from) {
+    const core = grid.rooms.find(r => r.isStairCore);
+    const isHall = k => k === CORRIDOR || k === DOOR || k === EXIT || k === STAIRS;
+    const passable = (x, y) => {
+        const k = grid.get(x, y);
+        if (isHall(k)) return true;
+        return k === ROOM && core && grid.roomIdAt(x, y) === core.id;
+    };
+    const flood = (sx, sy, stop = null) => {
+        const seen = new Set();
+        if (!passable(sx, sy)) return seen;
+        const queue = [{ x: sx, y: sy }];
+        seen.add(idx(grid.W, sx, sy));
+        for (let head = 0; head < queue.length; head++) {
+            const { x, y } = queue[head];
+            for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]]) {
+                const nx = x + dx;
+                const ny = y + dy;
+                const k = idx(grid.W, nx, ny);
+                if (seen.has(k) || !grid.inBounds(nx, ny) || !passable(nx, ny)) continue;
+                if (stop && stop.has(k)) continue;
+                seen.add(k);
+                queue.push({ x: nx, y: ny });
+            }
+        }
+        return seen;
+    };
+
+    for (let attempt = 0; attempt < 12; attempt++) {
+        const reach = flood(from.x, from.y);
+        let stranded = null;
+        for (let y = 1; y < grid.H - 1 && !stranded; y++) {
+            for (let x = 1; x < grid.W - 1; x++) {
+                if (isHall(grid.get(x, y)) && !reach.has(idx(grid.W, x, y))) { stranded = { x, y }; break; }
+            }
+        }
+        if (!stranded) return;
+
+        const component = flood(stranded.x, stranded.y, reach);
+        const starts = [];
+        for (const k of component) {
+            const x = k % grid.W;
+            starts.push({ x, y: (k - x) / grid.W });
+        }
+        const path = grid.bfsCorridor(starts, (x, y) => reach.has(idx(grid.W, x, y)));
+        if (path) {
+            grid.carveRoute(path);
+            continue;
+        }
+        // Blunt fallback: straight cut from the pocket to the nearest reached hall.
+        let best = null;
+        let bestDist = Infinity;
+        for (const k of reach) {
+            const x = k % grid.W;
+            const y = (k - x) / grid.W;
+            const d = Math.abs(x - stranded.x) + Math.abs(y - stranded.y);
+            if (d < bestDist) { bestDist = d; best = { x, y }; }
+        }
+        if (!best) return;
+        grid.carvePath(LevelGrid.lPath(stranded, best, Math.abs(best.x - stranded.x) > Math.abs(best.y - stranded.y)));
+    }
+}
+
+/**
+ * Safety net after routing: if a room edge still touches a hall (or another
+ * room) with nothing between, pull that edge in by one cell so it becomes wall.
+ * Doorways on the pulled edge would lead into the new wall, so they revert to
+ * hall and ensureConnected gives the room a proper door again.
+ * Rooms already at the minimum size are left alone and show up in the audit.
+ */
+function sealRoomEdges(grid) {
+    let changed = false;
+    for (const room of grid.rooms) {
+        if (room.isStairCore) continue;
+        const touches = (x, y) => {
+            const k = grid.get(x, y);
+            if (k === CORRIDOR || k === STAIRS || k === EXIT) return true;
+            return k === ROOM && grid.roomIdAt(x, y) !== room.id;
+        };
+        const edges = [
+            { side: 'top', ring: () => Array.from({ length: room.w }, (_, i) => ({ x: room.x + i, y: room.y - 1 })), shrink: () => { room.y += 1; room.h -= 1; }, dim: 'h', cells: () => Array.from({ length: room.w }, (_, i) => ({ x: room.x + i, y: room.y })) },
+            { side: 'bottom', ring: () => Array.from({ length: room.w }, (_, i) => ({ x: room.x + i, y: room.y + room.h })), shrink: () => { room.h -= 1; }, dim: 'h', cells: () => Array.from({ length: room.w }, (_, i) => ({ x: room.x + i, y: room.y + room.h - 1 })) },
+            { side: 'left', ring: () => Array.from({ length: room.h }, (_, i) => ({ x: room.x - 1, y: room.y + i })), shrink: () => { room.x += 1; room.w -= 1; }, dim: 'w', cells: () => Array.from({ length: room.h }, (_, i) => ({ x: room.x, y: room.y + i })) },
+            { side: 'right', ring: () => Array.from({ length: room.h }, (_, i) => ({ x: room.x + room.w, y: room.y + i })), shrink: () => { room.w -= 1; }, dim: 'w', cells: () => Array.from({ length: room.h }, (_, i) => ({ x: room.x + room.w - 1, y: room.y + i })) }
+        ];
+        for (const edge of edges) {
+            const ring = edge.ring();
+            if (!ring.some(c => touches(c.x, c.y))) continue;
+            if (room[edge.dim] - 1 < MIN_ROOM_SPAN) continue;
+            for (const c of edge.cells()) {
+                grid.set(c.x, c.y, SOLID);
+                if (grid.inBounds(c.x, c.y)) grid.owner[idx(grid.W, c.x, c.y)] = -1;
+            }
+            for (const c of ring) if (grid.get(c.x, c.y) === DOOR) grid.set(c.x, c.y, CORRIDOR);
+            edge.shrink();
+            room.cx = room.x + (room.w >> 1);
+            room.cy = room.y + (room.h >> 1);
+            changed = true;
+        }
+    }
+    return changed;
+}
+
 /** Give every room a type, a display name, and its loot keying. */
 function assignRoomTypes(grid, level, rng) {
     const counts = {};
@@ -576,6 +919,30 @@ function assignRoomTypes(grid, level, rng) {
         counts[label] = (counts[label] || 0) + 1;
         room.name = counts[label] > 1 ? `${label} ${counts[label]}` : label;
     }
+}
+
+/**
+ * Count room cells that touch a hall or another room with nothing between them.
+ * Zero is the invariant every generated floor must satisfy; anything else means a
+ * room is open on one side. Exposed on world.siteAudit for tests.
+ */
+export function countRoomLeaks(grid) {
+    let leaks = 0;
+    for (let y = 1; y < grid.H - 1; y++) {
+        for (let x = 1; x < grid.W - 1; x++) {
+            const id = grid.roomIdAt(x, y);
+            if (id === -1 || grid.rooms[id]?.isStairCore) continue;
+            for (const [dx, dy] of [[1, 0], [0, 1]]) {
+                const k = grid.get(x + dx, y + dy);
+                if (k === CORRIDOR || k === STAIRS || k === EXIT) leaks++;
+                else if (k === ROOM) {
+                    const other = grid.roomIdAt(x + dx, y + dy);
+                    if (other !== id) leaks++;
+                }
+            }
+        }
+    }
+    return leaks;
 }
 
 // ── Painting ───────────────────────────────────────────────────────────────────
@@ -675,9 +1042,53 @@ function paintLevel(canvas, profile, level, grid, stair, entrance, lights) {
         shuffle(canvas.rng, cells);
         cells.sort((a, b) => Number(b.againstWall) - Number(a.againstWall));
 
-        for (let i = 0; i < Math.min(budget, cells.length); i++) {
-            const cell = cells[i];
+        // Every piece is assumed to block. A piece is only placed if the room's
+        // remaining free cells stay one connected region that includes every
+        // cell just inside a doorway, so no door can be cut off from another.
+        const inRoom = (x, y) => x >= room.x && x < room.x + room.w && y >= room.y && y < room.y + room.h;
+        const blocked = new Set();
+        const entries = [];
+        for (let y = room.y; y < room.y + room.h; y++) {
+            for (let x = room.x; x < room.x + room.w; x++) {
+                for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]]) {
+                    if (grid.get(x + dx, y + dy) === DOOR) { entries.push({ x, y }); break; }
+                }
+            }
+        }
+        const staysConnected = () => {
+            const free = [];
+            for (let y = room.y; y < room.y + room.h; y++) {
+                for (let x = room.x; x < room.x + room.w; x++) {
+                    if (!blocked.has(idx(grid.W, x, y))) free.push({ x, y });
+                }
+            }
+            if (!free.length) return false;
+            const origin = entries.find(e => !blocked.has(idx(grid.W, e.x, e.y))) || free[0];
+            const seen = new Set([idx(grid.W, origin.x, origin.y)]);
+            const queue = [origin];
+            for (let head = 0; head < queue.length; head++) {
+                const { x, y } = queue[head];
+                for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]]) {
+                    const nx = x + dx;
+                    const ny = y + dy;
+                    const k = idx(grid.W, nx, ny);
+                    if (seen.has(k) || !inRoom(nx, ny) || blocked.has(k)) continue;
+                    seen.add(k);
+                    queue.push({ x: nx, y: ny });
+                }
+            }
+            if (seen.size !== free.length) return false;
+            return entries.every(e => blocked.has(idx(grid.W, e.x, e.y)) || seen.has(idx(grid.W, e.x, e.y)));
+        };
+
+        let placed = 0;
+        for (const cell of cells) {
+            if (placed >= budget) break;
+            const key = idx(grid.W, cell.x, cell.y);
+            blocked.add(key);
+            if (!staysConnected()) { blocked.delete(key); continue; }
             canvas.placeFurniture(pick(canvas.rng, options), cell.x, cell.y, room.type);
+            placed++;
         }
     }
 
@@ -741,17 +1152,18 @@ export function generateSite(canvas, profile) {
 
     let entrance = null;
 
+    const audit = [];
+    const debugGrids = [];
+
     for (const level of levels) {
         const grid = new LevelGrid(W, H);
-        const entryCandidates = (LAYOUTS[level.layout] || layoutBsp)(grid, rng) || [];
 
-        // The core overwrites whatever the layout put there; fully covered rooms go.
-        grid.rooms = grid.rooms.filter(r => !(
-            r.x >= core.x && r.y >= core.y &&
-            r.x + r.w <= core.x + coreSize && r.y + r.h <= core.y + coreSize
-        ));
-        const stair = carveStairCore(
-            grid, core, level,
+        // Claim the stairwell first so the layout builds around it instead of
+        // being cut open by it afterwards.
+        const stairPos = reserveStairCore(grid, core);
+        const entryCandidates = (LAYOUTS[level.layout] || layoutBsp)(grid, rng) || [];
+        const stair = finalizeStairCore(
+            grid, core, stairPos,
             zList.includes(level.z + 1),
             zList.includes(level.z - 1)
         );
@@ -760,9 +1172,20 @@ export function generateSite(canvas, profile) {
         if (levelEntrance) entrance = levelEntrance;
 
         ensureConnected(grid, { x: stair.cx, y: stair.cy });
+        ensureHallsConnected(grid, { x: stair.cx, y: stair.cy });
+        // Routing can still be forced into a blunt cut on a cramped floor; wall
+        // those edges back off and reconnect, twice at most.
+        for (let pass = 0; pass < 2 && sealRoomEdges(grid); pass++) {
+            ensureConnected(grid, { x: stair.cx, y: stair.cy });
+            ensureHallsConnected(grid, { x: stair.cx, y: stair.cy });
+        }
         assignRoomTypes(grid, level, rng);
+        audit.push({ z: level.z, leaks: countRoomLeaks(grid), rooms: grid.rooms.length - 1 });
         paintLevel(canvas, profile, level, grid, stair, levelEntrance, lights);
+        debugGrids.push({ z: level.z, W, H, cells: Array.from(grid.cells) });
     }
+    world.siteAudit = audit;
+    world.siteDebugGrids = debugGrids; // cell kinds per level, for tests only
 
     canvas.z = 0;
     world.staticLights = lights;
