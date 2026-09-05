@@ -13,6 +13,13 @@
  *   spine - one corridor with rooms down both sides. Offices, wards, apartments.
  *   bsp   - recursive subdivision, irregular rooms and L-corridors. Sublevels.
  *   ring  - corridor loop with rooms inside and out. Malls, atriums.
+ *   block - a street. Wide corridor under the sky, storefront rooms off both
+ *           sides, dead-end alleys with back doors, an exit at each end. The
+ *           same invariants as a floor: the city is a dungeon with sky.
+ *
+ * A level with `sky: true` paints its corridors as exterior tiles (sky above,
+ * daylight on them) while its rooms stay interior. Doors that face the sky get
+ * a daylight source so shop interiors are lit by the street during the day.
  *
  * The generator never spawns NPCs; the roster is still placeholder (see
  * CLAUDE.md). Use F9 / game.debugSpawn() to put something in front of you.
@@ -25,6 +32,7 @@
  */
 
 import { ZoneTiles, stairsTile, siteExitTile } from './ZoneTiles.js';
+import { FURNITURE_LOOT } from '../objects/Furniture.js';
 
 // ── Working grid cell kinds ────────────────────────────────────────────────────
 const SOLID = 0;
@@ -600,7 +608,100 @@ function layoutRing(grid, rng) {
     return [entry];
 }
 
-const LAYOUTS = { spine: layoutSpine, bsp: layoutBsp, ring: layoutRing };
+/**
+ * A street block. One wide street wall to wall (exits at both ends), an
+ * optional cross street, one-wide dead-end alleys, and storefront rooms off
+ * every hall. Level options: streetWidth (3), cross ('T' | 'full' | false),
+ * alleys (2), minFront / maxFront (room length along the street).
+ */
+function layoutBlock(grid, rng, level = {}) {
+    const { W, H } = grid;
+    const sw = clamp(level.streetWidth || 3, 1, 5);
+    const exits = [];
+    grid.alleyCells = new Set();
+    grid.lamps = [];
+
+    // Main street: a horizontal band through the middle, wall to wall.
+    const minY = 1 + MIN_ROOM_SPAN + 1;
+    const maxY = H - 2 - sw - MIN_ROOM_SPAN - 1;
+    const y0 = clamp(Math.floor((H - sw) / 2 + (rng() - 0.5) * H * 0.2), minY, Math.max(minY, maxY));
+    for (let x = 1; x <= W - 2; x++) for (let k = 0; k < sw; k++) grid.carveHall(x, y0 + k);
+    const midY = y0 + (sw >> 1);
+    exits.push({ x: 0, y: midY, facing: 'east', side: 'west' });
+    exits.push({ x: W - 1, y: midY, facing: 'west', side: 'east' });
+    for (let x = 3; x <= W - 4; x += level.lightSpacing || 7) grid.lamps.push({ x, y: midY });
+
+    // Cross street: a vertical band making a T or a crossroads.
+    let cx0 = -1;
+    if (level.cross && W >= 28) {
+        cx0 = clamp(Math.floor(W * (0.35 + rng() * 0.3)), 1 + MIN_ROOM_SPAN + 1, W - 2 - sw - MIN_ROOM_SPAN - 1);
+        const dir = level.cross === 'full' ? 'both' : pick(rng, ['north', 'south', 'both']);
+        const yFrom = dir === 'south' ? y0 : 1;
+        const yTo = dir === 'north' ? y0 + sw - 1 : H - 2;
+        for (let y = yFrom; y <= yTo; y++) for (let k = 0; k < sw; k++) grid.carveHall(cx0 + k, y);
+        const midX = cx0 + (sw >> 1);
+        if (yFrom === 1) exits.push({ x: midX, y: 0, facing: 'south', side: 'north' });
+        if (yTo === H - 2) exits.push({ x: midX, y: H - 1, facing: 'north', side: 'south' });
+        for (let y = 3; y <= H - 4; y += level.lightSpacing || 7) {
+            if (y >= yFrom && y <= yTo && Math.abs(y - midY) > 2) grid.lamps.push({ x: midX, y });
+        }
+    }
+
+    // Alleys: one wide, off the street, dead ends. Back doors open onto them.
+    const alleys = [];
+    const alleyCount = level.alleys ?? 2;
+    for (let i = 0; i < alleyCount * 4 && alleys.length < alleyCount; i++) {
+        const x = 3 + Math.floor(rng() * (W - 6));
+        if (cx0 !== -1 && Math.abs(x - cx0) < sw + 4) continue;
+        if (alleys.some(a => Math.abs(a.x - x) < 8)) continue;
+        const north = rng() < 0.5;
+        const room = north ? y0 - 2 : H - 2 - (y0 + sw);
+        if (room < 5) continue;
+        const len = 4 + Math.floor(rng() * Math.max(1, Math.min(9, room - 2) - 3));
+        const cells = [];
+        for (let k = 1; k <= len; k++) {
+            const y = north ? y0 - k : y0 + sw - 1 + k;
+            if (y < 1 || y > H - 2) break;
+            grid.carveHall(x, y);
+            grid.alleyCells.add(idx(W, x, y));
+            cells.push({ x, y });
+        }
+        if (cells.length) alleys.push({ x, north, from: cells[0].y, to: cells[cells.length - 1].y });
+    }
+
+    // Storefronts: rooms off both sides of the main street, doors onto it.
+    const front = { minLen: level.minFront || 4, maxLen: level.maxFront || MAX_ROOM_SPAN };
+    carveRoomStrip(grid, rng, { axis: 'x', alongFrom: 1, alongTo: W - 2,
+        depthFrom: Math.max(1, y0 - 1 - MAX_ROOM_SPAN), depthTo: y0 - 2, doorAt: y0 - 1, ...front });
+    carveRoomStrip(grid, rng, { axis: 'x', alongFrom: 1, alongTo: W - 2,
+        depthFrom: y0 + sw + 1, depthTo: Math.min(H - 2, y0 + sw + MAX_ROOM_SPAN), doorAt: y0 + sw, ...front });
+
+    // Fronts along the cross street, both sides, above and below the main street.
+    if (cx0 !== -1) {
+        const spans = [[1, y0 - 2], [y0 + sw + 1, H - 2]];
+        for (const [from, to] of spans) {
+            if (to - from + 1 < MIN_ROOM_SPAN) continue;
+            carveRoomStrip(grid, rng, { axis: 'y', alongFrom: from, alongTo: to,
+                depthFrom: Math.max(1, cx0 - 1 - MAX_ROOM_SPAN), depthTo: cx0 - 2, doorAt: cx0 - 1, minLen: 3, maxLen: 6 });
+            carveRoomStrip(grid, rng, { axis: 'y', alongFrom: from, alongTo: to,
+                depthFrom: cx0 + sw + 1, depthTo: Math.min(W - 2, cx0 + sw + MAX_ROOM_SPAN), doorAt: cx0 + sw, minLen: 3, maxLen: 6 });
+        }
+    }
+
+    // Back rooms off the alleys.
+    for (const a of alleys) {
+        const from = Math.min(a.from, a.to);
+        const to = Math.max(a.from, a.to);
+        carveRoomStrip(grid, rng, { axis: 'y', alongFrom: from, alongTo: to,
+            depthFrom: Math.max(1, a.x - 1 - 5), depthTo: a.x - 2, doorAt: a.x - 1, minLen: 3, maxLen: 5 });
+        carveRoomStrip(grid, rng, { axis: 'y', alongFrom: from, alongTo: to,
+            depthFrom: a.x + 2, depthTo: Math.min(W - 2, a.x + 1 + 5), doorAt: a.x + 1, minLen: 3, maxLen: 5 });
+    }
+
+    return exits;
+}
+
+const LAYOUTS = { spine: layoutSpine, bsp: layoutBsp, ring: layoutRing, block: layoutBlock };
 
 // ── Level assembly ─────────────────────────────────────────────────────────────
 
@@ -915,6 +1016,7 @@ function assignRoomTypes(grid, level, rng) {
         if (room.isStairCore) continue;
         const choice = weightedPick(rng, level.roomTypes);
         room.type = choice.type;
+        room.preset = choice; // may carry floor / furniture / doorType / lightColor
         const label = choice.label || ROOM_LABEL[choice.type] || 'Room';
         counts[label] = (counts[label] || 0) + 1;
         room.name = counts[label] > 1 ? `${label} ${counts[label]}` : label;
@@ -951,6 +1053,8 @@ function paintLevel(canvas, profile, level, grid, stair, entrance, lights) {
     canvas.z = level.z;
     const wallTile = ZoneTiles[level.wall] || ZoneTiles.interiorWall;
     const corridorTile = ZoneTiles[level.corridor] || ZoneTiles.corridor;
+    const alleyTile = ZoneTiles[level.alley] || corridorTile;
+    const sky = !!level.sky;
 
     // Room lookup per cell, so floors and names come out right.
     const roomAt = new Array(grid.W * grid.H).fill(null);
@@ -979,22 +1083,25 @@ function paintLevel(canvas, profile, level, grid, stair, entrance, lights) {
                 continue;
             }
 
-            if (kind === STAIRS) {
+            if (kind === STAIRS && stair) {
                 canvas.set(x, y, stairsTile(stair.hasAbove, stair.hasBelow, 'Stairwell'));
                 continue;
             }
 
             if (kind === EXIT) {
-                canvas.set(x, y, siteExitTile(`Exit — ${profile.name}`));
+                canvas.set(x, y, siteExitTile(`Exit — ${profile.name}`, { isExterior: sky }));
                 continue;
             }
 
             const room = roomAt[idx(grid.W, x, y)];
             if (kind === ROOM && room && !room.isStairCore) {
-                const floor = ZoneTiles[ROOM_FLOOR[room.type]] || corridorTile;
-                canvas.set(x, y, floor, { name: room.name, roomType: room.type });
+                const floorKey = room.preset?.floor || ROOM_FLOOR[room.type];
+                const floor = ZoneTiles[floorKey] || ZoneTiles.corridor;
+                canvas.set(x, y, floor, { name: room.name, roomType: room.type, isExterior: false });
             } else if (kind === ROOM && room?.isStairCore) {
                 canvas.set(x, y, ZoneTiles.stairwellFloor, { name: 'Stairwell' });
+            } else if (grid.alleyCells && grid.alleyCells.has(idx(grid.W, x, y))) {
+                canvas.set(x, y, alleyTile, { name: `${level.name} Alley`, roomType: null });
             } else {
                 // Some floor tiles carry a roomType of their own (mallFloor is
                 // tagged retail); a corridor is not a room, so clear it.
@@ -1007,21 +1114,37 @@ function paintLevel(canvas, profile, level, grid, stair, entrance, lights) {
     for (let y = 0; y < grid.H; y++) {
         for (let x = 0; x < grid.W; x++) {
             if (grid.get(x, y) !== DOOR) continue;
-            const room = roomAt[idx(grid.W, x, y)];
+            // A doorway sits in a room's wall ring, so find the room it serves.
+            let room = roomAt[idx(grid.W, x, y)];
+            if (!room) {
+                for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]]) {
+                    const r = roomAt[idx(grid.W, x + dx, y + dy)];
+                    if (r && !r.isStairCore) { room = r; break; }
+                }
+            }
             const locked = canvas.rng() < (level.lockChance || 0);
-            canvas.placeDoor(level.doorType || 'wood_basic', x, y, {
+            canvas.placeDoor(room?.preset?.doorType || level.doorType || 'wood_basic', x, y, {
                 locked,
                 open: !locked && canvas.rng() < 0.35,
                 name: room?.name ? `${room.name} Door` : `${level.name} Door`,
                 roomType: room?.type
             });
+            // Daylight leaks in through any door that faces the sky.
+            if (sky) {
+                let facesSky = false;
+                for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]]) {
+                    const k = grid.get(x + dx, y + dy);
+                    if (k === CORRIDOR || k === EXIT) { facesSky = true; break; }
+                }
+                if (facesSky) lights.push({ x, y, z: level.z, radius: 5, intensity: 0.9, daylight: true });
+            }
         }
     }
 
     // 3. Furniture, hugging walls and never sealing a doorway
     for (const room of grid.rooms) {
         if (room.isStairCore || !room.type) continue;
-        const options = ROOM_FURNITURE[room.type];
+        const options = room.preset?.furniture || ROOM_FURNITURE[room.type];
         if (!options || !options.length) continue;
 
         const area = room.w * room.h;
@@ -1092,16 +1215,56 @@ function paintLevel(canvas, profile, level, grid, stair, entrance, lights) {
         }
     }
 
+    // 3b. Floor loot. A few items on the floor so a room reads from the
+    //     doorway and the floor is not just a set of cupboards to open.
+    const lootChance = level.floorLootChance ?? 0.4;
+    const content = canvas.world.game?.content;
+    if (content) {
+        for (const room of grid.rooms) {
+            if (room.isStairCore || !room.type) continue;
+            const table = FURNITURE_LOOT[room.type];
+            if (!table) continue;
+            if (canvas.rng() > lootChance) continue;
+            const pool = [];
+            for (const furn of Object.values(table)) {
+                for (const entry of furn.pools || []) if (entry.familyId) pool.push(entry);
+            }
+            if (!pool.length) continue;
+            const count = 1 + (canvas.rng() < 0.35 ? 1 : 0);
+            for (let n = 0; n < count; n++) {
+                // Free floor cell, not beside a door, not under furniture.
+                let spot = null;
+                for (let attempt = 0; attempt < 12 && !spot; attempt++) {
+                    const x = room.x + Math.floor(canvas.rng() * room.w);
+                    const y = room.y + Math.floor(canvas.rng() * room.h);
+                    const t = canvas.get(x, y);
+                    if (!t || t.blocked || t.worldObjectId) continue;
+                    let besideDoor = false;
+                    for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]]) {
+                        if (grid.get(x + dx, y + dy) === DOOR) { besideDoor = true; break; }
+                    }
+                    if (besideDoor) continue;
+                    spot = { x, y };
+                }
+                if (!spot) break;
+                const item = content.createItem(weightedPick(canvas.rng, pool).familyId);
+                if (item) canvas.placeItem(item, spot.x, spot.y);
+            }
+        }
+    }
+
     // 4. Emergency lighting. Corridors stay lit enough to navigate without a
     //    lamp; rooms are mostly dark, so a light source is still worth carrying.
+    //    On a sky level the corridor lights are streetlamps along the kerb.
     const corridorChance = level.corridorLightChance ?? 0.9;
     const roomChance = level.roomLightChance ?? 0.3;
     const spacing = level.lightSpacing || 5;
+    const lampSet = grid.lamps ? new Set(grid.lamps.map(l => idx(grid.W, l.x, l.y))) : null;
     for (let y = 1; y < grid.H - 1; y++) {
         for (let x = 1; x < grid.W - 1; x++) {
             const kind = grid.get(x, y);
             const room = roomAt[idx(grid.W, x, y)];
-            const isCorridorLight = kind === CORRIDOR && (x + y) % spacing === 0;
+            const isCorridorLight = kind === CORRIDOR && (lampSet ? lampSet.has(idx(grid.W, x, y)) : (x + y) % spacing === 0);
             const isRoomLight = kind === ROOM && room && !room.isStairCore && x === room.cx && y === room.cy;
             if (!isCorridorLight && !isRoomLight) continue;
             if (canvas.rng() > (isCorridorLight ? corridorChance : roomChance)) continue;
@@ -1113,15 +1276,19 @@ function paintLevel(canvas, profile, level, grid, stair, entrance, lights) {
                 intensity: isCorridorLight
                     ? (level.lightIntensity || 0.85)
                     : (level.lightIntensity || 0.85) * 0.7,
-                color: level.lightColor || '#ffd9a0'
+                color: (isRoomLight && room.preset?.lightColor) || level.lightColor || '#ffd9a0'
             });
         }
     }
 
     // The stairwell always has a light so you can find your way back to it.
-    lights.push({ x: stair.cx, y: stair.cy, z: level.z, radius: 4, intensity: 0.8, color: level.lightColor || '#9fe8ff' });
-    if (entrance) {
-        lights.push({ x: entrance.x, y: entrance.y, z: level.z, radius: 4, intensity: 0.9, color: '#a8ffc0' });
+    if (stair) {
+        lights.push({ x: stair.cx, y: stair.cy, z: level.z, radius: 4, intensity: 0.8, color: level.lightColor || '#9fe8ff' });
+    }
+    // Every exit is marked, and on the ground floor daylight comes in through it.
+    for (const e of (grid.exits || (entrance ? [entrance] : []))) {
+        lights.push({ x: e.x, y: e.y, z: level.z, radius: 4, intensity: 0.9, color: '#a8ffc0' });
+        if (level.z === 0 && !sky) lights.push({ x: e.x, y: e.y, z: level.z, radius: 5, intensity: 0.8, daylight: true });
     }
 }
 
@@ -1143,6 +1310,8 @@ export function generateSite(canvas, profile) {
     const zList = levels.map(l => l.z);
 
     // The stair core runs the full height, so its footprint is chosen once.
+    // A single-level site (a street block, a slice) has no stairwell.
+    const hasCore = levels.length > 1 && profile.stairs !== false;
     const coreSize = 3;
     const core = {
         size: coreSize,
@@ -1151,6 +1320,7 @@ export function generateSite(canvas, profile) {
     };
 
     let entrance = null;
+    const allExits = [];
 
     const audit = [];
     const debugGrids = [];
@@ -1160,28 +1330,49 @@ export function generateSite(canvas, profile) {
 
         // Claim the stairwell first so the layout builds around it instead of
         // being cut open by it afterwards.
-        const stairPos = reserveStairCore(grid, core);
-        const entryCandidates = (LAYOUTS[level.layout] || layoutBsp)(grid, rng) || [];
-        const stair = finalizeStairCore(
-            grid, core, stairPos,
-            zList.includes(level.z + 1),
-            zList.includes(level.z - 1)
-        );
+        const stairPos = hasCore ? reserveStairCore(grid, core) : null;
+        const entryCandidates = (LAYOUTS[level.layout] || layoutBsp)(grid, rng, level) || [];
+        const stair = hasCore
+            ? finalizeStairCore(grid, core, stairPos, zList.includes(level.z + 1), zList.includes(level.z - 1))
+            : null;
 
-        const levelEntrance = level.z === 0 ? carveEntrance(grid, rng, entryCandidates) : null;
-        if (levelEntrance) entrance = levelEntrance;
+        // Exits. A site has one; a block or slice keeps every street end.
+        let levelExits = [];
+        if (level.z === 0) {
+            if (level.exits === 'all' && entryCandidates.length) {
+                for (const c of entryCandidates) {
+                    const step = { north: [0, -1], south: [0, 1], east: [1, 0], west: [-1, 0] }[c.facing];
+                    if (!grid.isOpen(c.x + step[0], c.y + step[1])) continue;
+                    grid.set(c.x, c.y, EXIT);
+                    levelExits.push(c);
+                }
+            }
+            if (!levelExits.length) levelExits = [carveEntrance(grid, rng, entryCandidates)];
+            entrance = levelExits[0];
+            allExits.push(...levelExits.map(e => ({ ...e, z: level.z })));
+        }
+        grid.exits = levelExits;
 
-        ensureConnected(grid, { x: stair.cx, y: stair.cy });
-        ensureHallsConnected(grid, { x: stair.cx, y: stair.cy });
-        // Routing can still be forced into a blunt cut on a cramped floor; wall
-        // those edges back off and reconnect, twice at most.
-        for (let pass = 0; pass < 2 && sealRoomEdges(grid); pass++) {
-            ensureConnected(grid, { x: stair.cx, y: stair.cy });
-            ensureHallsConnected(grid, { x: stair.cx, y: stair.cy });
+        // Connectivity origin: the stairwell, or failing that the first hall cell.
+        let origin = stair ? { x: stair.cx, y: stair.cy } : null;
+        if (!origin) {
+            outer: for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+                if (grid.get(x, y) === CORRIDOR) { origin = { x, y }; break outer; }
+            }
+        }
+        if (origin) {
+            ensureConnected(grid, origin);
+            ensureHallsConnected(grid, origin);
+            // Routing can still be forced into a blunt cut on a cramped floor; wall
+            // those edges back off and reconnect, twice at most.
+            for (let pass = 0; pass < 2 && sealRoomEdges(grid); pass++) {
+                ensureConnected(grid, origin);
+                ensureHallsConnected(grid, origin);
+            }
         }
         assignRoomTypes(grid, level, rng);
-        audit.push({ z: level.z, leaks: countRoomLeaks(grid), rooms: grid.rooms.length - 1 });
-        paintLevel(canvas, profile, level, grid, stair, levelEntrance, lights);
+        audit.push({ z: level.z, leaks: countRoomLeaks(grid), rooms: grid.rooms.length - (hasCore ? 1 : 0) });
+        paintLevel(canvas, profile, level, grid, stair, entrance, lights);
         debugGrids.push({ z: level.z, W, H, cells: Array.from(grid.cells) });
     }
     world.siteAudit = audit;
@@ -1190,7 +1381,9 @@ export function generateSite(canvas, profile) {
     canvas.z = 0;
     world.staticLights = lights;
     world.isInterior = true;
+    world.isBlock = !!profile.block;
     world.siteName = profile.name;
+    world.siteExits = allExits;
 
     if (entrance) {
         const step = { north: [0, -1], south: [0, 1], east: [1, 0], west: [-1, 0] }[entrance.facing];

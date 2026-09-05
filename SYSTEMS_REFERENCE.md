@@ -58,6 +58,21 @@ Assume:
 
 **Survival rates:** hunger 0.04/turn, thirst 0.07/turn; halved while sleeping.
 
+**Slices and walkable routes:** a route with `walk` always drops you into its slice (a one-screen block with a west and an east exit) at the near end; an abstract route does so only on a loud roll, partway along and with hostiles. `<` at a slice exit moves straight to that endpoint (`world.exitTargets`); Tab is refused inside a slice.
+
+---
+
+### Street Blocks
+**Files:** `src/world/gen/InteriorGenerator.js` (`layoutBlock`), `src/content/SiteCatalog.js`, `src/content/StorefrontCatalog.js`
+
+**Purpose:** Streets that read in first person: corridors with sky, storefronts as rooms.
+
+- A block profile has `block: true` and one level with `layout: 'block'`, `sky: true`, `exits: 'all'`, `streetWidth`, `cross`, `alleys`, and `roomTypes` from `storefrontRooms(...)`.
+- Halls are exterior tiles (sky, daylight); rooms are interior. Every street-facing door carries a `daylight` light scaled by the outdoor ambient.
+- Room presets set floor, furniture, door type, light colour, and label; `type` still keys `FURNITURE_LOOT`.
+- Floor loot: `floorLootChance` per level, one or two items per room from its pools.
+- Audit: `world.siteAudit` leaks must be zero, as for any site.
+
 ---
 
 ### Auto-Explore

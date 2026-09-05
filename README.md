@@ -32,9 +32,15 @@ Where things stand:
 - **You travel on a district map.** `Tab` shows the places you can reach from
   where you stand, what each route costs in time, hunger, thirst, and risk,
   and takes you there. Night makes every route worse. Two routes start locked.
+- **Streets are places.** A block is a street under the sky with storefronts
+  you walk into, each with its own interior, and alleys with back doors. The
+  two streets out of Downstairs are walked end to end; other routes drop you
+  into a short stretch of street only when a trip goes wrong.
+- **Daylight comes in.** Shop interiors are lit from the street by day and
+  dark by night. Rooms have things on the floor, not just in cupboards.
 
-Next is streets rebuilt as corridors with enterable storefronts, and route
-slices for when a trip goes wrong. See `CLAUDE.md` for the working rules.
+Next is the roster and the reasons to go: hub roles, needs, contracts, set
+pieces. See `CLAUDE.md` for the working rules.
 
 ## Implemented Systems
 
@@ -52,6 +58,11 @@ slices for when a trip goes wrong. See `CLAUDE.md` for the working rules.
 - Zone-mode generation through templates/fragments
 - Interior sites: multi-floor buildings with corridors, rooms, doors, stairwells,
   and baked emergency lighting
+- Street blocks from the same generator: streets under the sky, storefront rooms
+  with their own interiors, alleys, exits at both ends
+- Route slices: a screen of street between places, walked end to end on the
+  streets near the hub or when a trip goes loud
+- Daylight through doors, floor loot per room, a facade per block
 - Zone persistence: visited zones keep their state for the whole run
 - District travel graph with timed, risky routes and a travel screen
 - Hub with a player-owned stash and bunks (rest an hour, or sleep until dawn or
@@ -124,9 +135,8 @@ For cache problems during local testing, use `dev-reset.html` or hard-refresh. T
 - `src/world/World.js` - chunk manager, entities/items/objects, zone mode
 - `src/world/OverworldMap.js` - overworld zone grid
 - `src/world/gen/ZoneGenerator.js` - current zone generation entrypoint
-- `src/world/gen/InteriorGenerator.js` - multi-floor interior sites
+- `src/world/gen/InteriorGenerator.js` - multi-floor interior sites, street blocks, route slices
 - `src/world/gen/ZoneCanvas.js` - zone drawing helper (tiles, doors, furniture, NPC spawns)
-- `src/world/gen/UrbanFragments.js` - reusable urban sub-zone fragments
 - `src/world/Chunk.js` - older procedural chunk generation, still present but no longer the main design direction
 
 ### Systems
@@ -135,6 +145,7 @@ For cache problems during local testing, use `dev-reset.html` or hard-refresh. T
 - `src/content/NpcCatalog.js` - NPC templates (placeholders until the new roster)
 - `src/content/SiteCatalog.js` - interior site profiles (floors, layouts, lighting)
 - `src/content/DistrictCatalog.js` - the travel graph: places, routes, locks
+- `src/content/StorefrontCatalog.js` - storefront room presets for street blocks
 - `src/systems/AbilitySystem.js` - talent-gated abilities and effects
 - `src/systems/CombatSystem.js` - anatomy combat resolution
 - `src/systems/CraftingSystem.js` - crafting/disassembly
@@ -163,9 +174,7 @@ For cache problems during local testing, use `dev-reset.html` or hard-refresh. T
 
 The roadmap lives in `REDESIGN_BRIEF.md`. In order:
 
-1. Streets as corridors with sky and enterable storefronts; route slices;
-   walkable routes near the hub (Phase 2).
-2. Roster, hub needs, contracts, set pieces, encounter budgets (Phase 3).
-3. Projects and one extraction path end to end; save/load (Phase 4).
+1. Roster, hub needs, contracts, set pieces, encounter budgets (Phase 3).
+2. Projects and one extraction path end to end; save/load (Phase 4).
 
 Cone FoV, facing-aware combat, and wall textures run alongside.

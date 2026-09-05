@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fractured-city-v67';
+const CACHE_NAME = 'fractured-city-v68';
 const ASSETS = [
     '/',
     '/index.html',
@@ -20,7 +20,6 @@ const ASSETS = [
     '/src/world/gen/ZoneCanvas.js',
     '/src/world/gen/ZoneGenerator.js',
     '/src/world/gen/ZoneTiles.js',
-    '/src/world/gen/UrbanFragments.js',
     '/src/world/gen/InteriorGenerator.js',
     '/src/world/WorldObject.js',
     '/src/world/objects/Door.js',
@@ -46,6 +45,7 @@ const ASSETS = [
     '/src/content/NpcCatalog.js',
     '/src/content/SiteCatalog.js',
     '/src/content/DistrictCatalog.js',
+    '/src/content/StorefrontCatalog.js',
     '/src/systems/AbilitySystem.js',
     '/src/ui/UIManager.js',
     '/src/ui/CraftingUI.js',
