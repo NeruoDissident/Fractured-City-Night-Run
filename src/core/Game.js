@@ -18,7 +18,9 @@ import { AbilitySystem } from '../systems/AbilitySystem.js';
 import { TimeSystem } from '../systems/TimeSystem.js';
 import { LightingSystem } from '../systems/LightingSystem.js';
 import { MobileControls } from '../ui/MobileControls.js';
-import { OverworldMap } from '../world/OverworldMap.js';
+import { OverworldMap, findZoneTemplate, hashString } from '../world/OverworldMap.js';
+import { DISTRICT, HUB_NODE_ID, getNode, routesFrom, dangerMultiplier } from '../content/DistrictCatalog.js';
+import { getSiteProfile } from '../content/SiteCatalog.js';
 import { NPC } from '../entities/NPC.js';
 
 export class Game {
@@ -61,15 +63,23 @@ export class Game {
 
         // ── Zone persistence ─────────────────────────────────────────────
         // Every zone the player has visited stays alive here, keyed by its
-        // overworld node id ("col,row"). Leaving a zone parks its World and
-        // FoV (explored tiles); coming back reuses them, so looted cabinets
-        // stay looted, opened doors stay open, dropped items stay dropped.
+        // district node id (or "ow:col,row" for a debug region tile). Leaving
+        // a zone parks its World and FoV (explored tiles); coming back reuses
+        // them, so looted cabinets stay looted, opened doors stay open,
+        // dropped items stay dropped.
         // NPCs in a parked zone do not act until the player returns.
         // Plain data only - this map is what a save file will serialise.
         this.zoneCache = new Map();
+
+        // ── District travel ──────────────────────────────────────────────
+        this.district       = null;   // DistrictCatalog graph for this run
+        this._currentNodeId = null;   // graph node the active zone belongs to
+        this.flags          = {};     // run flags (route locks, projects)
+        this.travel         = null;   // travel screen state { from, options, index }
+        this.runSeed        = 0;
     }
 
-    /** Node id for an overworld tile. Phase 1 replaces this with graph node ids. */
+    /** Key fragment for a region-map tile (debug travel). District nodes use their id. */
     zoneKey(col, row) {
         return `${col},${row}`;
     }
@@ -116,32 +126,36 @@ export class Game {
         this.player = new Player(this, characterData);
         this._loadoutGiven = false;
 
-        // Create the overworld (exists but player starts in the hub)
+        // Region map (debug / future region layer) and the district graph the
+        // run actually travels on.
         const runSeed = Date.now() & 0x7FFFFFFF;
+        this.runSeed = runSeed;
         this.overworldMap = new OverworldMap(runSeed);
+        this.district = DISTRICT;
+        this.flags = {};
 
         this.isRunning = true;
         this.zoneCache.clear();
 
-        // The run starts at the hub. The hub is an ordinary overworld node
-        // (see OverworldMap.hubCol/hubRow), so leaving and coming back finds
-        // the same yard rather than whatever the tile pool would have rolled.
+        // The run starts at the hub node, an ordinary cached zone from turn one.
         this._enterHubZone();
     }
 
     // ── Enter the hub (safe starting area, and the node you return to) ────────
     _enterHubZone() {
-        const ow = this.overworldMap;
-        this.dropIntoZone(ow.hubCol, ow.hubRow);
-
+        this.enterNode(HUB_NODE_ID);
         this.ui.log('Downstairs. A fenced yard, a few shacks, and the city beyond.', 'info');
-        this.ui.log('W/S move, A/D turn, E interact, ` toggles the map view, ? for help.', 'info');
+        this.ui.log('W/S move, A/D turn, E interact, Tab to travel, ` toggles the map view, ? for help.', 'info');
     }
 
     /** True when the active zone is the hub node. */
     isAtHub() {
-        const ow = this.overworldMap;
-        return !!ow && this._currentZoneCol === ow.hubCol && this._currentZoneRow === ow.hubRow;
+        return this._currentNodeId === HUB_NODE_ID;
+    }
+
+    /** The district node the player is in (null on a debug tile). */
+    currentNode() {
+        return getNode(this._currentNodeId, this.district);
     }
 
     // ── Zone systems init (called on every zone entry) ─────────────────────────
@@ -160,49 +174,128 @@ export class Game {
         this.worldObjectSystem = new WorldObjectSystem(this);
     }
 
-    // ── Drop into an overworld tile ───────────────────────────────────────────
-    dropIntoZone(col, row, entryEdge = null) {
-        this.cancelAutoTravel();
+    // ── Node descriptors ───────────────────────────────────────────────────────
+    // A descriptor is everything _enterZone needs to build or find a zone:
+    //   { id, name, zone (template), seed, biome, playBiome, threat, kind, debugTile? }
+
+    /** Descriptor for a district node. */
+    _describeNode(nodeId) {
+        const node = getNode(nodeId, this.district);
+        if (!node) return null;
+        const found = findZoneTemplate(node.zone);
+        if (!found) {
+            console.warn(`[District] node "${nodeId}" names unknown zone "${node.zone}"`);
+            return null;
+        }
+        const zone = found.template;
+        const site = getSiteProfile(zone.id);
+        if (site) {
+            zone.width = site.width;
+            zone.height = site.height;
+            zone.interior = true;
+        }
+        const water = ['ocean', 'lake', 'river', 'coast', 'wetland'].includes(found.biome);
+        return {
+            id: nodeId,
+            name: node.name,
+            zone,
+            seed: hashString(nodeId, this.runSeed || 1),
+            biome: found.biome,
+            playBiome: water ? 'rural' : found.biome,
+            threat: node.threat || 2,
+            kind: node.kind
+        };
+    }
+
+    /** Descriptor for a region-map tile (debug travel only). */
+    _describeTile(col, row) {
         const owTile = this.overworldMap.getTile(col, row);
-        if (!owTile) return;
+        if (!owTile) return null;
+        const threat = Math.max(1, Math.min(5, owTile.threatLevel + (owTile.zone.threatMod || 0)));
+        return {
+            id: `ow:${this.zoneKey(col, row)}`,
+            name: owTile.zone.name,
+            zone: owTile.zone,
+            seed: owTile.seed,
+            biome: owTile.biome,
+            playBiome: owTile.playBiome || owTile.biome,
+            threat,
+            kind: owTile.zone.id === 'safe_hub' ? 'hub' : (owTile.zone.interior ? 'site' : 'block'),
+            debugTile: { col, row }
+        };
+    }
+
+    // ── Enter a district node ──────────────────────────────────────────────────
+    enterNode(nodeId, opts = {}) {
+        const desc = this._describeNode(nodeId);
+        if (!desc) {
+            this.ui.log(`No such place: ${nodeId}.`, 'warning');
+            return false;
+        }
+        this._enterZone(desc, opts);
+        return true;
+    }
+
+    // ── Drop into a region-map tile (debug travel; kept for the future region layer) ──
+    dropIntoZone(col, row, entryEdge = null) {
+        const desc = this._describeTile(col, row);
+        if (!desc) return;
+        this.overworldMap.markExplored(col, row);
+        this.overworldMap.cursorCol = col;
+        this.overworldMap.cursorRow = row;
+        this._enterZone(desc, { entryEdge });
+    }
+
+    /**
+     * Shared entry path. Parks the current zone, fetches or builds the target
+     * zone, places the player, logs the arrival.
+     */
+    _enterZone(desc, opts = {}) {
+        this.cancelAutoTravel();
+        this.closeTravel(false);
+        const entryEdge = opts.entryEdge || null;
 
         // Park the zone we are leaving. The player entity travels; the zone stays.
         if (this.world) {
             this.world.removeEntity(this.player);
         }
 
-        this._currentZoneCol = col;
-        this._currentZoneRow = row;
-        this.overworldMap.markExplored(col, row);
+        this._currentNodeId = desc.id;
+        if (desc.debugTile) {
+            this._currentZoneCol = desc.debugTile.col;
+            this._currentZoneRow = desc.debugTile.row;
+        } else {
+            // Keep the region cursor parked on the hub tile so the debug map
+            // still opens somewhere sensible.
+            this._currentZoneCol = this.overworldMap?.hubCol ?? 0;
+            this._currentZoneRow = this.overworldMap?.hubRow ?? 0;
+        }
 
-        const key = this.zoneKey(col, row);
-        const cached = this.zoneCache.get(key);
+        const cached = this.zoneCache.get(desc.id);
         const returning = !!cached;
 
         if (cached) {
             this.world = cached.world;
             this._initZoneSystems(cached.fov);
         } else {
-            // Compute chunk bounds from zone dimensions
-            const zw = owTile.zone.width;
-            const zh = owTile.zone.height;
+            const zw = desc.zone.width;
+            const zh = desc.zone.height;
             const chunksX = Math.ceil(zw / 128);
             const chunksY = Math.ceil(zh / 128);
 
-            // Build the zone world
             this.world = new World(this);
             this.world.zoneMode     = true;
-            this.world.forcedBiome = owTile.playBiome || owTile.biome;
-            this.world.worldSeed   = owTile.seed;
-            this.world.zoneWidth   = zw;
-            this.world.zoneHeight  = zh;
-            this.world.zoneBounds  = { minCx: 0, maxCx: chunksX - 1, minCy: 0, maxCy: chunksY - 1 };
-            this.world.zoneTemplate = owTile.zone; // faction, purpose, npcSignature, keyFeature
+            this.world.forcedBiome  = desc.playBiome;
+            this.world.worldSeed    = desc.seed;
+            this.world.zoneWidth    = zw;
+            this.world.zoneHeight   = zh;
+            this.world.zoneBounds   = { minCx: 0, maxCx: chunksX - 1, minCy: 0, maxCy: chunksY - 1 };
+            this.world.zoneTemplate = desc.zone; // faction, purpose, npcSignature, keyFeature
+            this.world.nodeId       = desc.id;
             this.world.init();
 
-            // Init all zone-dependent systems
             this._initZoneSystems();
-            this.zoneCache.set(key, { world: this.world, fov: this.fov, col, row });
+            this.zoneCache.set(desc.id, { world: this.world, fov: this.fov, node: desc });
         }
 
         // Generation may resize the zone (interior sites own their footprint),
@@ -210,10 +303,10 @@ export class Game {
         const activeW = this.world.zoneWidth;
         const activeH = this.world.zoneHeight;
 
-        // Determine player spawn position based on entry edge
+        // Where you appear: a site's entrance, an edge if you walked in over one,
+        // otherwise the zone's own arrival point (the hub's gate, a block's kerb).
         let spawnX, spawnY;
-        if (this.world.isInterior) {
-            // You always arrive at a site's entrance, whichever way you travelled.
+        if (this.world.isInterior || !entryEdge) {
             const sp = this.world.getSpawnPosition();
             spawnX = sp.x;
             spawnY = sp.y;
@@ -221,15 +314,8 @@ export class Game {
         else if (entryEdge === 'west')  { spawnX = 2;        spawnY = Math.floor(activeH / 2); }
         else if (entryEdge === 'east')  { spawnX = activeW - 3;    spawnY = Math.floor(activeH / 2); }
         else if (entryEdge === 'north') { spawnX = Math.floor(activeW / 2); spawnY = 2; }
-        else if (entryEdge === 'south') { spawnX = Math.floor(activeW / 2); spawnY = activeH - 3; }
-        else {
-            // Initial drop-in from overworld: use world spawn position
-            const sp = this.world.getSpawnPosition();
-            spawnX = sp.x;
-            spawnY = sp.y;
-        }
+        else                            { spawnX = Math.floor(activeW / 2); spawnY = activeH - 3; }
 
-        // Find a non-blocked tile near the target spawn
         const found = this._findOpenNear(spawnX, spawnY);
         this.player.x = found.x;
         this.player.y = found.y;
@@ -243,12 +329,10 @@ export class Game {
             this.player.facing = this.world.spawnFacing;
         }
 
-        // Add player to world (remove from previous world entity list first)
         if (!this.world.entities.includes(this.player)) {
             this.world.addEntity(this.player);
         }
 
-        // Give starting gear on first drop
         if (!this._loadoutGiven) {
             this.giveStartingLoadout();
             this._loadoutGiven = true;
@@ -256,11 +340,9 @@ export class Game {
 
         this.gameState = 'playing';
 
-        const threatMod = owTile.zone.threatMod || 0;
-        const threat = Math.max(1, Math.min(5, owTile.threatLevel + threatMod));
         const verb = returning ? 'Returning to' : 'Entering';
-        this.ui.log(`${verb}: ${owTile.zone.name} [${(owTile.terrain || owTile.biome).replace('_', ' ')}]  Threat: ${'★'.repeat(threat)}`, 'info');
-        if (this.timeSystem) {
+        this.ui.log(`${verb}: ${desc.name}  Threat: ${'★'.repeat(desc.threat)}`, 'info');
+        if (this.timeSystem && !opts.quiet) {
             this.ui.log(`Time: ${this.timeSystem.getTimeString()} - ${this.timeSystem.getTimePeriod()}`, 'info');
         }
         if (this.world.isInterior && !returning) {
@@ -271,7 +353,7 @@ export class Game {
         this.render();
     }
 
-    // ── Seamless zone transition when walking off an edge ──────────────────────
+    // ── Debug: walk off a region-tile edge into the neighbouring tile ─────────
     transitionZone(dx, dy) {
         const ow = this.overworldMap;
         const newCol = this._currentZoneCol + dx;
@@ -298,10 +380,6 @@ export class Game {
         if (dx === -1) { entryEdge = 'east';  entryX = newW - 3; entryY = Math.round(ratioY * newH); }
         if (dy === 1)  { entryEdge = 'north'; entryX = Math.round(ratioX * newW); entryY = 2; }
         if (dy === -1) { entryEdge = 'south'; entryX = Math.round(ratioX * newW); entryY = newH - 3; }
-
-        // Update overworld cursor
-        ow.cursorCol = newCol;
-        ow.cursorRow = newRow;
 
         this.dropIntoZone(newCol, newRow, entryEdge);
 
@@ -331,10 +409,148 @@ export class Game {
         return this.world.getSpawnPosition();
     }
 
-    // ── Open overworld map (non-destructive — zone state is preserved) ─────────
-    returnToOverworld() {
+    // ── Travel screen (the district graph) ────────────────────────────────────
+    /**
+     * Open the travel screen from the current node. `reason` is 'edge' when
+     * the player walked off the zone, 'exit' when they used a site's door.
+     */
+    openTravel(reason = null) {
+        if (!this.world || !this.player) return;
         this.cancelAutoTravel();
-        // Sync the overworld cursor back to wherever the player currently is
+        const nodeId = this._currentNodeId;
+        if (!getNode(nodeId, this.district)) {
+            // On a debug tile the graph does not apply; show the region map.
+            this.openDebugMap();
+            return;
+        }
+        const options = routesFrom(nodeId, this.district).map(o => ({
+            ...o,
+            locked: !!(o.route.lock && !this.flags[o.route.lock.flag])
+        }));
+        // Keep the previous selection when reopening from the same node.
+        let index = 0;
+        if (this.travel && this.travel.from === nodeId) index = Math.min(this.travel.index, options.length - 1);
+        this.travel = { from: nodeId, options, index: Math.max(0, index) };
+        this.gameState = 'travel';
+        if (reason === 'edge') this.ui.log(`You reach the edge of ${this.currentNode()?.name || 'the block'}. Where to?`, 'info');
+        this.render();
+    }
+
+    closeTravel(render = true) {
+        if (this.gameState !== 'travel') return;
+        if (!this.world) return;
+        this.gameState = 'playing';
+        if (render) this.render();
+    }
+
+    /** Move the destination selection by +1 / -1. */
+    travelSelect(step) {
+        if (this.gameState !== 'travel' || !this.travel) return;
+        const n = this.travel.options.length;
+        if (!n) return;
+        this.travel.index = ((this.travel.index + step) % n + n) % n;
+        this.render();
+    }
+
+    travelSelection() {
+        if (!this.travel) return null;
+        return this.travel.options[this.travel.index] || null;
+    }
+
+    /** Take the selected route. */
+    travelGo() {
+        if (this.gameState !== 'travel') return;
+        const sel = this.travelSelection();
+        if (!sel) return;
+        this.travelRoute(sel.route, sel.dest);
+    }
+
+    /**
+     * Estimate what a route will cost right now: turns, effective danger, and
+     * survival drain. Shown before the player commits; used again to resolve.
+     */
+    routeEstimate(route) {
+        const turns = route.turns;
+        const mult = dangerMultiplier(this.timeSystem);
+        const danger = Math.min(0.95, route.danger * mult);
+        const p = this.player;
+        return {
+            turns,
+            danger,
+            nightMult: mult,
+            hungerCost: turns * (p?.hungerRate || 0),
+            thirstCost: turns * (p?.thirstRate || 0)
+        };
+    }
+
+    /**
+     * Resolve travelling a route: refuse if locked, pass the time detached from
+     * any zone, arrive, then roll for trouble. Phase 1 stub: a loud roll drops
+     * a hostile near the arrival point; Phase 2 replaces that with a slice.
+     */
+    travelRoute(route, dest) {
+        if (!this.isRunning || !this.player || this.player.isDead()) return false;
+        if (route.lock && !this.flags[route.lock.flag]) {
+            this.ui.log(`${route.name}: ${route.lock.reason}`, 'warning');
+            return false;
+        }
+        const est = this.routeEstimate(route);
+        const from = this.currentNode();
+        const startTime = this.timeSystem.getTimeString();
+
+        // Detach from the zone we are leaving before time passes so its NPCs do
+        // not act around a player who is no longer there.
+        this.world.removeEntity(this.player);
+        this.gameState = 'playing';
+        const passed = this.passTime(est.turns, { detached: true, render: false });
+        if (passed.interrupted === 'death') return false;
+
+        this.enterNode(dest.id, { quiet: true });
+
+        const h = Math.floor(passed.turns / 60);
+        const m = passed.turns % 60;
+        const span = `${h ? `${h}h ` : ''}${m}m`.trim();
+        this.ui.log(`${route.name}: ${from?.name || 'the road'} to ${dest.name}, ${span}. Left ${startTime}, arrived ${this.timeSystem.getTimeString()}.`, 'info');
+
+        const loud = Math.random() < est.danger;
+        if (!loud) {
+            this.ui.log(est.nightMult > 1 ? 'A dark walk, but a quiet one.' : 'The way was quiet.', 'info');
+        } else if (dest.kind === 'hub') {
+            this.ui.log('Something followed you as far as the gate, then thought better of it.', 'warning');
+        } else {
+            this.ui.log('Trouble found you on the way in.', 'warning');
+            this._spawnArrivalTrouble();
+        }
+        this.render();
+        return true;
+    }
+
+    /** Phase 1 stand-in for a route slice: one hostile a few cells off. */
+    _spawnArrivalTrouble() {
+        const p = this.player;
+        for (let r = 3; r <= 6; r++) {
+            for (let dy = -r; dy <= r; dy++) {
+                for (let dx = -r; dx <= r; dx++) {
+                    if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+                    const x = p.x + dx;
+                    const y = p.y + dy;
+                    if (this.world.isBlocked(x, y, p.z)) continue;
+                    if (!this.fov.hasLineOfSight(p.x, p.y, x, y)) continue;
+                    const npc = new NPC(this, 'debug_hostile', x, y);
+                    npc.z = p.z;
+                    npc.name = 'Roadside Mugger';
+                    this.world.addEntity(npc);
+                    this.updateFoV();
+                    return npc;
+                }
+            }
+        }
+        return null;
+    }
+
+    // ── Region map (debug; the future region layer) ────────────────────────────
+    openDebugMap() {
+        this.cancelAutoTravel();
         if (this.overworldMap) {
             this.overworldMap.cursorCol = this._currentZoneCol;
             this.overworldMap.cursorRow = this._currentZoneRow;
@@ -343,9 +559,13 @@ export class Game {
         this.render();
     }
 
-    // ── Close overworld map and return to active zone ─────────────────────────
+    /** Kept for callers that predate the travel screen. */
+    returnToOverworld() {
+        this.openTravel('exit');
+    }
+
     closeOverworld() {
-        if (!this.world) return; // no active zone yet
+        if (!this.world) return;
         this.gameState = 'playing';
         this.render();
     }
@@ -376,8 +596,11 @@ export class Game {
                 const nx = this.player.x + action.dx;
                 const ny = this.player.y + action.dy;
                 if (nx < 0 || nx >= this.world.zoneWidth || ny < 0 || ny >= this.world.zoneHeight) {
-                    this.transitionZone(action.dx, action.dy);
-                    return; // transitionZone handles render
+                    // On a district node the edge is where you pick a route.
+                    // On a debug region tile you still walk into the neighbour.
+                    if (this.currentNode()) this.openTravel('edge');
+                    else this.transitionZone(action.dx, action.dy);
+                    return; // both handle render
                 }
             }
         } else if (action.type === 'wait') {
@@ -396,7 +619,7 @@ export class Game {
             const here = this.world.getTile(this.player.x, this.player.y, this.player.z);
             if (here?.isSiteExit) {
                 this.ui.log(`You step back out of ${this.world.siteName || 'the building'}.`, 'info');
-                this.returnToOverworld();
+                this.openTravel('exit');
                 return;
             }
             playerActed = this.player.tryAscend();
@@ -656,11 +879,15 @@ export class Game {
      * @param {object} opts
      *   sleeping     - halves hunger/thirst drain and wakes on nearby hostiles
      *   wakeRadius   - Manhattan distance at which a hostile wakes a sleeper
+     *   detached     - the player is between zones (route travel): the clock,
+     *                  fuel, and the body run; no zone's NPCs or sounds do
+     *   render       - redraw at the end (default true)
      * @returns {{ turns: number, interrupted: string|null }}
      */
     passTime(turns, opts = {}) {
         if (!this.isRunning) return { turns: 0, interrupted: 'not running' };
         const sleeping = !!opts.sleeping;
+        const detached = !!opts.detached;
         const wakeRadius = opts.wakeRadius ?? 10;
         const p = this.player;
 
@@ -678,15 +905,17 @@ export class Game {
                 this.timeSystem.tick();
                 this.lightingSystem.consumeFuel();
                 p.processStatusEffects();
-                this.world.processTurn(100);
-                this.soundSystem.processTurn();
+                if (!detached) {
+                    this.world.processTurn(100);
+                    this.soundSystem.processTurn();
+                }
                 this.abilitySystem?.processTurn();
                 if (p.isDead()) {
                     interrupted = 'death';
                     done++;
                     break;
                 }
-                if (sleeping && done % 5 === 4 && this._hostileWithin(wakeRadius)) {
+                if (sleeping && !detached && done % 5 === 4 && this._hostileWithin(wakeRadius)) {
                     interrupted = 'hostile';
                     done++;
                     break;
@@ -697,9 +926,9 @@ export class Game {
             p.thirstRate = savedRates.thirst;
         }
 
-        this.updateFoV();
+        if (!detached) this.updateFoV();
         this.checkGameOver();
-        this.render();
+        if (opts.render !== false) this.render();
         return { turns: done, interrupted };
     }
 
@@ -1019,6 +1248,11 @@ export class Game {
             return;
         }
 
+        if (this.gameState === 'travel') {
+            this.renderTravel();
+            return;
+        }
+
         if (this.isFirstPerson()) {
             this.renderFirstPerson();
             return;
@@ -1111,6 +1345,171 @@ export class Game {
         if (dy < 0) return 'north';
         if (dy > 0) return 'south';
         return dx < 0 ? 'west' : 'east';
+    }
+
+    // ── Travel screen rendering ───────────────────────────────────────────────
+    /**
+     * The district graph on the game canvas: every node at its catalog
+     * position, routes as lines, the current node and the selected destination
+     * highlighted, travel time on the routes you can take from here.
+     */
+    renderTravel() {
+        const ctx = this.renderer.ctx;
+        const W = this.renderer.canvas.width;
+        const H = this.renderer.canvas.height;
+        const t = this.travel;
+        const district = this.district;
+        if (!ctx || !t || !district) return;
+
+        ctx.save();
+        ctx.fillStyle = '#07090c';
+        ctx.fillRect(0, 0, W, H);
+
+        // Faint grid so the screen reads as a map, not a blank.
+        ctx.strokeStyle = 'rgba(80,110,130,0.10)';
+        ctx.lineWidth = 1;
+        for (let x = 0; x < W; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+        for (let y = 0; y < H; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+
+        const top = 64, bottom = 44, side = 24;
+        const nodeW = Math.max(112, Math.min(176, Math.floor(W * 0.15)));
+        const nodeH = 46;
+        const usableW = W - side * 2 - nodeW;
+        const usableH = H - top - bottom - nodeH;
+        const centre = (node) => ({
+            x: side + nodeW / 2 + node.pos[0] * usableW,
+            y: top + nodeH / 2 + node.pos[1] * usableH
+        });
+
+        const here = this.currentNode();
+        const sel = this.travelSelection();
+        const selDest = sel?.dest?.id;
+        const selRoute = sel?.route;
+        const fromHere = new Set(t.options.map(o => o.dest.id));
+        const visited = (id) => this.zoneCache.has(id);
+
+        // Title strip
+        ctx.fillStyle = '#0d1218';
+        ctx.fillRect(0, 0, W, top - 12);
+        ctx.fillStyle = '#7fe0e8';
+        ctx.font = 'bold 15px monospace';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(district.name.toUpperCase(), 20, 20);
+        ctx.fillStyle = '#9aa1ad';
+        ctx.font = '13px monospace';
+        ctx.fillText(`You are at ${here?.name || '?'}`, 20, 40);
+        ctx.textAlign = 'right';
+        const ts = this.timeSystem;
+        if (ts) {
+            ctx.fillStyle = ts.isNight() ? '#7f9cff' : '#ffd36a';
+            ctx.fillText(`${ts.getTimeString()}  ${ts.getTimePeriod()}  Day ${ts.getDay()}`, W - 20, 20);
+            if (ts.isDark()) {
+                ctx.fillStyle = '#e0a04a';
+                ctx.fillText(ts.isNight() ? 'Night: routes are much more dangerous' : 'Dusk: routes are more dangerous', W - 20, 40);
+            }
+        }
+
+        // Routes
+        const drawEdge = (r, style) => {
+            const a = getNode(r.a, district), b = getNode(r.b, district);
+            if (!a || !b) return;
+            const pa = centre(a), pb = centre(b);
+            ctx.save();
+            ctx.strokeStyle = style.color;
+            ctx.lineWidth = style.width;
+            ctx.setLineDash(style.dash || []);
+            ctx.beginPath(); ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y); ctx.stroke();
+            ctx.restore();
+            return { mx: (pa.x + pb.x) / 2, my: (pa.y + pb.y) / 2 };
+        };
+        for (const r of district.routes) {
+            const touches = r.a === t.from || r.b === t.from;
+            const locked = r.lock && !this.flags[r.lock.flag];
+            if (touches) continue;
+            drawEdge(r, { color: locked ? 'rgba(120,60,60,0.5)' : 'rgba(90,110,130,0.45)', width: 1.5, dash: locked ? [4, 4] : [] });
+        }
+        const labels = [];
+        for (const o of t.options) {
+            const r = o.route;
+            const isSel = r === selRoute;
+            const mid = drawEdge(r, {
+                color: isSel ? '#ffdd44' : (o.locked ? 'rgba(200,90,90,0.8)' : 'rgba(140,210,230,0.85)'),
+                width: isSel ? 3 : 2,
+                dash: o.locked ? [5, 4] : []
+            });
+            if (mid) labels.push({ mid, o, isSel });
+        }
+
+        // Nodes
+        const KIND_GLYPH = { hub: '@', site: '#', block: '=' };
+        for (const [id, n] of Object.entries(district.nodes)) {
+            const node = { id, ...n };
+            const c = centre(node);
+            const x = c.x - nodeW / 2, y = c.y - nodeH / 2;
+            const isHere = id === t.from;
+            const isSel = id === selDest;
+            const reach = fromHere.has(id);
+            const opt = t.options.find(o => o.dest.id === id);
+            const locked = !!opt?.locked;
+            const seen = visited(id);
+
+            let fill = '#12161c', border = '#2e3640', text = seen ? '#d8dde5' : '#8a93a0', sub = '#6c7480';
+            if (isHere) { fill = '#0f2a1c'; border = '#00ff88'; text = '#e6ffe6'; sub = '#7fd8a8'; }
+            else if (isSel) { fill = locked ? '#2a1414' : '#2a2410'; border = locked ? '#ff6666' : '#ffdd44'; text = '#ffffff'; sub = locked ? '#ff9999' : '#ffe9a0'; }
+            else if (reach) { border = locked ? '#7a3a3a' : '#4fa8b8'; }
+
+            ctx.fillStyle = fill;
+            ctx.strokeStyle = border;
+            ctx.lineWidth = isHere || isSel ? 2.5 : 1.5;
+            ctx.setLineDash(locked && !isSel ? [4, 3] : []);
+            ctx.beginPath();
+            ctx.roundRect ? ctx.roundRect(x, y, nodeW, nodeH, 6) : ctx.rect(x, y, nodeW, nodeH);
+            ctx.fill(); ctx.stroke();
+            ctx.setLineDash([]);
+
+            ctx.fillStyle = text;
+            ctx.font = 'bold 12px monospace';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(node.name, c.x, c.y - 8, nodeW - 14);
+            ctx.fillStyle = sub;
+            ctx.font = '10.5px monospace';
+            const kindText = node.kind === 'hub' ? 'hub' : node.kind;
+            const stars = '★'.repeat(node.threat || 1);
+            const status = isHere ? 'here' : seen ? 'visited' : 'unvisited';
+            ctx.fillText(`${KIND_GLYPH[node.kind] || '?'} ${kindText} · ${stars} · ${status}`, c.x, c.y + 10, nodeW - 14);
+        }
+
+        // Route labels last so they sit above whatever they cross.
+        for (const { mid, o, isSel } of labels) {
+            const est = this.routeEstimate(o.route);
+            const label = o.locked ? 'locked' : `${est.turns}m`;
+            ctx.font = 'bold 11px monospace';
+            const tw = ctx.measureText(label).width + 10;
+            ctx.fillStyle = isSel ? '#ffdd44' : '#0d1218';
+            ctx.fillRect(mid.mx - tw / 2, mid.my - 9, tw, 18);
+            ctx.strokeStyle = isSel ? '#ffdd44' : (o.locked ? '#aa5555' : '#4fa8b8');
+            ctx.lineWidth = 1;
+            ctx.setLineDash([]);
+            ctx.strokeRect(mid.mx - tw / 2, mid.my - 9, tw, 18);
+            ctx.fillStyle = isSel ? '#111' : (o.locked ? '#dd8888' : '#bfe4ff');
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(label, mid.mx, mid.my);
+        }
+
+        // Hint bar
+        ctx.fillStyle = '#0d1218';
+        ctx.fillRect(0, H - bottom + 8, W, bottom - 8);
+        ctx.fillStyle = '#8a93a0';
+        ctx.font = '12px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('A / D  or  ◄ ►  choose a route   ·   Enter  go   ·   Tab  back   ·   F8  region map (debug)', W / 2, H - bottom / 2 + 4);
+        ctx.restore();
+
+        this.ui.updateTravelPanel();
+        if (this.mobileControls) this.mobileControls.updateHUD();
     }
 
     // ── Overworld rendering ────────────────────────────────────────────────────

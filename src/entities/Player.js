@@ -126,12 +126,15 @@ export class Player extends Entity {
         this.cybernetics = [];
         this.statusEffects = [];
         
+        // Drain per turn (1 turn = 1 minute). Sized for a day-long run loop:
+        // about 42 hours from full to starving, 24 hours from full to
+        // dehydrated, halved while sleeping. Travel charges these directly.
         this.hunger = 100;
         this.maxHunger = 100;
-        this.hungerRate = 0.1;
+        this.hungerRate = 0.04;
         this.thirst = 100;
         this.maxThirst = 100;
-        this.thirstRate = 0.2;
+        this.thirstRate = 0.07;
         
         // Energy system — tracks cost of last action for world tick scaling
         this.lastActionCost = 100;

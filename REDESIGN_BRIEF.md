@@ -1,7 +1,7 @@
 # Night Run Redesign Brief
 
 **Date:** September 2026
-**Status:** Direction adopted. Phase 0 shipped. Phases 1 to 5 are the roadmap.
+**Status:** Direction adopted. Phases 0 and 1 shipped. Phases 2 to 5 are the roadmap.
 
 This is the design record for the hub-and-run redesign that followed the
 first-person pivot. It replaces the "Street Kid intro / journal / POI"
@@ -18,9 +18,9 @@ Numbered so the roadmap can refer to them.
 |---|---------|------|
 | F-1 | Nothing outside the player persisted between visits. Every drop-in built a fresh `World` from the seed: cabinets refilled, doors relocked, dropped items vanished. **Fixed in Phase 0.** | blocker |
 | F-2 | The starting hub was unreachable once you left it. Downstairs was built by a start-only code path on the centre tile, whose real zone was whatever the pool rolled. **Fixed in Phase 0.** | blocker |
-| F-3 | The overworld is a 160x100 tile grid. 40% is open water. Landmark zones with proper-noun names recur hundreds of times (Old Town Hall 392x in one seed). Fine as a region map, wrong as the travel surface. | friction |
+| F-3 | The overworld is a 160x100 tile grid. 40% is open water. Landmark zones with proper-noun names recur hundreds of times (Old Town Hall 392x in one seed). Fine as a region map, wrong as the travel surface. **Replaced by the district graph in Phase 1.** | friction |
 | F-4 | Street zones are 128x128 lots shaped for a top-down camera. In first person they read as a flat plane fading to fog. Open space is illegible in a grid crawler; walls give you position. | friction |
-| F-5 | Sites exit to the map screen, not to a place. No spatial continuity between buildings. | friction |
+| F-5 | Sites exit to the map screen, not to a place. No spatial continuity between buildings. **Sites now exit to the travel screen at their own node (Phase 1); walkable streets come in Phase 2.** | friction |
 | F-6 | No pull and no end: no extraction points generate, no NPCs spawn, sites have furniture but zero floor items. | friction |
 | F-7 | Design docs disagreed with the code (locked milestone referenced removed systems). **Fixed alongside Phase 0.** | friction |
 | F-8 | The simulation stack (anatomy combat, abilities, crafting, containers, survival, time, lighting) is deep and does not need to move. | asset |
@@ -205,11 +205,13 @@ Each phase leaves the game playable and smoke-testable per `CLAUDE.md`.
 arrival at the South Gate; baked hub lights; Crew Stash; bunks with Rest and
 Sleep (metabolism halved, wakes on hostiles, cost shown before you commit).
 
-**Phase 1: district graph replaces overworld travel.**
-`DistrictCatalog` (nodes, entrances, routes with length, danger, lock);
-travel screen replaces the Tab map (grid behind a debug key); site exit
-returns to the node you came from or to the route; route resolution with
-time cost, survival drain, danger roll; slices stubbed.
+**Phase 1 (done): district graph replaces overworld travel.**
+`DistrictCatalog` with twelve nodes and fourteen routes (time, danger, two
+locks); the Tab travel screen with full cost preview; block edges and site
+exits open it; `travelRoute` charges time and drain detached from any zone
+and rolls danger with a night multiplier; a loud roll is stubbed as one
+hostile at the arrival point. Tile grid behind `F8`. Survival drain retuned
+(hunger 0.04, thirst 0.07 per turn) now that travel charges time.
 
 **Phase 2: streets as corridors, slices, and light.**
 `block` layout in the interior generator (wide halls, shopfront rooms,

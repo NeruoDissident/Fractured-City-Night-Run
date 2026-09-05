@@ -27,13 +27,14 @@ Where things stand:
   entrance.
 - **Places persist.** Every zone you visit stays as you left it: looted
   cabinets stay empty, opened doors stay open, dropped items stay put.
-- **Downstairs is home.** It sits on the centre of the map and you can always
-  go back. It has a Crew Stash for banking your haul and bunks you can rest or
-  sleep on to pass time.
+- **Downstairs is home.** You can always go back. It has a Crew Stash for
+  banking your haul and bunks you can rest or sleep on to pass time.
+- **You travel on a district map.** `Tab` shows the places you can reach from
+  where you stand, what each route costs in time, hunger, thirst, and risk,
+  and takes you there. Night makes every route worse. Two routes start locked.
 
-Next is the district graph that replaces overworld travel, then streets
-rebuilt as corridors with enterable storefronts. See `CLAUDE.md` for the
-working rules.
+Next is streets rebuilt as corridors with enterable storefronts, and route
+slices for when a trip goes wrong. See `CLAUDE.md` for the working rules.
 
 ## Implemented Systems
 
@@ -52,6 +53,7 @@ working rules.
 - Interior sites: multi-floor buildings with corridors, rooms, doors, stairwells,
   and baked emergency lighting
 - Zone persistence: visited zones keep their state for the whole run
+- District travel graph with timed, risky routes and a travel screen
 - Hub with a player-owned stash and bunks (rest an hour, or sleep until dawn or
   dusk with the cost shown up front)
 - Auto-explore (`O`) toward unexplored ground
@@ -87,7 +89,8 @@ Top-down view:
 - `O`: auto-explore
 - `F9` / `Shift+F9`: debug spawn a hostile / bystander ahead
 - `B`: combat detail overlay
-- `Tab`: overworld map
+- `Tab`: travel screen (routes from where you are; also opens when you walk off a block's edge or step out of a building)
+- `F8`: region tile map (debug)
 - `I`: inventory
 - `C`: character sheet
 - `V`: workshop
@@ -131,6 +134,7 @@ For cache problems during local testing, use `dev-reset.html` or hard-refresh. T
 - `src/content/TalentCatalog.js` - talent trees, nodes, effects
 - `src/content/NpcCatalog.js` - NPC templates (placeholders until the new roster)
 - `src/content/SiteCatalog.js` - interior site profiles (floors, layouts, lighting)
+- `src/content/DistrictCatalog.js` - the travel graph: places, routes, locks
 - `src/systems/AbilitySystem.js` - talent-gated abilities and effects
 - `src/systems/CombatSystem.js` - anatomy combat resolution
 - `src/systems/CraftingSystem.js` - crafting/disassembly
@@ -159,10 +163,9 @@ For cache problems during local testing, use `dev-reset.html` or hard-refresh. T
 
 The roadmap lives in `REDESIGN_BRIEF.md`. In order:
 
-1. District graph and travel screen replace overworld travel (Phase 1).
-2. Streets as corridors with sky and enterable storefronts; route slices;
+1. Streets as corridors with sky and enterable storefronts; route slices;
    walkable routes near the hub (Phase 2).
-3. Roster, hub needs, contracts, set pieces, encounter budgets (Phase 3).
-4. Projects and one extraction path end to end; save/load (Phase 4).
+2. Roster, hub needs, contracts, set pieces, encounter budgets (Phase 3).
+3. Projects and one extraction path end to end; save/load (Phase 4).
 
 Cone FoV, facing-aware combat, and wall textures run alongside.

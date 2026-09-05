@@ -44,6 +44,22 @@ Assume:
 
 ---
 
+### District Travel
+**Files:** `src/content/DistrictCatalog.js`, `src/core/Game.js`, `src/ui/UIManager.js`
+
+**Purpose:** Places are nodes on a graph; you move between them on routes that cost time and risk.
+
+**Flow:**
+1. `Tab`, walking off a block's edge, or `<` at a site entrance calls `Game.openTravel()`.
+2. The screen lists `routesFrom(currentNode)`; A/D cycle, Enter goes.
+3. `Game.travelRoute(route, dest)`: locked routes refuse with their reason; otherwise the player detaches, `passTime(turns, { detached: true })` runs the body and fuel, `enterNode(dest)` places you at the destination's arrival point, and a danger roll (`route.danger` × 1.25 at dusk, × 1.6 at night) may place one hostile nearby (Phase 1 stub for slices).
+
+**What the player sees before committing:** time and arrival clock, danger label, hunger and thirst cost, visited/unvisited, lock reason.
+
+**Survival rates:** hunger 0.04/turn, thirst 0.07/turn; halved while sleeping.
+
+---
+
 ### Auto-Explore
 **Files:** `src/core/Game.js`
 

@@ -4,7 +4,7 @@
 
 The project has shifted from primarily infinite chunk generation toward **bounded zone generation connected by an overworld**. Old `Chunk.js` generation still exists and some sections below describe it historically, but the active design path is:
 
-`OverworldMap` chooses a zone tile -> `Game.dropIntoZone()` returns the cached zone-mode `World` for that tile or creates one -> on first visit `ZoneGenerator` and `ZoneCanvas` build a detailed map from templates/fragments -> the player explores it in first person -> leaving parks the zone in `Game.zoneCache`.
+`DistrictCatalog` names a node -> `Game.enterNode()` returns the cached zone-mode `World` for that node or creates one from the node's zone template -> on first visit `ZoneGenerator` and `ZoneCanvas` (or `InteriorGenerator`) build the map -> the player explores it in first person -> `Tab`, a block edge, or a site exit opens the travel screen -> `Game.travelRoute()` charges time and drain and enters the next node -> the zone left behind stays parked in `Game.zoneCache`.
 
 The quest chain, goal board, delivery errands, POIs/Known Places, and the old NPC roster were removed during the first-person pivot. The game is now being built around a hub-and-run structure; `REDESIGN_BRIEF.md` is the design record and roadmap, and `CLAUDE.md` has the working rules. The tile overworld is shelved as the travel surface (a district graph replaces it in Phase 1) but the code stays for a later region map.
 
@@ -33,10 +33,13 @@ ASCII is currently the primary development view. Sprites remain supported, but e
 **Key Methods:**
 - `init()` - Initializes all subsystems
 - `startGame(characterData)` - Begins a new run at the hub
-- `dropIntoZone(col, row, entryEdge)` - Get-or-create a zone from `zoneCache`, move the player into it
+- `enterNode(nodeId, opts)` - Get-or-create a district node's zone from `zoneCache`, move the player into it
+- `dropIntoZone(col, row, entryEdge)` - Same for a region-map tile (debug)
+- `openTravel(reason)` / `travelSelect(step)` / `travelGo()` - The travel screen
+- `routeEstimate(route)` / `travelRoute(route, dest)` - Cost preview and resolution
 - `processTurn(action)` - Advances world by one tick
 - `advanceTurn(turns)` - A few turns for an action (open a door, search)
-- `passTime(turns, opts)` - Many turns in one step (sleep; route travel later)
+- `passTime(turns, opts)` - Many turns in one step (sleep, route travel)
 - `render()` - Triggers rendering pipeline
 
 **Expansion Points:**
@@ -104,9 +107,9 @@ ASCII is currently the primary development view. Sprites remain supported, but e
 - T: Cycle combat stance (talent-gated)
 - B: Toggle combat overlay
 - Q: Talent & Ability panel
-- J: Journal/current entries
 - O: Auto-explore
-- Tab: Toggle Overworld map
+- Tab: Travel screen (district routes)
+- F8: Region tile map (debug)
 - F: Toggle explore mode
 - < / >: Use stairs/manholes
 - Escape: Close all modals / Exit inspect mode
@@ -561,10 +564,45 @@ it for the bed actions `rest` (60 turns) and `sleep`
 (`getSleepPlan()`: until 06:00 or 18:00, whichever is next, minimum an hour).
 
 **Expansion Points:**
-- Graph node ids instead of `col,row` keys (Phase 1)
-- Route travel through `passTime` with drain and danger (Phase 1)
 - Catch-up simulation for parked zones
 - Serialisation of the cache (Phase 4)
+
+---
+
+### 17c. District Travel (`src/content/DistrictCatalog.js`, `src/core/Game.js`)
+**Responsibility:** The travel surface. Places are graph nodes; moving between
+them costs time and risk.
+
+**Catalog.** `DISTRICT.nodes` (id, name, `zone` template id, `kind`, `threat`,
+`pos`, `blurb`) and `DISTRICT.routes` (`a`, `b`, `name`, `turns`, `danger`,
+`desc`, optional `lock: { flag, reason }`). Helpers: `getNode`, `routesFrom`,
+`dangerLabel`, `dangerMultiplier`.
+
+**Entry.** `Game._describeNode(id)` resolves the node's zone template through
+`findZoneTemplate` (all `ZONE_POOLS` plus `HUB_ZONE`), applies the site
+profile footprint when the template is a site, and derives a stable seed with
+`hashString(nodeId, runSeed)`. `_enterZone(desc)` is shared with the debug
+`dropIntoZone`, which builds a descriptor from a tile instead.
+
+**Travel screen.** `gameState 'travel'`; `Game.travel = { from, options,
+index }` where options are `routesFrom(current)` with `locked` resolved
+against `game.flags`. `renderTravel` draws the graph on the canvas; the UI's
+`updateTravelPanel` shows the selected route's time, arrival clock, danger,
+drain, and lock reason. Keyboard: A/D or arrows cycle, Enter or Space go,
+Tab or Esc close. Mobile: d-pad cycles, ACT or centre goes, MAP toggles.
+
+**Resolution.** `travelRoute(route, dest)`: refuse locked; remove the player
+from the current world; `passTime(turns, { detached: true })` so the clock,
+fuel, hunger, thirst, and wounds run without any zone ticking; `enterNode`;
+roll `Math.random() < routeEstimate(route).danger`. Loud: log and
+`_spawnArrivalTrouble()` (one hostile in line of sight, 3 to 6 cells off),
+never at the hub. Quiet: log.
+
+**Expansion Points:**
+- Route slices for loud rolls (Phase 2)
+- Walkable routes: a block with two exits (Phase 2)
+- Per-entrance routes; faction-modified danger and locks (Phase 3)
+- Projects setting lock flags (Phase 4)
 
 ---
 
@@ -632,7 +670,7 @@ Fractured-City-Night-Run/
 │   │   ├── World.js       # Zone-mode world, entities/items/objects, Z-levels
 │   │   ├── Chunk.js       # Legacy chunk generation (not the active path)
 │   │   ├── WorldObject.js # Base class for interactive objects
-│   │   ├── OverworldMap.js # 160×100 region grid, hub tile, zone pools
+│   │   ├── OverworldMap.js # 160×100 region grid (debug map), hub tile, zone pools, findZoneTemplate
 │   │   ├── gen/
 │   │   │   ├── ZoneGenerator.js   # Zone entrypoint, hub layout, street layouts (being retired)
 │   │   │   ├── InteriorGenerator.js # Multi-floor sites (model for Phase 2 blocks)
@@ -665,6 +703,7 @@ Fractured-City-Night-Run/
 │   │   ├── ContentManager.js    # Data-driven items, components, materials
 │   │   ├── NpcCatalog.js        # NPC templates (placeholders)
 │   │   ├── SiteCatalog.js       # Interior site profiles
+│   │   ├── DistrictCatalog.js   # Travel graph: nodes, routes, locks
 │   │   └── TalentCatalog.js     # Talent trees, nodes, effects
 │   ├── utils/
 │   │   └── noise.js

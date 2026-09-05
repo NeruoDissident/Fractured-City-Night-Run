@@ -160,7 +160,20 @@ export class InputHandler {
         if (e.key === 'Tab') {
             e.preventDefault();
             if (this.game.gameState === 'playing') {
-                this.game.returnToOverworld();
+                this.game.openTravel();
+            } else if (this.game.gameState === 'travel') {
+                this.game.closeTravel();
+            } else if (this.game.gameState === 'overworld') {
+                this.game.closeOverworld();
+            }
+            return;
+        }
+
+        // F8: the region tile map. Debug only until it becomes the region layer.
+        if (e.key === 'F8') {
+            e.preventDefault();
+            if (this.game.gameState === 'playing' || this.game.gameState === 'travel') {
+                this.game.openDebugMap();
             } else if (this.game.gameState === 'overworld') {
                 this.game.closeOverworld();
             }
@@ -219,6 +232,27 @@ export class InputHandler {
             return;
         }
         
+        // ── Travel screen: pick a route, go ────────────────────────────────────────
+        if (this.game.gameState === 'travel') {
+            const intent = this._relativeIntent(e.key);
+            if (intent) {
+                e.preventDefault();
+                this.game.travelSelect(intent === 'left' || intent === 'back' ? -1 : 1);
+                return;
+            }
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                this.game.travelGo();
+                return;
+            }
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                this.game.closeTravel();
+                return;
+            }
+            return; // block other keys while travelling
+        }
+
         // ── Overworld navigation ────────────────────────────────────────────────────
         if (this.game.gameState === 'overworld') {
             const ow = this.game.overworldMap;

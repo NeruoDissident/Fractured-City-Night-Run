@@ -4,6 +4,7 @@ import { showWorldObjectModal, showFurnitureContentsModal } from './WorldObjectM
 import { Anatomy } from '../entities/Anatomy.js';
 import { getPropertyLabel, PROPERTY_LABELS } from '../content/ContentManager.js';
 import { TalentEffects, TALENT_TREES, TALENT_NODES } from '../content/TalentCatalog.js';
+import { dangerLabel } from '../content/DistrictCatalog.js';
 
 export class UIManager {
     constructor(game) {
@@ -523,6 +524,87 @@ export class UIManager {
         this.locationPanel.innerHTML = html;
     }
     
+    /**
+     * Side panels while the travel screen is up: who you are, the route you
+     * have selected with everything it will cost, and the controls.
+     */
+    updateTravelPanel() {
+        const game = this.game;
+        const sel = game.travelSelection ? game.travelSelection() : null;
+        const here = game.currentNode ? game.currentNode() : null;
+
+        if (this.characterPanel && game.player) {
+            const p = game.player;
+            let html = `<h4 style="color:#00ff88;margin-bottom:8px;border-bottom:2px solid #00ff88;padding-bottom:5px;">OPERATIVE</h4>`;
+            html += `<div class="stat-line"><span class="stat-label">Name:</span> <span class="stat-value" style="color:#ffffff;">${p.name || 'Unknown'}</span></div>`;
+            html += `<div class="stat-line"><span class="stat-label">Hunger:</span> <span class="stat-value">${Math.round(p.hunger)}</span></div>`;
+            html += `<div class="stat-line"><span class="stat-label">Thirst:</span> <span class="stat-value">${Math.round(p.thirst)}</span></div>`;
+            const lights = game.lightingSystem?.getPlayerLightSources ? game.lightingSystem.getPlayerLightSources(p) : [];
+            if (lights && lights.length) {
+                html += `<div class="stat-line"><span class="stat-label">Light:</span> <span class="stat-value">on (burning fuel while you travel)</span></div>`;
+            }
+            this.characterPanel.innerHTML = html;
+        }
+
+        if (this.contextPanel) {
+            let html = `<h4 style="color:#ffaa00;margin-bottom:8px;border-bottom:2px solid #ffaa00;padding-bottom:5px;">ROUTE</h4>`;
+            html += `<div class="stat-line"><span class="stat-label">From:</span> <span class="stat-value" style="color:#00ff88;">${here?.name || '?'}</span></div>`;
+            if (!sel) {
+                html += `<div style="color:#888;margin-top:8px;">No routes from here.</div>`;
+            } else {
+                const { route, dest, locked } = sel;
+                const est = game.routeEstimate(route);
+                const kind = dest.kind === 'hub' ? 'Hub' : dest.kind === 'site' ? 'Building' : 'Street block';
+                const visited = game.zoneCache.has(dest.id);
+                const stars = '★'.repeat(dest.threat || 1) + '☆'.repeat(5 - (dest.threat || 1));
+                const threatColor = ['#448844','#888844','#aa7722','#cc4422','#ff2222'][(dest.threat || 1) - 1];
+                const dl = dangerLabel(est.danger);
+                const h = Math.floor(est.turns / 60), m = est.turns % 60;
+                const span = `${h ? `${h}h ` : ''}${m ? `${m}m` : ''}`.trim();
+                const ts = game.timeSystem;
+                let arrive = '';
+                if (ts) {
+                    const total = ts.startHour * 60 + ts.totalTurns + est.turns;
+                    const hh = Math.floor(total / 60) % 24, mm = total % 60;
+                    arrive = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+                }
+
+                html += `<div class="stat-line"><span class="stat-label">To:</span> <span class="stat-value" style="color:#ffffff;">${dest.name}</span></div>`;
+                html += `<div class="stat-line"><span class="stat-label">Kind:</span> <span class="stat-value">${kind}${visited ? ' · visited' : ' · unvisited'}</span></div>`;
+                html += `<div class="stat-line"><span class="stat-label">Threat:</span> <span class="stat-value" style="color:${threatColor};">${stars}</span></div>`;
+                if (dest.blurb) html += `<div style="color:#999;font-size:12px;margin:4px 0 8px;">${dest.blurb}</div>`;
+
+                html += `<div style="border-top:1px solid #333;margin:6px 0;"></div>`;
+                html += `<div class="stat-line"><span class="stat-label">Way:</span> <span class="stat-value" style="color:#ffcc44;">${route.name}</span></div>`;
+                if (route.desc) html += `<div style="color:#999;font-size:12px;margin:2px 0 6px;">${route.desc}</div>`;
+                if (locked) {
+                    html += `<div style="color:#ff6666;font-size:12px;margin:6px 0;">⚠ ${route.lock.reason}</div>`;
+                } else {
+                    html += `<div class="stat-line"><span class="stat-label">Time:</span> <span class="stat-value">${span}${arrive ? ` · arrive ${arrive}` : ''}</span></div>`;
+                    html += `<div class="stat-line"><span class="stat-label">Danger:</span> <span class="stat-value" style="color:${dl.color};">${dl.text}${est.nightMult > 1 ? ' (dark)' : ''}</span></div>`;
+                    html += `<div class="stat-line"><span class="stat-label">Cost:</span> <span class="stat-value">≈ ${Math.round(est.hungerCost)} hunger, ${Math.round(est.thirstCost)} thirst</span></div>`;
+                    if (game.player && game.player.thirst - est.thirstCost <= 0) {
+                        html += `<div style="color:#ff8800;font-size:11px;">⚠ You would arrive dehydrated.</div>`;
+                    } else if (game.player && game.player.hunger - est.hungerCost <= 0) {
+                        html += `<div style="color:#ff8800;font-size:11px;">⚠ You would arrive starving.</div>`;
+                    }
+                }
+            }
+            this.contextPanel.innerHTML = html;
+        }
+
+        if (this.locationPanel) {
+            let html = `<h4 style="color:#aaaaaa;margin-bottom:8px;border-bottom:2px solid #555555;padding-bottom:5px;">CONTROLS</h4>`;
+            html += `<div style="color:#888888;font-size:13px;line-height:1.8;">`;
+            html += `<div><span style="color:#ffcc44;">A / D, Arrows</span> — Choose a route</div>`;
+            html += `<div><span style="color:#ffcc44;">Enter / Space</span> — Go</div>`;
+            html += `<div><span style="color:#00ff88;">Tab / Esc</span> — Stay here</div>`;
+            html += `<div><span style="color:#666;">F8</span> — Region map (debug)</div>`;
+            html += `</div>`;
+            this.locationPanel.innerHTML = html;
+        }
+    }
+
     updateOverworldPanel() {
         const ow   = this.game.overworldMap;
         const tile = ow ? ow.getCurrentTile() : null;
@@ -650,11 +732,12 @@ export class UIManager {
             let html = `<h4 style="color:#aaaaaa;margin-bottom:8px;border-bottom:2px solid #555555;padding-bottom:5px;">CONTROLS</h4>`;
             html += `<div style="color:#888888;font-size:13px;line-height:1.8;">`;
             html += `<div><span style="color:#ffcc44;">WASD / Arrows</span> — Move cursor</div>`;
+            html += `<div style="color:#666;font-size:11px;margin-bottom:4px;">Region map (debug). Travel normally happens on the Tab screen.</div>`;
             if (onActiveZone) {
-                html += `<div><span style="color:#00ff88;">Enter / Tab</span> — Return to zone</div>`;
+                html += `<div><span style="color:#00ff88;">Enter / F8</span> — Return to zone</div>`;
             } else if (hasActiveZone) {
-                html += `<div><span style="color:#ffcc44;">Enter</span> — Travel here</div>`;
-                html += `<div><span style="color:#00ff88;">Tab</span> — Return to zone</div>`;
+                html += `<div><span style="color:#ffcc44;">Enter</span> — Drop into this tile</div>`;
+                html += `<div><span style="color:#00ff88;">F8</span> — Return to zone</div>`;
             } else {
                 html += `<div><span style="color:#ffcc44;">Enter / Space</span> — Enter zone</div>`;
             }
@@ -3876,7 +3959,9 @@ export class UIManager {
         html += '<div style="color: #888; font-size: 11px; margin-top: 4px;">In the top-down view WASD / arrows move on the map directly.</div>';
         html += '<div class="stat-line"><span class="stat-label">Space:</span> <span class="stat-value">Wait/Skip Turn</span></div>';
         html += '<div class="stat-line"><span class="stat-label">M:</span> <span class="stat-value">Cycle mode (Walk/Run/Crouch/Prone)</span></div>';
-        html += '<div class="stat-line"><span class="stat-label">< / >:</span> <span class="stat-value">Use stairs/manholes</span></div>';
+        html += '<div class="stat-line"><span class="stat-label">< / >:</span> <span class="stat-value">Use stairs / manholes; < at a building entrance steps back out</span></div>';
+        html += '<div class="stat-line"><span class="stat-label">Tab:</span> <span class="stat-value">Travel screen: pick a route to another place (also opens when you walk off the edge of a block)</span></div>';
+        html += '<div class="stat-line"><span class="stat-label">F8:</span> <span class="stat-value">Region tile map (debug)</span></div>';
         html += '<div style="color: #888; font-size: 11px; margin-top: 4px;">Running is fast but loud. Crouching is quiet. Prone is silent but very slow.</div>';
         html += '</div>';
         

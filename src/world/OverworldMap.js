@@ -146,6 +146,29 @@ export const HUB_ZONE = {
     npcSignature: [], tags: ['hub', 'safe', 'settled']
 };
 
+/**
+ * Look a zone template up by id across every pool (and the hub). Used by the
+ * district graph, whose nodes name zone templates rather than tiles.
+ * Returns { template, biome } or null.
+ */
+export function findZoneTemplate(zoneId) {
+    if (zoneId === HUB_ZONE.id) return { template: { ...HUB_ZONE }, biome: 'suburbs' };
+    for (const [biome, pool] of Object.entries(ZONE_POOLS)) {
+        const hit = pool.find(z => z.id === zoneId);
+        if (hit) return { template: { ...hit }, biome };
+    }
+    return null;
+}
+
+/** Stable per-node seed derived from the run seed. */
+export function hashString(str, seed = 0) {
+    let h = seed | 0;
+    for (let i = 0; i < str.length; i++) {
+        h = Math.imul(h ^ str.charCodeAt(i), 0x01000193);
+    }
+    return (h ^ (h >>> 15)) >>> 0;
+}
+
 function mulberry32(seed) {
     return function() {
         seed |= 0;

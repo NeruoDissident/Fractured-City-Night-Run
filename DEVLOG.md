@@ -77,6 +77,38 @@ Tuning note: thirst drains 0.2 per turn, so a full day awake costs about 290
 thirst and a ten-hour sleep at half rate costs 60. That is the existing rate,
 not a Phase 0 change, but it will need a look when routes start charging time.
 
+**Phase 1: the district graph is the travel surface.**
+- `src/content/DistrictCatalog.js`: twelve nodes (Downstairs, three street
+  blocks, eight sites) and fourteen routes with a name, a time in turns, a base
+  danger, and for two of them a lock behind a run flag. Nodes name zone
+  templates, so every place generates with the code that already existed.
+- `Tab` opens the travel screen: the graph drawn on the game canvas, the
+  current node and selected destination highlighted, travel time on every
+  route from here, and a side panel with the destination, the route, the time
+  and arrival clock, the danger read (Quiet / Uneasy / Risky / Bad idea, worse
+  after dark), the hunger and thirst cost, and the lock reason if any.
+- Walking off the edge of a block opens the same screen ("You reach the edge
+  of Market Corner. Where to?"), as does `<` at a site entrance. The edge is
+  where you choose a route; there is no longer a silent walk into a neighbour.
+- `Game.travelRoute`: refuse if locked, detach the player, pass the time with
+  the body and fuel running but no zone ticking, arrive, roll danger. A loud
+  roll places one hostile in line of sight a few cells from the arrival point
+  as a stand-in for the Phase 2 slice. Arriving at the hub never spawns.
+- `Game.enterNode` replaces the tile-based drop-in as the normal path; zones
+  cache by node id. `dropIntoZone` and the tile grid survive behind `F8` as a
+  debug region map.
+- Survival drain retuned for the day loop now that travel charges time:
+  hunger 0.04/turn and thirst 0.07/turn (from 0.1 and 0.2), so a full day
+  awake costs about 58 hunger and 100 thirst and a ten-hour sleep about 12
+  and 21. Food and drink values are unchanged.
+
+Verified headless: hub to Market Corner takes 30 turns and lands at 08:30
+with the drain applied; the block edge and the clinic exit both open the
+travel screen; a clinic door stays open across two round trips; Metro
+Stairwell refuses with its reason and passes once `pumps_fixed` is set; the
+night multiplier lifts a 0.25 route to 0.40 and the trouble stub fired on 3 of
+16 night trips; `F8` opens and closes the region map; zero page errors.
+
 ## Current Pivot
 
 The project has shifted toward an occupation-driven survival roguelike with dense traversable zones.
@@ -193,13 +225,13 @@ A turn-based survival roguelike set in a cyberpunk dystopia that is still barely
 ## 🚧 Current Sprint
 
 ### Active: Hub-and-Run Redesign (see REDESIGN_BRIEF.md)
-**Status:** Phase 0 complete, Phase 1 next  
+**Status:** Phases 0 and 1 complete, Phase 2 next  
 **Priority:** HIGH  
 
 Order:
 0. ✅ Zones persist; the hub is a node; stash; rest and sleep.
-1. District graph and travel screen replace overworld travel; route
-   resolution (time, drain, danger); site exit returns to a node.
+1. ✅ District graph and travel screen replace overworld travel; route
+   resolution (time, drain, danger); edges and site exits open the screen.
 2. `block` layout: streets as corridors with sky, enterable storefronts as
    rooms; route slices; walkable routes near the hub; daylight leak.
 3. Roster v1 (hub roles first), hub needs, contracts, set pieces, encounter
@@ -781,7 +813,8 @@ A roguelike where every run feels different, player choices matter, and the worl
 - [x] **Beta 0.10:** Talent System — 5 trees, 35+ nodes, ability/stance gating (Complete)
 - [x] **Beta 0.11:** Character Creation Overhaul — CoQ-style 3-column, talent chargen (Complete)
 - [x] **Beta 0.12:** First-person crawler view, interior sites, zone persistence, hub node (Complete)
-- [ ] **Beta 0.13:** District graph and travel; streets as corridors with storefronts
+- [x] **Beta 0.13:** District graph and travel screen (Complete)
+- [ ] **Beta 0.13b:** Streets as corridors with storefronts; route slices
 - [ ] **Beta 0.14:** Roster, hub needs, contracts, set pieces
 - [ ] **Beta 0.15:** Projects, one extraction path, save/load
 - [ ] **Later:** Three Origins (Flesh / Metal / Echo), cybernetics, colony layer

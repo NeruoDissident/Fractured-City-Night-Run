@@ -23,6 +23,9 @@ record and roadmap; when another doc disagrees with it, the brief wins.
   `src/content/SiteCatalog.js`). Street zones still generate as before.
 - **Done (Phase 0):** zone persistence, the hub as a real node, Crew Stash,
   bunks with Rest / Sleep. See "Zone persistence" and "The hub" below.
+- **Done (Phase 1):** the district graph is the travel surface. Tab opens the
+  travel screen; routes charge time, hunger, thirst, and light, and roll for
+  trouble. See "District travel" below.
 - **Removed (do not resurrect):** QuestSystem, GoalSystem, the Street Kid intro
   chain, delivery errands, POIs / Known Places / auto-travel-to-POI, the old NPC
   roster (raider, brute, survivor, ganger...).
@@ -32,18 +35,20 @@ record and roadmap; when another doc disagrees with it, the brief wins.
 - **Placeholders:** `src/content/NpcCatalog.js` has `debug_hostile` and
   `debug_neutral`. `F9` / `Shift+F9` (or `game.debugSpawn()`) spawns one ahead
   of the player so combat stays testable. The real roster arrives in Phase 3.
-- **Shelved, not deleted:** the 160x100 tile overworld as the travel surface.
-  It stays reachable with Tab until the district graph (Phase 1) replaces it,
-  and comes back later as a region map between towns.
+- **Shelved, not deleted:** the 160x100 tile overworld. `F8` opens it as a
+  debug region map and you can still drop into tiles from it; it comes back
+  properly later as a region layer between towns.
 
 ## Zone persistence
-Every zone the player has visited stays alive in `Game.zoneCache`, keyed by
-`Game.zoneKey(col, row)` (Phase 1 swaps this for graph node ids). An entry is
-`{ world, fov, col, row }`: the `World` (tiles, world objects, items, NPCs) and
-the `FoVSystem` (explored tiles). `Game.dropIntoZone` is get-or-create: the
-player entity is removed from the old world and added to the cached or new one;
-every other per-zone system (sound, lighting, combat, abilities...) is transient
-and rebuilt by `_initZoneSystems(fov)`.
+Every zone the player has visited stays alive in `Game.zoneCache`, keyed by its
+district node id (`ow:col,row` for a debug region tile). An entry is
+`{ world, fov, node }`: the `World` (tiles, world objects, items, NPCs), the
+`FoVSystem` (explored tiles), and the node descriptor. `Game._enterZone` is
+get-or-create: the player entity is removed from the old world and added to
+the cached or new one; every other per-zone system (sound, lighting, combat,
+abilities...) is transient and rebuilt by `_initZoneSystems(fov)`.
+`Game.enterNode(id)` is the normal way in; `Game.dropIntoZone(col, row)` is
+the debug-map way in.
 
 Rules:
 - Anything that should survive leaving a zone lives on the `World`, its
@@ -53,8 +58,35 @@ Rules:
   save file will serialise in Phase 4.
 - NPCs in a parked zone do not act. Catch-up simulation is a later decision.
 - `Game.passTime(turns, opts)` is the one way to advance many turns at once
-  (sleeping now; route travel in Phase 1). It runs the per-turn systems and
-  redraws once. Use it rather than looping `advanceTurn`.
+  (sleeping, route travel). It runs the per-turn systems and redraws once.
+  `detached: true` means the player is between zones: the clock, fuel, and the
+  body run, no zone's NPCs do. Use it rather than looping `advanceTurn`.
+
+## District travel
+`src/content/DistrictCatalog.js` is the graph: nodes (`hub` | `site` | `block`,
+each naming a zone template from `OverworldMap.ZONE_POOLS`, `SiteCatalog`, or
+`HUB_ZONE`) and undirected routes (`turns`, `danger`, optional `lock`). Twelve
+nodes ship, two of them behind locks (`pumps_fixed`, `coast_road_open`) that
+Phase 4 projects will set on `game.flags`.
+- **Getting there.** `Tab` opens the travel screen (`gameState 'travel'`,
+  `Game.renderTravel`). Walking off the edge of a block and `<` at a site
+  entrance open it too: the edge is where you choose a route. A / D or the
+  arrows cycle the routes from the current node, Enter goes, Tab or Esc stays.
+- **What a route costs.** `Game.routeEstimate(route)` returns turns, effective
+  danger (`dangerMultiplier`: 1.25 at dusk, 1.6 at night), and hunger/thirst
+  drain. The side panel shows all of it before you commit; keep that so
+  (the "player knows the outcome before acting" pillar).
+- **Resolution.** `Game.travelRoute(route, dest)`: refuse if locked, detach
+  the player, `passTime(turns, { detached: true })`, `enterNode(dest)`, roll
+  danger. A loud roll is a Phase 1 stub: one hostile placed in line of sight a
+  few cells from the arrival point (`_spawnArrivalTrouble`). Phase 2 replaces
+  the stub with a route slice; nothing in the catalog changes for that.
+- **Adding a place** is a node entry plus at least one route. Node `zone` must
+  be a known template id; `Game._describeNode` warns and refuses otherwise.
+  Positions are 0..1 canvas units and are hand-placed; keep neighbours far
+  enough apart that a route label fits between them.
+- Survival drain was retuned for the day loop when travel started charging
+  time: hunger 0.04/turn, thirst 0.07/turn (about 42h and 24h from full).
 
 ## The hub
 Downstairs is pinned to the overworld centre tile (`OverworldMap.hubCol/hubRow`,
@@ -106,8 +138,7 @@ A *site* is a building you enter from the overworld instead of a street map.
   being retired.
 
 ## Next phases (see REDESIGN_BRIEF.md for detail)
-1. **Phase 1:** district graph and travel screen replace overworld travel;
-   route resolution (time, drain, danger); site exit returns to a node.
+1. ~~Phase 1~~ done: district graph and travel screen, route resolution.
 2. **Phase 2:** `block` layout (streets as corridors with sky, enterable
    storefronts), route slices, walkable routes near the hub, daylight leak,
    wall material per site, floor props.
@@ -147,8 +178,10 @@ screenshot `#game-canvas`. Check `window.game` state and the log panel
 (`#log-content`). Always confirm zero `pageerror`s before pushing.
 
 Persistence check worth repeating after world changes: open a door or store an
-item, walk off an edge and back (or leave a site and re-enter), and confirm
-`game.world` is the same object and the change is still there.
+item, travel away and back (or leave a site with `<` and re-enter), and confirm
+`game.world` is the same object and the change is still there. From the
+console: `game.openTravel()`, `game.travelRoute(route, dest)` with an entry
+from `game.travel.options`, `game.enterNode('clinic')`, `game.flags.x = true`.
 
 ## Workflow
 Big cross-cutting changes (new systems, generators, removals) are done in
