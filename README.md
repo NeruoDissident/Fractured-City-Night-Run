@@ -9,26 +9,14 @@ The target mix is:
 
 Zones are not rigid stages. The player can travel freely between zones and use the overworld, but each zone should feel like a real place: a hideout, market corner, clinic, mall, school, gas station, alley network, construction site, or faction-controlled facility.
 
-## Current Milestone Direction
+## Current Direction
 
-The active locked order is:
-
-1. Street Kid intro flow
-2. Journal/objective readability
-3. One polished zone chain
-4. POI / auto-explore tools
-5. Occupation framework
-
-Implemented in the current slice:
-- Quick Start defaults to Street Kid with small blade/combat talents.
-- Downstairs is the current start hub.
-- Market Corner is the first starter destination.
-- The intro objective chain has a working NPC handoff loop.
-- POIs are recorded through FoV exploration.
-- `P` opens Known Places and can auto-travel to discovered POIs.
-- `O` auto-explores toward reachable unexplored edges.
-- `Esc` cancels auto-travel.
-- ASCII is the preferred development view for now.
+The game is being rebuilt as a first-person grid crawler. The old quest chain,
+delivery errands, Known Places, and NPC roster were removed; combat, anatomy,
+crafting, inventory, survival, lighting, and zone generation remain. Two
+placeholder NPC types exist for testing (`F9` spawns a hostile ahead,
+`Shift+F9` a bystander). The next steps are the run flow, interior-first zone
+generators, and a UI pass built around the crawler view. See `CLAUDE.md`.
 
 ## Implemented Systems
 
@@ -42,10 +30,9 @@ Implemented in the current slice:
 - Item actions, opening containers, consumption, tool usage
 - Crafting and disassembly with component properties, quality, intermediates, and tier gates
 - Character creation with backgrounds, traits, stats, talents, stances, and abilities
-- Overworld zone grid with active target markers
+- Overworld zone grid
 - Zone-mode generation through templates/fragments
-- POI discovery and auto-travel
-- Early QuestSystem/Journal prototype for named NPC objective chains
+- Auto-explore (`O`) toward unexplored ground
 - Canvas rendering with ASCII and optional sprites
 
 ## View
@@ -75,9 +62,8 @@ Top-down view:
 - `M`: cycle movement mode
 - `T`: cycle combat stance
 - `Q`: talent and ability panel
-- `J`: journal/current entries
-- `P`: Known Places / discovered POIs
 - `O`: auto-explore
+- `F9` / `Shift+F9`: debug spawn a hostile / bystander ahead
 - `B`: combat detail overlay
 - `Tab`: overworld map
 - `I`: inventory
@@ -87,7 +73,7 @@ Top-down view:
 - `F`: debug explore mode, freezes hunger/thirst
 - `<` / `>`: stairs/manholes/ladders
 - `?`: help
-- `Esc`: close modal/cancel mode/cancel auto-travel
+- `Esc`: close modal/cancel mode/cancel auto-explore
 
 ## Local Development
 
@@ -110,17 +96,17 @@ For cache problems during local testing, use `dev-reset.html` or hard-refresh. T
 - `src/core/SpriteManager.js` - optional spritesheet loading
 
 ### World
-- `src/world/World.js` - chunk manager, entities/items/objects, zone mode, POIs
+- `src/world/World.js` - chunk manager, entities/items/objects, zone mode
 - `src/world/OverworldMap.js` - overworld zone grid
 - `src/world/gen/ZoneGenerator.js` - current zone generation entrypoint
-- `src/world/gen/ZoneCanvas.js` - zone drawing helper and POI registration
+- `src/world/gen/ZoneCanvas.js` - zone drawing helper (tiles, doors, furniture, NPC spawns)
 - `src/world/gen/UrbanFragments.js` - reusable urban sub-zone fragments
 - `src/world/Chunk.js` - older procedural chunk generation, still present but no longer the main design direction
 
 ### Systems
-- `src/systems/QuestSystem.js` - current objective/journal prototype, slated to become occupation-specific
 - `src/systems/CharacterCreationSystem.js` - backgrounds/traits/stat setup
 - `src/content/TalentCatalog.js` - talent trees, nodes, effects
+- `src/content/NpcCatalog.js` - NPC templates (placeholders until the new roster)
 - `src/systems/AbilitySystem.js` - talent-gated abilities and effects
 - `src/systems/CombatSystem.js` - anatomy combat resolution
 - `src/systems/CraftingSystem.js` - crafting/disassembly
@@ -129,7 +115,7 @@ For cache problems during local testing, use `dev-reset.html` or hard-refresh. T
 - `src/systems/TimeSystem.js` / `LightingSystem.js` - time and light
 
 ### UI
-- `src/ui/UIManager.js` - panels, modals, journal, POI list, chargen
+- `src/ui/UIManager.js` - panels, modals, chargen
 - `src/ui/CraftingUI.js` - workshop
 - `src/ui/DisassembleModal.js` - disassembly
 - `src/ui/WorldObjectModal.js` - world object/furniture interactions
@@ -147,8 +133,7 @@ For cache problems during local testing, use `dev-reset.html` or hard-refresh. T
 
 ## Next Steps
 
-1. Move the current intro from universal start to Street Kid-specific start.
-2. Add an occupation-start registry for future Teacher/Cop/Doctor/Cashier/Clown/etc. starts.
-3. Continue polishing the Downstairs -> Market Corner starter chain.
-4. Build new zones only when the current starting story needs them.
-5. Keep objective/quest wording flexible; the system is still being renamed and reshaped.
+1. Define the run flow: where a run starts, what pulls the player forward, what ends it.
+2. Interior-first zone generators (corridors, rooms, doors, z-levels) for the crawler view.
+3. UI cleanup around the first-person view.
+4. Cone FoV, facing-aware combat, wall textures and billboard sprites.

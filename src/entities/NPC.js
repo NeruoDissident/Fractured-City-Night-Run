@@ -1,213 +1,6 @@
 import { Entity } from './Entity.js';
 import { Anatomy } from './Anatomy.js';
-
-// ─── Data-driven NPC type definitions ───────────────────────────────────────
-// Add new enemy types by adding entries here. No code changes needed.
-const NPC_TYPES = {
-    scavenger: {
-        name: 'Scavenger',
-        glyph: 's',
-        color: '#888888',
-        // Stats (same scale as player: 10 = average human)
-        stats: { strength: 7, agility: 8, endurance: 8, intelligence: 8, perception: 8 },
-        // Speed & energy
-        speed: 70,              // energy gained per game tick (100 = player walk baseline)
-        attackCost: 100,        // energy cost to attack
-        moveCost: 100,          // energy cost to move one tile
-        // Detection
-        visionRange: 6,         // tiles — how far they can see
-        hearingRange: 10,       // tiles — max distance to hear sounds
-        // Behavior
-        hostile: false,         // will they attack on sight?
-        aggression: 0.0,        // chance to engage even if hostile (0 = never initiates)
-        courage: 1.0,           // blood% threshold to flee (1.0 = never flees)
-        leashRange: 15,         // max chase distance from spawn before giving up
-        giveUpTurns: 5,         // turns without sight before returning to wander
-        wanderChance: 0.3,      // chance to move randomly each turn when idle
-        // Weapons
-        weaponTable: null,      // no weapons
-    },
-    raider: {
-        name: 'Raider',
-        glyph: 'R',
-        color: '#ff4444',
-        stats: { strength: 11, agility: 10, endurance: 10, intelligence: 8, perception: 9 },
-        speed: 85,
-        attackCost: 100,
-        moveCost: 100,
-        visionRange: 8,
-        hearingRange: 14,
-        hostile: true,
-        aggression: 0.8,        // 80% chance to engage when spotting player
-        courage: 0.35,          // flees below 35% blood
-        leashRange: 25,
-        giveUpTurns: 15,
-        wanderChance: 0.3,
-        weaponTable: [
-            { weight: 30, weapon: { name: 'Shiv', type: 'weapon', baseDamage: '1d4', weaponStats: { attackType: 'sharp', bleedChance: 0.30, accuracy: 5, parryBonus: 0.05 } } },
-            { weight: 30, weapon: { name: 'Pipe', type: 'weapon', baseDamage: '1d8', weaponStats: { attackType: 'blunt', staggerChance: 0.20, accuracy: -5 } } },
-            { weight: 20, weapon: { name: 'Knife', type: 'weapon', baseDamage: '1d6', weaponStats: { attackType: 'sharp', bleedChance: 0.40, accuracy: 10, critBonus: 3, parryBonus: 0.12 } } },
-            { weight: 20, weapon: null },  // unarmed
-        ],
-    },
-    armed_raider: {
-        name: 'Armed Raider',
-        glyph: 'A',
-        color: '#ff6644',
-        stats: { strength: 12, agility: 11, endurance: 11, intelligence: 9, perception: 10 },
-        speed: 90,
-        attackCost: 100,
-        moveCost: 100,
-        visionRange: 9,
-        hearingRange: 14,
-        hostile: true,
-        aggression: 0.9,
-        courage: 0.25,          // braver than regular raiders
-        leashRange: 30,
-        giveUpTurns: 20,
-        wanderChance: 0.2,
-        weaponTable: [
-            { weight: 40, weapon: { name: 'Knife', type: 'weapon', baseDamage: '1d6', weaponStats: { attackType: 'sharp', bleedChance: 0.40, accuracy: 10, critBonus: 3, parryBonus: 0.12 } } },
-            { weight: 35, weapon: { name: 'Pipe', type: 'weapon', baseDamage: '1d8', weaponStats: { attackType: 'blunt', staggerChance: 0.20, accuracy: -5 } } },
-            { weight: 25, weapon: { name: 'Shiv', type: 'weapon', baseDamage: '1d4', weaponStats: { attackType: 'sharp', bleedChance: 0.30, accuracy: 5, parryBonus: 0.05 } } },
-            // no unarmed — always armed
-        ],
-    },
-    brute: {
-        name: 'Brute',
-        glyph: 'B',
-        color: '#cc6600',
-        stats: { strength: 15, agility: 7, endurance: 14, intelligence: 6, perception: 7 },
-        speed: 70,              // slow and lumbering
-        attackCost: 120,        // heavy swings take longer
-        moveCost: 100,
-        visionRange: 6,
-        hearingRange: 10,
-        hostile: true,
-        aggression: 1.0,        // always attacks on sight
-        courage: 0.15,          // nearly fearless — fights to the death
-        leashRange: 20,
-        giveUpTurns: 10,        // gives up quickly if can't find you
-        wanderChance: 0.15,
-        weaponTable: [
-            { weight: 40, weapon: { name: 'Pipe', type: 'weapon', baseDamage: '1d8', weaponStats: { attackType: 'blunt', staggerChance: 0.30, accuracy: -5 } } },
-            { weight: 30, weapon: { name: 'Spiked Club', type: 'weapon', baseDamage: '1d10', weaponStats: { attackType: 'blunt', bleedChance: 0.20, staggerChance: 0.25, accuracy: -8 } } },
-            { weight: 30, weapon: null },  // unarmed — still dangerous with STR 15
-        ],
-    },
-    survivor: {
-        name: 'Survivor',
-        glyph: '@',
-        color: '#aaffaa',
-        stats: { strength: 8, agility: 8, endurance: 7, intelligence: 9, perception: 8 },
-        speed: 60,
-        attackCost: 100,
-        moveCost: 100,
-        visionRange: 6,
-        hearingRange: 8,
-        hostile: false,
-        aggression: 0.0,
-        courage: 0.8,           // flees when badly hurt
-        leashRange: 5,          // stays near spawn
-        giveUpTurns: 3,
-        wanderChance: 0.1,
-        weaponTable: null,
-        needsItem: true,        // has a delivery request
-    },
-    stalker: {
-        name: 'Stalker',
-        glyph: 'S',
-        color: '#8844cc',
-        stats: { strength: 9, agility: 14, endurance: 9, intelligence: 11, perception: 13 },
-        speed: 100,             // matches player walk speed
-        attackCost: 90,         // quick strikes
-        moveCost: 90,           // nimble movement
-        visionRange: 11,
-        hearingRange: 18,       // excellent hearing
-        hostile: true,
-        aggression: 0.6,        // picks fights carefully
-        courage: 0.50,          // flees at half blood — hit and run
-        leashRange: 35,         // will chase far
-        giveUpTurns: 25,        // patient hunter
-        wanderChance: 0.4,
-        weaponTable: [
-            { weight: 60, weapon: { name: 'Knife', type: 'weapon', baseDamage: '1d6', weaponStats: { attackType: 'sharp', bleedChance: 0.40, accuracy: 10, critBonus: 3, parryBonus: 0.12 } } },
-            { weight: 40, weapon: { name: 'Shiv', type: 'weapon', baseDamage: '1d4', weaponStats: { attackType: 'sharp', bleedChance: 0.30, accuracy: 5, parryBonus: 0.05 } } },
-            // always has a blade
-        ],
-    },
-    // ─── Faction NPCs (zone template signatures) ───────────────────────────
-    ganger: {
-        name: 'Ganger',
-        glyph: 'g',
-        color: '#cc3333',
-        stats: { strength: 10, agility: 10, endurance: 10, intelligence: 7, perception: 9 },
-        speed: 75, attackCost: 100, moveCost: 100,
-        visionRange: 8, hearingRange: 14,
-        hostile: true, aggression: 0.7, courage: 0.5,
-        leashRange: 25, giveUpTurns: 15, wanderChance: 0.3,
-        weaponTable: [
-            { weight: 50, weapon: { name: 'Pipe', type: 'weapon', baseDamage: '1d8', weaponStats: { attackType: 'blunt', accuracy: -5, critBonus: -1, staggerChance: 0.20 } } },
-            { weight: 30, weapon: { name: 'Shiv', type: 'weapon', baseDamage: '1d4', weaponStats: { attackType: 'sharp', bleedChance: 0.30, accuracy: 5, parryBonus: 0.05 } } },
-            { weight: 20, weapon: null },
-        ],
-    },
-    smuggler: {
-        name: 'Smuggler',
-        glyph: '@',
-        color: '#ccaaff',
-        stats: { strength: 9, agility: 10, endurance: 8, intelligence: 10, perception: 10 },
-        speed: 70, attackCost: 100, moveCost: 100,
-        visionRange: 7, hearingRange: 12,
-        hostile: false, aggression: 0.0, courage: 0.5,
-        leashRange: 6, giveUpTurns: 5, wanderChance: 0.15,
-        weaponTable: [
-            { weight: 40, weapon: { name: 'Knife', type: 'weapon', baseDamage: '1d6', weaponStats: { attackType: 'sharp', bleedChance: 0.40, accuracy: 10, critBonus: 3, parryBonus: 0.12 } } },
-            { weight: 60, weapon: null },
-        ],
-        needsItem: true,
-    },
-    feral: {
-        name: 'Feral',
-        glyph: 'f',
-        color: '#dd8822',
-        stats: { strength: 11, agility: 12, endurance: 8, intelligence: 4, perception: 10 },
-        speed: 85, attackCost: 90, moveCost: 90,
-        visionRange: 6, hearingRange: 16,
-        hostile: true, aggression: 0.9, courage: 0.8,
-        leashRange: 20, giveUpTurns: 10, wanderChance: 0.5,
-        weaponTable: [
-            { weight: 70, weapon: { name: 'Shiv', type: 'weapon', baseDamage: '1d4', weaponStats: { attackType: 'sharp', bleedChance: 0.30, accuracy: 5, parryBonus: 0.05 } } },
-            { weight: 30, weapon: null },
-        ],
-    },
-    mogul_guard: {
-        name: 'Mogul Guard',
-        glyph: 'M',
-        color: '#aa3333',
-        stats: { strength: 13, agility: 10, endurance: 12, intelligence: 8, perception: 9 },
-        speed: 70, attackCost: 110, moveCost: 110,
-        visionRange: 9, hearingRange: 12,
-        hostile: true, aggression: 0.8, courage: 0.3,
-        leashRange: 20, giveUpTurns: 12, wanderChance: 0.2,
-        weaponTable: [
-            { weight: 60, weapon: { name: 'Knife', type: 'weapon', baseDamage: '1d6', weaponStats: { attackType: 'sharp', bleedChance: 0.40, accuracy: 10, critBonus: 3, parryBonus: 0.12 } } },
-            { weight: 40, weapon: { name: 'Pipe', type: 'weapon', baseDamage: '1d8', weaponStats: { attackType: 'blunt', accuracy: -5, critBonus: -1, staggerChance: 0.20 } } },
-        ],
-    },
-    drifter: {
-        name: 'Drifter',
-        glyph: 'd',
-        color: '#bbbbbb',
-        stats: { strength: 7, agility: 11, endurance: 7, intelligence: 8, perception: 10 },
-        speed: 85, attackCost: 100, moveCost: 100,
-        visionRange: 8, hearingRange: 14,
-        hostile: false, aggression: 0.0, courage: 0.6,
-        leashRange: 8, giveUpTurns: 5, wanderChance: 0.4,
-        weaponTable: null,
-        needsItem: true,
-    },
-};
+import { NPC_TYPES, DEFAULT_NPC_TYPE } from '../content/NpcCatalog.js';
 
 // Detection states — controls NPC awareness and behavior
 const DETECTION_STATE = {
@@ -226,11 +19,11 @@ export class NPC extends Entity {
         
         const profile = NPC_TYPES[type];
         if (!profile) {
-            console.error(`[NPC] Unknown type: ${type}`);
+            console.warn(`[NPC] Unknown type "${type}", using ${DEFAULT_NPC_TYPE}`);
         }
         
-        this.type = type;
-        this.profile = profile || NPC_TYPES.scavenger;
+        this.type = profile ? type : DEFAULT_NPC_TYPE;
+        this.profile = profile || NPC_TYPES[DEFAULT_NPC_TYPE];
         
         // Display
         this.name = this.profile.name;
@@ -265,23 +58,6 @@ export class NPC extends Entity {
         // Weapon item (null = unarmed)
         this.weapon = this.rollWeapon();
 
-        // Quest state (new — Milestone 1)
-        this.questId = null;        // which quest definition id (e.g. 'rook_supplies')
-        this.questRole = null;      // 'giver' | 'receiver' | 'target' | null
-        this.questDialogue = null;  // { offer, remind, complete, denied } strings
-
-        // Old random delivery errands are inactive while objectives are rebuilt.
-        this.deliveryRequest = null;
-        if (false && this.profile.needsItem) {
-            const requests = [
-                { itemId: 'medkit',     label: 'a medkit',      reward: 'food'      },
-                { itemId: 'bandage',    label: 'bandages',       reward: 'ammo'      },
-                { itemId: 'flashlight', label: 'a flashlight',   reward: 'food'      },
-                { itemId: 'canteen',    label: 'a canteen',      reward: 'medicine'  },
-                { itemId: 'knife',      label: 'a knife',        reward: 'intel'     },
-            ];
-            this.deliveryRequest = requests[Math.floor(Math.random() * requests.length)];
-        }
     }
     
     // ─── Weapon rolling from profile's weighted table ───────────────────────
@@ -767,12 +543,6 @@ export class NPC extends Entity {
         if (this.anatomy && this.anatomy.causeOfDeath) {
             const cause = this.anatomy.getDeathCause();
             this.game.ui.log(`${this.name} ${cause}.`, 'combat');
-        }
-        // Goal tracking: heavy NPCs count as gang leaders
-        const heavyTypes = ['brute', 'armed_raider', 'ganger', 'mogul_guard'];
-        if (heavyTypes.includes(this.type) && this.game.player) {
-            if (!this.game.player.goalsData) this.game.player.goalsData = {};
-            this.game.player.goalsData.gangLeaderKilled = true;
         }
         this.game.world.removeEntity(this);
     }

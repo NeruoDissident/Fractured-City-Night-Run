@@ -21,7 +21,6 @@ export function drawCornerStore(z, x, y, options = {}) {
     }
     z.placeFurniture('terminal', x + 8, y + 29, 'commercial_store', 'Dead Register Terminal');
     z.placeFurniture('cabinet', x + 16, y + 29, 'commercial_store', 'Cigarette Cabinet');
-    z.addPoi(`${options.idPrefix || 'corner_store'}_sales`, `${name} Sales Floor`, 'shop', x + 27, y + 12, 11);
 
     z.drawRect(x + 3, y + 22, 10, 9, ZoneTiles.wall, ZoneTiles.bathroomFloor, 'Employee Bathroom');
     z.drawRect(x + 16, y + 22, 14, 9, ZoneTiles.wall, ZoneTiles.breakFloor, 'Break Room');
@@ -33,8 +32,6 @@ export function drawCornerStore(z, x, y, options = {}) {
     z.placeFurniture('chair', x + 19, y + 26, 'residential_kitchen', 'Plastic Chair');
     z.placeFurniture('chair', x + 23, y + 26, 'residential_kitchen', 'Plastic Chair');
     z.placeFurniture('cabinet', x + 27, y + 26, 'residential_kitchen', 'Microwave Cabinet');
-    z.addPoi(`${options.idPrefix || 'corner_store'}_bathroom`, 'Employee Bathroom', 'room', x + 8, y + 26, 4);
-    z.addPoi(`${options.idPrefix || 'corner_store'}_break_room`, 'Break Room', 'room', x + 23, y + 26, 5);
 
     z.vLine(x + 31, y + 21, 13, ZoneTiles.wall, { name: 'Stockroom Partition' });
     z.placeDoor('metal', x + 31, y + 25, { name: 'Stockroom Door' });
@@ -44,14 +41,7 @@ export function drawCornerStore(z, x, y, options = {}) {
     }
     z.placeFurniture('workbench', x + 44, y + 33, 'garage_tools', 'Improvised Repair Bench');
     z.placeDoor('metal', x + 47, y + 27, { name: 'Alley Service Door', locked: true });
-    z.addPoi(`${options.idPrefix || 'corner_store'}_stockroom`, `${name} Stockroom`, 'loot', x + 41, y + 28, 8);
 
-    if (options.npcs !== false) {
-        z.addNpc('survivor', x + 9, y + 28, options.clerkName || 'Marta, Corner Clerk', '@', '#8ff0a4');
-        z.addNpc('drifter', x + 30, y + 8, 'Coupon Sleeper', 'd', '#c9c0a8');
-        z.addNpc('ganger', x + 38, y + 27, 'Backroom Looter', 'l', '#d06a5f');
-        z.addNpc('ganger', x + 44, y + 29, 'Backroom Lookout', 'l', '#d06a5f');
-    }
 }
 
 export function drawGasStation(z, x, y, options = {}) {
@@ -69,11 +59,6 @@ export function drawGasStation(z, x, y, options = {}) {
         z.set(px, y + 31, tile('|', '#d0d0c0', '#262318', 'Pump Hose'));
     }
     z.placeSign(x, y + 26, 'Bent Fuel Price Sign');
-    z.addPoi(`${options.idPrefix || 'gas'}_kiosk`, name, 'shop', x + 14, y + 12, 8);
-    z.addPoi(`${options.idPrefix || 'gas'}_pumps`, 'Fuel Pump Canopy', 'utility', x + 13, y + 32, 8);
-    if (options.npcs !== false) {
-        z.addNpc('survivor', x + 9, y + 14, options.attendantName || 'Nina, Kiosk Attendant', '@', '#9fd8ff');
-    }
 }
 
 export function drawLaundromat(z, x, y, options = {}) {
@@ -91,10 +76,6 @@ export function drawLaundromat(z, x, y, options = {}) {
     z.placeFurniture('chair', x + 34, y + 20, 'commercial_store', 'Waiting Chair');
     z.placeFurniture('chair', x + 38, y + 20, 'commercial_store', 'Waiting Chair');
     z.placeFurniture('locker', x + 7, y + 22, 'commercial_backroom', 'Lost-and-Found Locker');
-    z.addPoi(`${options.idPrefix || 'laundry'}_main`, name, 'shop', x + 23, y + 14, 10);
-    if (options.npcs !== false) {
-        z.addNpc('drifter', x + 36, y + 18, 'Laundry Sleeper', 'd', '#c9c0a8');
-    }
 }
 
 export function drawPawnShop(z, x, y, options = {}) {
@@ -111,10 +92,6 @@ export function drawPawnShop(z, x, y, options = {}) {
     z.placeFurniture('workbench', x + 24, y + 20, 'garage_tools', 'Repair Bench');
     z.placeFurniture('locker', x + 27, y + 5, 'garage_tools', 'Locked Tool Cage');
     z.placeSign(x + 16, y - 2, 'Hanging Pawn Sign');
-    z.addPoi(`${options.idPrefix || 'pawn'}_main`, name, 'shop', x + 17, y + 13, 9);
-    if (options.npcs !== false) {
-        z.addNpc('ganger', x + 22, y + 18, 'Pawn Shop Burglar', 'b', '#d06a5f');
-    }
 }
 
 export function drawServiceAlley(z, x, y, h, options = {}) {
@@ -122,7 +99,6 @@ export function drawServiceAlley(z, x, y, h, options = {}) {
     z.placeFurniture('crate', x + 2, y + 7, 'commercial_backroom', 'Overflow Trash Bin');
     z.placeFurniture('crate', x + 2, y + 14, 'commercial_backroom', 'Overflow Trash Bin');
     z.placeFurniture('locker', x + 2, y + h - 9, 'garage_tools', 'Locked Utility Cage');
-    z.addPoi(`${options.idPrefix || 'alley'}_service`, 'Service Alley', 'exterior', x + 2, y + Math.floor(h / 2), 8);
 }
 
 export function drawBodega(z, x, y, options = {}) {
@@ -136,10 +112,6 @@ export function drawBodega(z, x, y, options = {}) {
     }
     for (let cx = x + 4; cx <= x + 10; cx++) z.placeFurniture('counter', cx, y + 19, 'commercial_store', 'Short Counter');
     z.placeFurniture('terminal', x + 6, y + 18, 'commercial_store', 'Dead Register Terminal');
-    z.addPoi(`${options.idPrefix || 'bodega'}_main`, name, 'shop', x + 15, y + 12, 8);
-    if (options.npcs !== false) {
-        z.addNpc('survivor', x + 9, y + 18, options.clerkName || 'Bodega Clerk', '@', '#8ff0a4');
-    }
 }
 
 export function drawClinic(z, x, y, options = {}) {
@@ -158,8 +130,4 @@ export function drawClinic(z, x, y, options = {}) {
     z.placeFurniture('chair', x + 9, y + 20, 'medical_waiting', 'Waiting Chair');
     z.placeFurniture('chair', x + 13, y + 20, 'medical_waiting', 'Waiting Chair');
     z.placeFurniture('counter', x + 24, y + 21, 'medical_store', 'Reception Counter');
-    z.addPoi(`${options.idPrefix || 'clinic'}_main`, name, 'medical', x + 17, y + 15, 9);
-    if (options.npcs !== false) {
-        z.addNpc('survivor', x + 25, y + 20, options.doctorName || 'Triage Nurse', '@', '#9fd8ff');
-    }
 }

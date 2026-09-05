@@ -1,4 +1,4 @@
-import { NPC } from '../../entities/NPC.js';
+import { NPC, NPC_TYPES } from '../../entities/NPC.js';
 import { createDoor } from '../objects/Door.js';
 import { createFurniture, populateFurniture } from '../objects/Furniture.js';
 import { ZoneTiles, cloneTile, tile } from './ZoneTiles.js';
@@ -140,11 +140,12 @@ export class ZoneCanvas {
         this.set(x, y, tile('!', '#ffd36a', '#17120a', name));
     }
 
-    addPoi(id, name, type, x, y, radius = 6) {
-        this.world.pointsOfInterest.push({ id, name, type, x, y, radius, discovered: false });
-    }
-
+    /**
+     * Spawn an NPC from the catalog. Unknown types are skipped (returns null)
+     * so old zone data referencing removed archetypes fails soft.
+     */
     addNpc(type, x, y, name, glyph, color) {
+        if (!NPC_TYPES[type]) return null;
         const npc = new NPC(this.world.game, type, x, y);
         npc.name = name;
         npc.glyph = glyph;

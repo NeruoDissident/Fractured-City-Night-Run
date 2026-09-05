@@ -19,8 +19,7 @@ import { TimeSystem } from '../systems/TimeSystem.js';
 import { LightingSystem } from '../systems/LightingSystem.js';
 import { MobileControls } from '../ui/MobileControls.js';
 import { OverworldMap } from '../world/OverworldMap.js';
-import { GoalSystem } from '../systems/GoalSystem.js';
-import { QuestSystem } from '../systems/QuestSystem.js';
+import { NPC } from '../entities/NPC.js';
 
 export class Game {
     constructor() {
@@ -35,8 +34,6 @@ export class Game {
         this.timeSystem = null;
         this.lightingSystem = null;
         this.mobileControls = null;
-        this.goalSystem = null;
-        this.questSystem = null;
         this.graphicsMode = 'ascii';
 
         // View mode: 'first_person' (grid crawler view) or 'top_down' (classic roguelike map)
@@ -105,17 +102,9 @@ export class Game {
         this.player = new Player(this, characterData);
         this._loadoutGiven = false;
 
-        // Init goals and the first occupation-driven quest chain.
-        this.goalSystem = new GoalSystem(this);
-        this.goalSystem.initGoals(this.player);
-        this.questSystem = new QuestSystem(this);
-        this.questSystem.initPlayer(this.player);
-        this.questSystem.startIntroQuest(this.player);
-
         // Create the overworld (exists but player starts in the hub)
         const runSeed = Date.now() & 0x7FFFFFFF;
         this.overworldMap = new OverworldMap(runSeed);
-        this._installStarterQuestZones();
 
         this.isRunning = true;
 
@@ -156,91 +145,11 @@ export class Game {
         this.gameState = 'playing';
         this._initZoneSystems();
 
-        this.ui.log('Welcome to Downstairs — a small settlement in the fractured city.', 'info');
-        this.ui.log('Talk to survivors for work. Press [Tab] to view the overworld map.', 'info');
+        this.ui.log('Downstairs. A fenced yard, a few shacks, and the city beyond.', 'info');
+        this.ui.log('W/S move, A/D turn, E interact, ` toggles the map view, ? for help.', 'info');
 
         this.updateFoV();
         this.render();
-    }
-
-    _installStarterQuestZones() {
-        if (!this.overworldMap) return;
-
-        const centerCol = Math.floor(this.overworldMap.cols / 2);
-        const centerRow = Math.floor(this.overworldMap.rows / 2);
-        const targetCol = Math.min(this.overworldMap.cols - 1, centerCol + 1);
-        const targetRow = centerRow;
-        const tile = this.overworldMap.getTile(targetCol, targetRow);
-        if (!tile) return;
-
-        tile.biome = 'urban_core';
-        tile.playBiome = 'urban_core';
-        tile.terrain = 'urban_core';
-        tile.region = 'inner_city';
-        tile.tags = [...new Set([...(tile.tags || []), 'urban', 'retail', 'medical', 'starter_quest'])];
-        tile.road = true;
-        tile.type = 'settlement';
-        tile.threatLevel = Math.max(1, Math.min(2, tile.threatLevel || 1));
-        tile.zone = {
-            id: 'urban_market_corner',
-            name: 'Market Corner',
-            width: 128,
-            height: 128,
-            weight: 1,
-            faction: 'independent',
-            purpose: 'starter_quest',
-            threatMod: 0,
-            keyFeature: 'street_market',
-            npcSignature: ['survivor', 'drifter', 'scavenger'],
-            tags: ['urban', 'retail', 'medical', 'starter_quest']
-        };
-
-        this.streetKidIntroTarget = { col: targetCol, row: targetRow, zoneId: 'urban_market_corner', name: 'Market Corner' };
-    }
-
-    getQuestTargetHint(zoneId) {
-        if (this.streetKidIntroTarget?.zoneId === zoneId) {
-            const dx = this.streetKidIntroTarget.col - this._currentZoneCol;
-            const dy = this.streetKidIntroTarget.row - this._currentZoneRow;
-            const parts = [];
-            if (dy < 0) parts.push('north');
-            if (dy > 0) parts.push('south');
-            if (dx < 0) parts.push('west');
-            if (dx > 0) parts.push('east');
-            const direction = parts.length ? parts.join('-') : 'here';
-            return `${this.streetKidIntroTarget.name}, ${direction} of Downstairs. Press [Tab] for the overworld or walk off the zone edge.`;
-        }
-        return null;
-    }
-
-    getQuestNpcForQuest(questId) {
-        if (!this.world?.entities) return null;
-        return this.world.entities.find(npc => {
-            const ids = npc.questIds || (npc.questId ? [npc.questId] : []);
-            return ids.includes(questId);
-        }) || null;
-    }
-
-    _getNpcQuestId(npc) {
-        if (!npc || !this.questSystem || !this.player) return null;
-        const ids = npc.questIds || (npc.questId ? [npc.questId] : []);
-        if (!ids.length) return null;
-
-        const active = ids.find(id => this.questSystem.hasActive(this.player, id));
-        if (active) return active;
-
-        const available = ids.find(id => !this.questSystem.hasQuest(this.player, id));
-        if (available) return available;
-
-        return ids.find(id => this.questSystem.hasCompleted(this.player, id)) || ids[0];
-    }
-
-    isActiveQuestTarget(col, row) {
-        if (!this.questSystem || !this.player?.questData) return false;
-        const tile = this.overworldMap?.getTile(col, row);
-        if (!tile?.zone?.id) return false;
-        return this.questSystem.getActiveQuests(this.player)
-            .some(q => q.targetZoneId && q.targetZoneId === tile.zone.id);
     }
 
     // ── Zone systems init (called on every zone entry) ─────────────────────────
@@ -326,29 +235,6 @@ export class Game {
             this.ui.log(`Time: ${this.timeSystem.getTimeString()} - ${this.timeSystem.getTimePeriod()}`, 'info');
         }
 
-        // Goal hints
-        if (this.player && this.player.floorGoals) {
-            const active = this.player.floorGoals.filter(g => !g.completed);
-            for (const goal of active) {
-                const hints = {
-                    find_stash:       'Search furniture and containers to find a stash.',
-                    reach_extraction: `Reach the extraction point — check your location panel for distance.`,
-                    kill_gang_leader: 'Eliminate a Brute or Armed Raider in this zone.',
-                    avoid_kills:      'Complete the zone without killing anyone.',
-                    find_medicine:    'Search containers for medical supplies.',
-                    treat_npc:        'Find a Survivor (green @) and talk to them.',
-                    deliver_item:     'Find a Survivor (green @) — they need something. Press [E] to talk.',
-                    hack_terminal:    'Find a terminal to access.',
-                    destroy_stash:    'Find and destroy a gang stash.',
-                    strip_electronics:'Loot containers to strip electronics.',
-                    salvage_gear:     'Loot gear from bodies or containers.',
-                    find_fragment:    'Search for an Echo fragment in this zone.',
-                    complete_quest:   'Find a Survivor (green @) with a job — press [E] to talk.',
-                };
-                const hint = hints[goal.id];
-                if (hint) this.ui.log(`Goal: ${hint}`, 'warning');
-            }
-        }
 
         this.updateFoV();
         this.render();
@@ -502,44 +388,11 @@ export class Game {
                 this.world.processTurn(actionCost);
                 this.soundSystem.processTurn();
                 this.abilitySystem.processTurn();
-                if (this.goalSystem) this.goalSystem.checkGoals(this.player);
                 this.checkGameOver();
             }
         }
         
         this.render();
-    }
-
-    startAutoTravelToPoi(poiId) {
-        if (!this.world || !this.player) return false;
-        const discoveredPois = this.world.getPointsOfInterest?.(true) || [];
-        const poi = discoveredPois.find(p => p.id === poiId);
-        if (!poi) {
-            this.ui.log('That point is not on your known map yet.', 'warning');
-            return false;
-        }
-
-        const destination = this._findOpenNear(poi.x, poi.y);
-        const path = this.findPathTo(destination.x, destination.y, this.player.z);
-        if (path && path.length === 1) {
-            this.ui.log(`Already at ${poi.name}.`, 'info');
-            return true;
-        }
-        if (!path || path.length < 2) {
-            this.ui.log(`No clear path to ${poi.name}.`, 'warning');
-            return false;
-        }
-
-        this.cancelAutoTravel();
-        this.autoTravelTarget = {
-            poiId,
-            name: poi.name,
-            x: destination.x,
-            y: destination.y
-        };
-        this.ui.log(`Auto-travel: ${poi.name}. Press [Esc] to stop.`, 'info');
-        this.scheduleAutoTravelStep();
-        return true;
     }
 
     startAutoExplore() {
@@ -768,7 +621,6 @@ export class Game {
             : baseVisionRange;
         
         this.fov.calculate(this.player.x, this.player.y, effectiveRange, this.player.z);
-        this.world.updatePointOfInterestDiscovery?.(this.fov.exploredTiles);
         
         // Calculate lighting for the visible area
         if (this.lightingSystem) {
@@ -964,156 +816,58 @@ export class Game {
         this.render();
     }
 
+    /**
+     * Talk to an adjacent NPC. The quest/errand dialogue tree was removed with
+     * the flow rework; hostiles can still be stared down, everyone else has a
+     * placeholder line until the new contact system exists.
+     */
     _talkToNPC(npc) {
-        // Hostile NPCs — attempt intimidation (kept as immediate action, not dialogue)
         if (npc.hostile) {
             const playerStr = (this.player.stats?.strength || 10);
             const npcCourage = (npc.profile?.courage || 0.5);
             const chance = Math.min(0.9, Math.max(0.05, (playerStr / 20) * (1 - npcCourage)));
             if (Math.random() < chance) {
                 npc.detectionState = 'fleeing';
-                if (!this.player.goalsData) this.player.goalsData = {};
-                this.player.goalsData.npcIntimidated = true;
-                this.ui.log(`You stare down the ${npc.name}. They back away, shaken. [Intimidated]`, 'info');
-                if (this.goalSystem) this.goalSystem.checkGoals(this.player);
+                this.ui.log(`You stare down the ${npc.name}. They back away, shaken.`, 'info');
             } else {
                 this.ui.log(`You try to intimidate the ${npc.name} — they aren't impressed.`, 'warning');
             }
             return;
         }
 
-        // Build dialogue state machine
-        const qs = this.questSystem;
-        let text = '';
-        let choices = [];
-
-        // ── Quest giver path ───────────────────────────────────────────────
-        const npcQuestId = this._getNpcQuestId(npc);
-        const questDialogue = npc.questDialogues?.[npcQuestId] || npc.questDialogue;
-        if (npc.questRole === 'giver' && npcQuestId && qs) {
-            if (!qs.hasQuest(this.player, npcQuestId)) {
-                text = questDialogue?.offer || `"I need help with something."`;
-                choices = [
-                    { id: 'accept_quest', label: `<span style="color:#ffaa00;">[Accept]</span> Take the job` },
-                    { id: 'decline_quest', label: `<span style="color:#888;">[Decline]</span> Not now` }
-                ];
-                this.ui.showNPCDialogue(npc, text, choices, (choice) => {
-                    if (choice === 'accept_quest') {
-                        qs.startQuest(this.player, npcQuestId, npc);
-                    } else {
-                        this.ui.log(`${npc.name}: "Your loss. It'll be here if you change your mind."`, 'info');
-                    }
-                });
-                return;
-            }
-            if (qs.hasActive(this.player, npcQuestId)) {
-                const active = qs.getActive(this.player, npcQuestId);
-                const def = qs.getDef(npcQuestId);
-                const stage = def?.stages?.[active.stageIndex];
-                const canComplete = stage?.checkCanComplete ? stage.checkCanComplete(this, this.player, npc) : false;
-                if (canComplete) {
-                    text = questDialogue?.complete || `"You got it? Hand it over."`;
-                    choices = [
-                        { id: 'complete_quest', label: `<span style="color:#44ff44;">[Complete]</span> ${stage?.completeChoiceLabel || 'Complete objective'}` },
-                        { id: 'keep_it', label: `<span style="color:#888;">[Keep it]</span> Not yet` }
-                    ];
-                    this.ui.showNPCDialogue(npc, text, choices, (choice) => {
-                        if (choice === 'complete_quest') {
-                            qs.tryAdvanceByTalk(this.player, npcQuestId, npc);
-                        }
-                    });
-                    return;
-                }
-                text = questDialogue?.remind || stage?.description || `"Come back when you have it."`;
-                choices = [{ id: 'goodbye', label: `<span style="color:#888;">[Goodbye]</span>` }];
-                this.ui.showNPCDialogue(npc, text, choices, () => {});
-                return;
-            }
-            if (qs.hasCompleted(this.player, npcQuestId)) {
-                text = questDialogue?.after || questDialogue?.complete || `"Thanks again for your help."`;
-                choices = [{ id: 'goodbye', label: `<span style="color:#888;">[Goodbye]</span>` }];
-                this.ui.showNPCDialogue(npc, text, choices, () => {});
-                return;
-            }
-        }
-
-        // ── Delivery request path ──────────────────────────────────────────
-        if (false && npc.deliveryRequest && !npc.deliveryRequest.fulfilled) {
-            const req = npc.deliveryRequest;
-            const item = this.player.inventory.find(i => i.id === req.itemId);
-            if (item) {
-                text = `"You have ${req.label}? Please... I need it."`;
-                choices = [
-                    { id: 'deliver', label: `<span style="color:#44ff44;">[Deliver]</span> Give ${req.label}` },
-                    { id: 'keep', label: `<span style="color:#888;">[Keep it]</span>` }
-                ];
-                this.ui.showNPCDialogue(npc, text, choices, (choice) => {
-                    if (choice === 'deliver') {
-                        this.player.removeFromInventory(item);
-                        npc.deliveryRequest.fulfilled = true;
-                        if (!this.player.goalsData) this.player.goalsData = {};
-                        this.player.goalsData.itemDelivered = true;
-                        if (this.questSystem) this.questSystem.fulfillDelivery(this.player, npc, req.itemId);
-                        this.ui.log(`${npc.name}: "Thank you... this means everything." [Delivered ${req.label}]`, 'info');
-                        if (this.goalSystem) this.goalSystem.checkGoals(this.player);
-                    }
-                });
-                return;
-            }
-            text = `"Please... I need ${req.label}. Can you help me?"`;
-            choices = [
-                { id: 'help', label: `<span style="color:#ffaa00;">[Help]</span> I'll look for it` },
-                { id: 'decline', label: `<span style="color:#888;">[Decline]</span> Not now` }
-            ];
-            this.ui.showNPCDialogue(npc, text, choices, (choice) => {
-                if (choice === 'help' && this.questSystem) {
-                    this.questSystem.registerDelivery(this.player, npc, req.itemId, req.label);
-                    this.ui.log(`Journal updated: Find ${req.label} for ${npc.name}`, 'info');
-                }
-            });
-            return;
-        }
-        if (false && npc.deliveryRequest?.fulfilled) {
-            text = `"You already helped me. Stay safe out there."`;
-            choices = [{ id: 'goodbye', label: `<span style="color:#888;">[Goodbye]</span>` }];
-            this.ui.showNPCDialogue(npc, text, choices, () => {});
-            return;
-        }
-
-        // ── Treatment path ─────────────────────────────────────────────────
-        const medicalIds = ['medkit', 'bandage', 'antiseptic', 'painkiller'];
-        const medItem = this.player.inventory.find(i => medicalIds.includes(i.id) || i.medicalEffect);
-        if (medItem && !npc.treated) {
-            text = `"I... I'm hurt. Do you have anything?"`;
-            choices = [
-                { id: 'treat', label: `<span style="color:#44ff44;">[Treat]</span> Give ${medItem.name}` },
-                { id: 'leave', label: `<span style="color:#888;">[Leave]</span>` }
-            ];
-            this.ui.showNPCDialogue(npc, text, choices, (choice) => {
-                if (choice === 'treat') {
-                    this.player.removeFromInventory(medItem);
-                    npc.treated = true;
-                    if (!this.player.goalsData) this.player.goalsData = {};
-                    this.player.goalsData.npcsSaved = (this.player.goalsData.npcsSaved || 0) + 1;
-                    this.ui.log(`${npc.name}: "I... thank you. I thought I wouldn't make it." [Treated with ${medItem.name}]`, 'info');
-                    if (this.goalSystem) this.goalSystem.checkGoals(this.player);
-                }
-            });
-            return;
-        }
-        if (npc.treated) {
-            text = `"You've already patched me up. Thank you."`;
-            choices = [{ id: 'goodbye', label: `<span style="color:#888;">[Goodbye]</span>` }];
-            this.ui.showNPCDialogue(npc, text, choices, () => {});
-            return;
-        }
-
-        // ── Default greeting ────────────────────────────────────────────────
-        text = `"..." They don't respond.`;
-        choices = [{ id: 'goodbye', label: `<span style="color:#888;">[Leave]</span>` }];
-        this.ui.showNPCDialogue(npc, text, choices, () => {});
+        this.ui.showNPCDialogue(
+            npc,
+            `"..." ${npc.name} has nothing to say yet.`,
+            [{ id: 'leave', label: '<span style="color:#888;">[Leave]</span>' }],
+            () => {}
+        );
     }
-    
+
+    /**
+     * Debug helper: spawn a catalog NPC a few cells ahead of the player so
+     * combat and detection stay testable while the real roster is rebuilt.
+     * Bound to F9 and available as game.debugSpawn() from the console.
+     */
+    debugSpawn(type = 'debug_hostile', distance = 3) {
+        if (!this.world || !this.player || this.gameState !== 'playing') return null;
+        const f = this.relativeDelta('forward');
+        for (let d = distance; d >= 1; d--) {
+            const x = this.player.x + f.dx * d;
+            const y = this.player.y + f.dy * d;
+            if (!this.world.isBlocked(x, y, this.player.z)) {
+                const npc = new NPC(this, type, x, y);
+                npc.z = this.player.z;
+                this.world.addEntity(npc);
+                this.ui.log(`[debug] Spawned ${npc.name} ${d} cell(s) ahead.`, 'warning');
+                this.updateFoV();
+                this.render();
+                return npc;
+            }
+        }
+        this.ui.log('[debug] No open cell ahead to spawn into.', 'warning');
+        return null;
+    }
+
     checkGameOver() {
         if (this.player.isDead()) {
             this.gameState = 'game_over';
@@ -1265,7 +1019,6 @@ export class Game {
                 const visual      = OverworldMap.getTileVisual ? OverworldMap.getTileVisual(tile) : OverworldMap.getBiomeVisual(tile.biome);
                 const isCursor    = col === ow.cursorCol && row === ow.cursorRow;
                 const isActiveZone = col === this._currentZoneCol && row === this._currentZoneRow && this.world;
-                const isQuestTarget = this.isActiveQuestTarget(col, row);
 
                 let fgColor = visible ? visual.color : '#3a3a3a';
                 let bgColor = '#000000';
@@ -1280,8 +1033,6 @@ export class Game {
                 } else if (isActiveZone) {
                     // Active zone tile (cursor elsewhere)
                     glyph = '@'; fg = '#00aa55'; bgColor = '#111a11';
-                } else if (isQuestTarget) {
-                    glyph = '!'; fg = '#ffaa00'; bgColor = '#221600';
                 } else {
                     glyph = visual.glyph; fg = fgColor;
                 }

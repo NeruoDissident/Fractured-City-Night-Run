@@ -4,14 +4,14 @@
 
 The project has shifted from primarily infinite chunk generation toward **bounded zone generation connected by an overworld**. Old `Chunk.js` generation still exists and some sections below describe it historically, but the active design path is:
 
-`OverworldMap` chooses a zone tile -> `Game.dropIntoZone()` creates a zone-mode `World` -> `ZoneGenerator` and `ZoneCanvas` build a detailed map from templates/fragments -> POIs are discovered by FoV -> objectives/NPCs point the player between zones.
+`OverworldMap` chooses a zone tile -> `Game.dropIntoZone()` creates a zone-mode `World` -> `ZoneGenerator` and `ZoneCanvas` build a detailed map from templates/fragments -> the player explores it in first person.
+
+The quest chain, goal board, delivery errands, POIs/Known Places, and the old NPC roster were removed during the first-person pivot. See `CLAUDE.md` for what is kept, what is placeholder, and what comes next.
 
 Current priority systems:
-- `src/systems/QuestSystem.js`: working prototype for objective chains; should become occupation-specific.
 - `src/world/gen/ZoneGenerator.js` and `src/world/gen/UrbanFragments.js`: current map design focus.
-- `World.pointsOfInterest`: discovered through explored FoV tiles.
-- `Game.startAutoTravelToPoi()` and `Game.startAutoExplore()`: POI travel and auto-explore.
-- `UIManager.togglePointOfInterestList()`: Known Places modal.
+- `Game.startAutoExplore()`: auto-explore toward unexplored ground.
+- `src/content/NpcCatalog.js` + `Game.debugSpawn()`: placeholder NPC templates and the F9 spawner.
 
 ASCII is currently the primary development view. Sprites remain supported, but every visual path needs a clear ASCII fallback.
 
@@ -102,7 +102,6 @@ ASCII is currently the primary development view. Sprites remain supported, but e
 - B: Toggle combat overlay
 - Q: Talent & Ability panel
 - J: Journal/current entries
-- P: Known Places / discovered POIs
 - O: Auto-explore
 - Tab: Toggle Overworld map
 - F: Toggle explore mode
@@ -119,15 +118,14 @@ ASCII is currently the primary development view. Sprites remain supported, but e
 ---
 
 ### 4. World System (`src/world/World.js` + `src/world/Chunk.js` + `src/world/gen/`)
-**Responsibility:** Zone-mode maps, older chunk support, entity management, Z-level support, POI tracking
+**Responsibility:** Zone-mode maps, older chunk support, entity management, Z-level support
 
 **Architecture:**
 Current active path:
 - `World.zoneMode = true` creates bounded zone maps.
 - `ZoneGenerator.generate(world)` selects and builds zone layouts.
-- `ZoneCanvas` provides drawing helpers, fragment placement, furniture, and POI registration.
+- `ZoneCanvas` provides drawing helpers, fragment placement, furniture, and NPC spawning (`addNpc` skips unknown catalog types).
 - `UrbanFragments` contains reusable urban pieces such as corner stores, gas stations, laundries, pawn shops, alleys, bodegas, and clinics.
-- `World.pointsOfInterest` stores POIs; `World.updatePointOfInterestDiscovery()` marks them discovered from FoV explored tiles.
 
 Legacy/underlying path:
 - World divided into 128×128 tile chunks (increased from 32 in v39)
@@ -158,7 +156,7 @@ Legacy/underlying path:
 **Expansion Points:**
 - Add chunk serialization (save/load distant chunks)
 - Add natural features (trees, rocks, mountains)
-- Expand POI categories, map UI, auto-travel interruption rules, and cross-zone travel
+- Interior-first generators (corridors, rooms, z-levels) for the crawler view
 - Add more prefab layouts and building types
 - Add weather/environmental effects per biome
 
@@ -477,35 +475,15 @@ content.createComponent(componentId)  // Raw material spawning
 
 ---
 
-### 17. Quest / Objective Prototype (`src/systems/QuestSystem.js`)
-**Responsibility:** Current journal/objective prototype for named NPC objective chains.
-
-**Status:** Implemented as a working prototype, not final architecture.
-
-**Current Features:**
-- Player quest data initialization.
-- Active/completed objective tracking.
-- NPC quest giver dialogue integration.
-- Starter chain support for Street Kid testing.
-- Target zone hints and overworld active target markers.
-
-**Near-Term Direction:**
-- Move universal intro behavior into occupation-specific starts.
-- Add an occupation-start registry that defines starting zone, starting contact, starting journal entry, loadout/talent hooks, and first objective chain.
-- Rename surface wording away from generic "quest/story quest" language as the UI direction settles.
-
-### 18. POI / Auto-Explore Tools
+### 17. Auto-Explore
 **Files:** `World.js`, `Game.js`, `UIManager.js`, `InputHandler.js`
 
 **Status:** Implemented as a current milestone slice.
 
 **Features:**
-- Zone generation registers POIs through `ZoneCanvas.addPoi()`.
-- FoV exploration marks nearby POIs discovered.
-- `P` opens Known Places.
-- Known Places can auto-travel to a discovered POI.
-- `O` auto-explores toward reachable unexplored edges.
-- Auto-travel stops for visible danger, blocked paths, zone changes, overworld entry, or `Esc`.
+- `O` auto-explores toward reachable unexplored edges (BFS over explored walkable tiles).
+- Auto-explore stops for visible danger, blocked paths, zone changes, overworld entry, or `Esc`.
+- In first person each step sets facing, so the view turns as it walks.
 
 ---
 
