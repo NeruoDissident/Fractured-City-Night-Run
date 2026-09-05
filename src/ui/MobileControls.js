@@ -248,7 +248,7 @@ export class MobileControls {
             case 'ascend':
                 if (this.game.gameState === 'playing' && !this.game.inspectMode) {
                     const tileUp = this.game.world.getTile(this.game.player.x, this.game.player.y, this.game.player.z);
-                    if (tileUp.isStaircase || tileUp.isManhole || tileUp.isLadder) {
+                    if (tileUp.isStaircase || tileUp.isManhole || tileUp.isLadder || tileUp.isSiteExit) {
                         this.game.processTurn({ type: 'ascend' });
                     } else {
                         this.game.ui.log('There are no stairs here.', 'warning');

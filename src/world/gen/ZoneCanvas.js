@@ -17,7 +17,10 @@ const FURNITURE_ASCII = {
     workbench: { glyph: 'W', fgColor: '#d8a85c' },
     filing_cabinet: { glyph: 'f', fgColor: '#aeb8c2' },
     bed: { glyph: 'b', fgColor: '#c7a8d8' },
-    stove: { glyph: 'v', fgColor: '#d0d0d0' }
+    stove: { glyph: 'v', fgColor: '#d0d0d0' },
+    dresser: { glyph: 'd', fgColor: '#c2a276' },
+    couch: { glyph: 'n', fgColor: '#a88fb0' },
+    shower: { glyph: 'j', fgColor: '#a8d8ff' }
 };
 
 function asciiForFurniture(type, name) {

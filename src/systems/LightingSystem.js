@@ -23,8 +23,10 @@ export class LightingSystem {
         // Light map: key = "x,y,z" -> { level: 0.0-1.0, tint: '#rrggbb' | null }
         this.lightMap = new Map();
         
-        // Registered world light sources (bonfires, etc.)
-        this.worldLightSources = [];
+        // Registered world light sources (bonfires, etc.).
+        // Zone generation runs before this system exists, so baked lights are
+        // handed over through world.staticLights.
+        this.worldLightSources = [...(game.world?.staticLights || [])];
         
         // Direction vectors for cone lights (dx, dy per facing)
         this.facingVectors = {
@@ -97,8 +99,13 @@ export class LightingSystem {
      * Uses tile name to determine - building floors, staircases inside buildings, etc.
      */
     isIndoorTile(tile) {
-        if (!tile || !tile.name) return false;
-        
+        if (!tile) return false;
+
+        // Generated tiles declare this outright; trust it before guessing by name.
+        if (tile.isExterior === false) return true;
+        if (tile.isExterior === true) return false;
+
+        if (!tile.name) return false;
         const name = tile.name;
         
         // Building interior tiles

@@ -1,3 +1,4 @@
+import { getSiteProfile } from '../content/SiteCatalog.js';
 // Terrain-first overworld map.
 //
 // The rest of the game still expects each tile to expose:
@@ -415,6 +416,15 @@ export class OverworldMap {
                 const zoneBiome = geo.biome;
                 const pool = ZONE_POOLS[zoneBiome] || ZONE_POOLS[geo.terrain] || ZONE_POOLS.rural || [FALLBACK_ZONE];
                 const zone = { ...pickWeighted(pool, rng) };
+
+                // Interior sites own their footprint (see SiteCatalog); keep the
+                // overworld's advertised size honest so zone intel matches.
+                const siteProfile = getSiteProfile(zone.id);
+                if (siteProfile) {
+                    zone.width = siteProfile.width;
+                    zone.height = siteProfile.height;
+                    zone.interior = true;
+                }
 
                 if (geo.road && geo.terrain === 'river') {
                     zone.id = 'road_bridge';

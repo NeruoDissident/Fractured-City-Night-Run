@@ -475,7 +475,49 @@ content.createComponent(componentId)  // Raw material spawning
 
 ---
 
-### 17. Auto-Explore
+### 17. Interior Sites (`src/world/gen/InteriorGenerator.js`, `src/content/SiteCatalog.js`)
+**Responsibility:** Multi-floor building interiors for the first-person view.
+
+**Flow:** `ZoneGenerator.generate()` calls `getSiteProfile(zoneId)`. When a profile
+exists the zone becomes an interior: the world's footprint is resized to the
+profile, `generateSite()` builds every floor, and the street generators are skipped.
+
+**How a site is built:**
+- Geometry is assembled on a working grid of cell kinds (SOLID / ROOM / CORRIDOR /
+  DOOR / STAIRS / EXIT) and only painted onto tiles at the end. Connectivity and
+  door placement are decided on the grid, where they are cheap to reason about.
+- A **stair core** occupies the same x/y on every floor, so floors always connect.
+  `ensureConnected()` floods from it and carves to anything stranded, so a site
+  can never generate an unreachable room.
+- The ground floor gets one **entrance**; layouts hand back perimeter spots that
+  already back onto a corridor so you arrive in a hall rather than inside a shop.
+- Layouts: `spine` (parallel corridors with room strips both sides, cross-linked
+  into a loop), `bsp` (recursive subdivision, L-corridors), `ring` (corridor loop,
+  shop band outside, corridor-grid core).
+- Rooms are capped at `MAX_ROOM_SPAN` (8). This is a readability constraint, not a
+  performance one: larger rooms stop reading as rooms in first person.
+- Doors become real `WorldObject`s, so they open, lock, and smash. Locks are
+  smash-only until a key system exists.
+- Furniture is placed along walls from `ROOM_FURNITURE`, never on a cell beside a
+  doorway, budgeted by room area so a room can never be sealed by its own contents.
+- Emergency lights are baked into `world.staticLights` at generation time and read
+  by the `LightingSystem` constructor, because generation runs before that system
+  exists.
+
+**World flags set:** `isInterior`, `siteName`, `siteExit`, `spawnPoint`, `spawnFacing`.
+
+**Game integration:** interiors are sealed (no zone-edge transition), `<` on a
+`isSiteExit` tile returns to the overworld, and drop-in always lands at the
+entrance regardless of travel direction.
+
+**Expansion Points:**
+- More layouts (radial, warehouse aisles, flooded sublevel)
+- Set pieces per site; keyed doors; encounter and loot budgets per level
+- Sites reached through a street zone's door rather than replacing the zone
+
+---
+
+### 18. Auto-Explore
 **Files:** `World.js`, `Game.js`, `UIManager.js`, `InputHandler.js`
 
 **Status:** Implemented as a current milestone slice.

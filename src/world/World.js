@@ -34,6 +34,13 @@ export class World {
         this.zoneHeight  = 128;   // tile height of this zone
         this.zoneTemplate = null; // { faction, purpose, npcSignature, keyFeature } from OverworldMap
         this._voidChunk  = null;  // lazy-built solid-wall chunk for out-of-bounds
+
+        // ── Interior sites (see gen/InteriorGenerator.js) ────────────────────
+        this.isInterior   = false; // true for multi-floor building interiors
+        this.siteName     = null;  // display name of the site
+        this.siteExit     = null;  // { x, y, z } tile that leads back to the overworld
+        this.spawnFacing  = null;  // facing to apply on drop-in, if the site sets one
+        this.staticLights = [];    // baked light sources, read by LightingSystem
     }
     
     init() {

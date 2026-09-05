@@ -1,4 +1,6 @@
 import { ZoneCanvas } from './ZoneCanvas.js';
+import { generateSite } from './InteriorGenerator.js';
+import { getSiteProfile } from '../../content/SiteCatalog.js';
 import { ZoneTiles } from './ZoneTiles.js';
 import {
     drawBodega,
@@ -26,10 +28,31 @@ export class ZoneGenerator {
         world.items = [];
         world.worldObjects = [];
         world.extractionPoint = null;
+        world.isInterior = false;
+        world.siteName = null;
+        world.siteExit = null;
+        world.spawnFacing = null;
+        world.staticLights = [];
 
         const rng = mulberry32(world.worldSeed || 12345);
-        const canvas = new ZoneCanvas(world, rng);
         const id = world.zoneTemplate?.id || 'safe_hub';
+
+        // Interior sites own their own footprint, which is much smaller than a
+        // street zone so a floor stays learnable in first person.
+        const site = getSiteProfile(id);
+        if (site) {
+            world.zoneWidth = site.width;
+            world.zoneHeight = site.height;
+            world.zoneBounds = {
+                minCx: 0,
+                maxCx: Math.ceil(site.width / world.chunkSize) - 1,
+                minCy: 0,
+                maxCy: Math.ceil(site.height / world.chunkSize) - 1
+            };
+            return generateSite(new ZoneCanvas(world, rng), site);
+        }
+
+        const canvas = new ZoneCanvas(world, rng);
 
         switch (id) {
             case 'urban_corner_store':

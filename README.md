@@ -14,9 +14,14 @@ Zones are not rigid stages. The player can travel freely between zones and use t
 The game is being rebuilt as a first-person grid crawler. The old quest chain,
 delivery errands, Known Places, and NPC roster were removed; combat, anatomy,
 crafting, inventory, survival, lighting, and zone generation remain. Two
-placeholder NPC types exist for testing (`F9` spawns a hostile ahead,
-`Shift+F9` a bystander). The next steps are the run flow, interior-first zone
-generators, and a UI pass built around the crawler view. See `CLAUDE.md`.
+placeholder NPC types exist for testing (`F9` spawns a hostile, `Shift+F9` a
+bystander).
+
+Some overworld zones are now **sites**: multi-floor building interiors you drop
+into and explore in first person, joined by a stairwell and left through the
+entrance. Corner stores, streets, and the hub still generate as open zones.
+The next steps are the run flow and a UI pass built around the crawler view.
+See `CLAUDE.md`.
 
 ## Implemented Systems
 
@@ -32,6 +37,8 @@ generators, and a UI pass built around the crawler view. See `CLAUDE.md`.
 - Character creation with backgrounds, traits, stats, talents, stances, and abilities
 - Overworld zone grid
 - Zone-mode generation through templates/fragments
+- Interior sites: multi-floor buildings with corridors, rooms, doors, stairwells,
+  and baked emergency lighting
 - Auto-explore (`O`) toward unexplored ground
 - Canvas rendering with ASCII and optional sprites
 
@@ -99,6 +106,7 @@ For cache problems during local testing, use `dev-reset.html` or hard-refresh. T
 - `src/world/World.js` - chunk manager, entities/items/objects, zone mode
 - `src/world/OverworldMap.js` - overworld zone grid
 - `src/world/gen/ZoneGenerator.js` - current zone generation entrypoint
+- `src/world/gen/InteriorGenerator.js` - multi-floor interior sites
 - `src/world/gen/ZoneCanvas.js` - zone drawing helper (tiles, doors, furniture, NPC spawns)
 - `src/world/gen/UrbanFragments.js` - reusable urban sub-zone fragments
 - `src/world/Chunk.js` - older procedural chunk generation, still present but no longer the main design direction
@@ -107,6 +115,7 @@ For cache problems during local testing, use `dev-reset.html` or hard-refresh. T
 - `src/systems/CharacterCreationSystem.js` - backgrounds/traits/stat setup
 - `src/content/TalentCatalog.js` - talent trees, nodes, effects
 - `src/content/NpcCatalog.js` - NPC templates (placeholders until the new roster)
+- `src/content/SiteCatalog.js` - interior site profiles (floors, layouts, lighting)
 - `src/systems/AbilitySystem.js` - talent-gated abilities and effects
 - `src/systems/CombatSystem.js` - anatomy combat resolution
 - `src/systems/CraftingSystem.js` - crafting/disassembly
@@ -134,6 +143,6 @@ For cache problems during local testing, use `dev-reset.html` or hard-refresh. T
 ## Next Steps
 
 1. Define the run flow: where a run starts, what pulls the player forward, what ends it.
-2. Interior-first zone generators (corridors, rooms, doors, z-levels) for the crawler view.
-3. UI cleanup around the first-person view.
-4. Cone FoV, facing-aware combat, wall textures and billboard sprites.
+2. UI cleanup around the first-person view.
+3. Cone FoV, facing-aware combat, wall textures and billboard sprites.
+4. Set pieces and encounter budgets inside sites, once the NPC roster exists.

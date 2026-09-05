@@ -18,7 +18,20 @@ The game is being reworked into a **first-person, grid-based, turn-based cyberpu
 
 **Removal pass (same month):** QuestSystem, GoalSystem, the Street Kid intro chain, delivery errands, POIs / Known Places / auto-travel-to-POI, and the hardcoded NPC roster are gone. `src/content/NpcCatalog.js` holds two placeholder templates and `F9` / `Shift+F9` (`game.debugSpawn()`) drops one in front of the player so combat and detection stay testable. NPC.js keeps the AI shell. Zone generators no longer spawn NPCs or register POIs; `ZoneCanvas.addNpc` fails soft on unknown types. `CLAUDE.md` documents the current state and conventions.
 
-Phase 2 is the map redesign: interior-first, corridor-and-room zone generators so the crawler view has geometry to read. Phase 3 is cone FoV, facing-aware combat, textures and sprites for walls and billboards.
+**Interior sites (phase 2):** `src/world/gen/InteriorGenerator.js` and
+`src/content/SiteCatalog.js` add multi-floor building interiors. An overworld zone
+with a site profile stops being a street map and becomes a building you drop into:
+a stack of floors sharing a stair core, one entrance out, corridors and rooms
+carved on a working grid before anything touches a tile. Three layouts (spine, bsp,
+ring), rooms capped at 8x8 for first-person readability, real door objects,
+wall-hugging furniture keyed to the existing room-aware loot tables, and emergency
+lighting baked into `world.staticLights` so corridors are navigable while rooms
+stay dark. Connectivity is guaranteed by flooding from the stair core and carving
+to anything stranded; verified over 36 generated sites with furniture treated as
+blocking. Six profiles ship: Kiroshi Data Hub, Aurora Clinic, Old Town Hall, Dead
+Mall, Henderson Plant, Marrow Row, plus five aliases.
+
+Phase 2 was the map redesign: interior-first, corridor-and-room zone generators so the crawler view has geometry to read. Phase 3 is cone FoV, facing-aware combat, textures and sprites for walls and billboards.
 
 ## Current Pivot
 
