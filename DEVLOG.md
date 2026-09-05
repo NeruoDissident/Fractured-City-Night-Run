@@ -5,6 +5,19 @@
 **Status:** Active Development  
 **Last Updated:** May 2026
 
+## First-Person Pivot (September 2026)
+
+The game is being reworked into a **first-person, grid-based, turn-based cyberpunk crawler**. Phase 1 is in:
+
+- New `src/core/FirstPersonRenderer.js` draws the zone from the player's cell along `player.facing` (classic panel projection, painter's order, billboards for objects/items/NPCs, time-of-day sky outdoors, ceilings indoors, depth fog at vision range).
+- Relative movement: `W` forward, `S` backpedal, `A`/`D` turn (free action), `Shift+A/D` strafe. Backpedal/strafe keep facing and never swing at creatures you are not facing.
+- Interact and inspect now work relative to facing; the view outlines candidate cells and labels them with their key.
+- Automap shows a facing arrow and view cone; the location panel shows facing.
+- Mobile d-pad is relative (up forward, down back, left/right turn) with strafe and VIEW buttons in the more row.
+- Backtick toggles back to the top-down map at any time for debugging and map tuning.
+
+Phase 2 is the map redesign: interior-first, corridor-and-room zone generators so the crawler view has geometry to read. Phase 3 is cone FoV, facing-aware combat, textures and sprites for walls and billboards.
+
 ## Current Pivot
 
 The project has shifted toward an occupation-driven survival roguelike with dense traversable zones.

@@ -566,6 +566,40 @@ export class UIManager {
         const py = RADIUS * TILE_PX;
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(px - 1, py - 1, TILE_PX + 2, TILE_PX + 2);
+
+        // Facing indicator: a view cone plus an arrow in the first-person view
+        if (this.game.isFirstPerson && this.game.isFirstPerson()) {
+            const vec = { north: [0, -1], east: [1, 0], south: [0, 1], west: [-1, 0] }[player.facing] || [0, 1];
+            const cx = px + TILE_PX / 2;
+            const cy = py + TILE_PX / 2;
+            const fx = vec[0], fy = vec[1];
+            const rx = -fy, ry = fx; // right-hand vector
+            const len = 8 * TILE_PX;
+
+            ctx.save();
+            ctx.fillStyle = 'rgba(0, 255, 204, 0.12)';
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(cx + (fx - rx) * len, cy + (fy - ry) * len);
+            ctx.lineTo(cx + (fx + rx) * len, cy + (fy + ry) * len);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.strokeStyle = '#00ffcc';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(cx + fx * 3 * TILE_PX, cy + fy * 3 * TILE_PX);
+            ctx.stroke();
+            ctx.fillStyle = '#00ffcc';
+            ctx.beginPath();
+            ctx.moveTo(cx + fx * 4 * TILE_PX, cy + fy * 4 * TILE_PX);
+            ctx.lineTo(cx + (fx * 2 + rx * 1.2) * TILE_PX, cy + (fy * 2 + ry * 1.2) * TILE_PX);
+            ctx.lineTo(cx + (fx * 2 - rx * 1.2) * TILE_PX, cy + (fy * 2 - ry * 1.2) * TILE_PX);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+        }
     }
     
     updateContextPanel() {
@@ -696,6 +730,13 @@ export class UIManager {
         // Floor level
         const floorLabel = player.z === 0 ? 'Ground' : player.z > 0 ? `Floor ${player.z}` : `Basement ${Math.abs(player.z)}`;
         html += `<div class="stat-line"><span class="stat-label">Floor:</span> <span class="stat-value">${floorLabel}</span></div>`;
+
+        // Facing (first-person view)
+        if (this.game.isFirstPerson && this.game.isFirstPerson()) {
+            const facingNames = { north: 'North', east: 'East', south: 'South', west: 'West' };
+            const facingLabel = facingNames[player.facing] || player.facing;
+            html += `<div class="stat-line"><span class="stat-label">Facing:</span> <span class="stat-value" style="color: #00ffcc;">${facingLabel}</span></div>`;
+        }
         
         // Building / Room
         if (tile.roomType) {
@@ -4074,7 +4115,12 @@ export class UIManager {
         // Movement
         html += '<div style="margin-bottom: 20px;">';
         html += '<h4 style="color: #00ffff; margin-bottom: 8px;">Movement</h4>';
-        html += '<div class="stat-line"><span class="stat-label">WASD / Arrow Keys:</span> <span class="stat-value">Move</span></div>';
+        html += '<div class="stat-line"><span class="stat-label">W / Up:</span> <span class="stat-value">Step forward (bump to attack)</span></div>';
+        html += '<div class="stat-line"><span class="stat-label">S / Down:</span> <span class="stat-value">Step back (keeps facing)</span></div>';
+        html += '<div class="stat-line"><span class="stat-label">A / D, Left / Right:</span> <span class="stat-value">Turn left / right (free action)</span></div>';
+        html += '<div class="stat-line"><span class="stat-label">Shift + A / D:</span> <span class="stat-value">Sidestep left / right</span></div>';
+        html += '<div class="stat-line"><span class="stat-label">` (backtick):</span> <span class="stat-value">Toggle first-person / top-down map view</span></div>';
+        html += '<div style="color: #888; font-size: 11px; margin-top: 4px;">In the top-down view WASD / arrows move on the map directly.</div>';
         html += '<div class="stat-line"><span class="stat-label">Space:</span> <span class="stat-value">Wait/Skip Turn</span></div>';
         html += '<div class="stat-line"><span class="stat-label">M:</span> <span class="stat-value">Cycle mode (Walk/Run/Crouch/Prone)</span></div>';
         html += '<div class="stat-line"><span class="stat-label">< / >:</span> <span class="stat-value">Use stairs/manholes</span></div>';
@@ -4086,7 +4132,7 @@ export class UIManager {
         html += '<h4 style="color: #00ffff; margin-bottom: 8px;">Actions</h4>';
         html += '<div class="stat-line"><span class="stat-label">G:</span> <span class="stat-value">Pick up item at feet</span></div>';
         html += '<div class="stat-line"><span class="stat-label">E:</span> <span class="stat-value">Interact with door/object</span></div>';
-        html += '<div class="stat-line"><span class="stat-label">X:</span> <span class="stat-value">Inspect mode (move cursor with arrows)</span></div>';
+        html += '<div class="stat-line"><span class="stat-label">X:</span> <span class="stat-value">Inspect mode (cursor starts on the cell ahead; WASD moves it relative to facing)</span></div>';
         html += '<div class="stat-line"><span class="stat-label">F:</span> <span class="stat-value">Toggle explore mode (auto-walk)</span></div>';
         html += '<div class="stat-line"><span class="stat-label">Escape:</span> <span class="stat-value">Close any open window</span></div>';
         html += '</div>';

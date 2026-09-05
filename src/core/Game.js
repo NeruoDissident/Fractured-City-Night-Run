@@ -1,4 +1,5 @@
 import { Renderer } from './Renderer.js';
+import { FirstPersonRenderer, normalizeFacing, turnFacing, relativeToDelta, deltaToRelative } from './FirstPersonRenderer.js';
 import { SpriteManager } from './SpriteManager.js';
 import { InputHandler } from './InputHandler.js';
 import { World } from '../world/World.js';
@@ -37,6 +38,10 @@ export class Game {
         this.goalSystem = null;
         this.questSystem = null;
         this.graphicsMode = 'ascii';
+
+        // View mode: 'first_person' (grid crawler view) or 'top_down' (classic roguelike map)
+        this.viewMode = 'first_person';
+        this.fpRenderer = null;
         
         this.isRunning = false;
         this.turnCount = 0;
@@ -76,6 +81,7 @@ export class Game {
         this.renderer.init();
         this.renderer.setSpriteManager(this.spriteManager);
         this.renderer.setGraphicsMode(this.graphicsMode);
+        this.fpRenderer = new FirstPersonRenderer(this, this.renderer);
         
         this.ui = new UIManager(this);
         this.ui.init();
@@ -438,8 +444,15 @@ export class Game {
         // Reset last action cost — each action type sets this
         this.player.lastActionCost = 100; // default 1 turn
         
-        if (action.type === 'move') {
-            playerActed = this.player.tryMove(action.dx, action.dy);
+        if (action.type === 'turn') {
+            // Turning in place is free: no world tick, but the flashlight cone
+            // and view depend on facing, so lighting is refreshed.
+            this.player.facing = turnFacing(this.player.facing, action.steps || 1);
+            this.player.lastActionCost = 0;
+            playerActed = true;
+            this.updateFoV();
+        } else if (action.type === 'move') {
+            playerActed = this.player.tryMove(action.dx, action.dy, { keepFacing: !!action.keepFacing });
             // Zone edge transition: if move was blocked and target is outside zone bounds
             if (!playerActed && this.world && this.world.zoneMode) {
                 const nx = this.player.x + action.dx;
@@ -769,7 +782,14 @@ export class Game {
         if (this.inspectMode) {
             this.inspectCursor.x = this.player.x;
             this.inspectCursor.y = this.player.y;
-            this.ui.log('Inspect mode: Use arrow keys to move cursor, [X] or [Esc] to exit.', 'info');
+            if (this.isFirstPerson()) {
+                const ahead = this.relativeDelta('forward');
+                this.inspectCursor.x += ahead.dx;
+                this.inspectCursor.y += ahead.dy;
+                this.ui.log('Inspect mode: W/S/A/D move the cursor relative to your facing, [X] or [Esc] to exit.', 'info');
+            } else {
+                this.ui.log('Inspect mode: Use arrow keys to move cursor, [X] or [Esc] to exit.', 'info');
+            }
         } else {
             this.ui.log('Inspect mode off.', 'info');
         }
@@ -898,7 +918,12 @@ export class Game {
         // Multiple candidates — enter interact mode
         this.interactMode = true;
         this.interactCandidates = candidates;
-        this.ui.log('Interact: press a direction to choose, [Esc] to cancel.', 'info');
+        if (this.isFirstPerson()) {
+            const opts = candidates.map(c => this.describeDelta(c.dx, c.dy)).join(', ');
+            this.ui.log(`Interact: choose ${opts} with W/S/A/D or Space, [Esc] to cancel.`, 'info');
+        } else {
+            this.ui.log('Interact: press a direction to choose, [Esc] to cancel.', 'info');
+        }
         this.render();
     }
     
@@ -1114,6 +1139,11 @@ export class Game {
             return;
         }
 
+        if (this.isFirstPerson()) {
+            this.renderFirstPerson();
+            return;
+        }
+
         const viewWidth = this.renderer.tilesX;
         const viewHeight = this.renderer.tilesY;
         const cameraX = this.player.x - Math.floor(viewWidth / 2);
@@ -1150,6 +1180,57 @@ export class Game {
         if (this.mobileControls) {
             this.mobileControls.updateHUD();
         }
+    }
+
+    // ── First-person view ──────────────────────────────────────────────────────
+    isFirstPerson() {
+        return this.viewMode === 'first_person' && this.gameState === 'playing' && !!this.fpRenderer;
+    }
+
+    renderFirstPerson() {
+        this.player.facing = normalizeFacing(this.player.facing);
+        this.fpRenderer.render();
+
+        if (this.inspectMode) {
+            this.ui.updateCharacterPanel();
+            this.ui.updateMinimap();
+            this.ui.updateInspectInfo(this.inspectCursor.x, this.inspectCursor.y);
+        } else {
+            this.ui.updatePanels();
+        }
+
+        if (this.mobileControls) {
+            this.mobileControls.updateHUD();
+        }
+    }
+
+    toggleViewMode() {
+        this.viewMode = this.viewMode === 'first_person' ? 'top_down' : 'first_person';
+        if (this.viewMode === 'first_person' && this.player) {
+            this.player.facing = normalizeFacing(this.player.facing);
+            if (this.lightingSystem && this.fov) this.updateFoV();
+        }
+        const label = this.viewMode === 'first_person' ? 'First-person view' : 'Top-down map view';
+        this.ui.log(`${label}.`, 'info');
+        this.render();
+    }
+
+    /**
+     * Translate a view-relative direction into a world delta.
+     * In top-down view the relative names map straight onto screen directions.
+     */
+    relativeDelta(rel) {
+        if (this.isFirstPerson()) return relativeToDelta(this.player.facing, rel);
+        return { forward: { dx: 0, dy: -1 }, back: { dx: 0, dy: 1 }, left: { dx: -1, dy: 0 }, right: { dx: 1, dy: 0 } }[rel] || { dx: 0, dy: 0 };
+    }
+
+    /** Human label for an absolute delta, relative to the player's facing. */
+    describeDelta(dx, dy) {
+        if (this.isFirstPerson()) return deltaToRelative(this.player.facing, dx, dy) || 'nearby';
+        if (dx === 0 && dy === 0) return 'here';
+        if (dy < 0) return 'north';
+        if (dy > 0) return 'south';
+        return dx < 0 ? 'west' : 'east';
     }
 
     // ── Overworld rendering ────────────────────────────────────────────────────

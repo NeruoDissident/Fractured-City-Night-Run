@@ -43,6 +43,30 @@ ASCII is currently the primary development view. Sprites remain supported, but e
 
 ---
 
+### 2a. First-Person View (`src/core/FirstPersonRenderer.js`)
+**Responsibility:** Grid-crawler view of the current zone from the player's cell along `player.facing`
+
+`Game.render()` dispatches to `FirstPersonRenderer.render()` when `game.viewMode === 'first_person'` (the default) and to `World.render()` for the top-down view. Both read the same `World`, `FoVSystem`, and `LightingSystem` data, so nothing in the simulation depends on which view is active.
+
+**How it draws:**
+- Cells are addressed in view-relative coordinates: depth `d` (0 = player cell, 1 = cell ahead) and lateral `l` (negative = left).
+- Painter's algorithm: far depth first, outer laterals first, so nearer surfaces overwrite farther ones.
+- Solid cells (blocked + blocksVision, plus glass) draw a front face and the side face toward the view axis, coloured from the tile's fg/bg colours and lit by the open cell in front of them.
+- Walkable cells draw a floor quad (with the tile glyph stamped on it) and a ceiling quad when indoors; outdoors shows a time-of-day sky.
+- Doors, furniture, fences, items, and entities are billboards (scaled glyphs, or sprites when sprite mode is on) at the centre of their cell.
+- Depth fog fades to black at the effective vision range; remembered-but-unseen cells are drawn dim.
+- Overlays: compass strip, "Ahead / Here" readout, interact and inspect cell outlines, floating combat text.
+
+**Facing helpers** (exported from the same file): `normalizeFacing`, `facingVector`, `rightVector`, `turnFacing`, `relativeToDelta`, `deltaToRelative`.
+
+**Input model in first person:** forward/back/strafe become world deltas via `Game.relativeDelta()`; turning is a `{ type: 'turn', steps }` action that costs no time. `Player.tryMove(dx, dy, { keepFacing })` preserves facing for backpedal/strafe and refuses to attack a creature you are not facing.
+
+**Expansion Points:**
+- Wall textures / per-material faces
+- Cone-shaped FoV for detection (currently only the *drawn* frustum is limited)
+- Facing-aware combat (flank / rear penalties)
+- Turn and step tweening, weapon-in-hand overlay, damage vignette
+
 ### 2. Rendering (`src/core/Renderer.js`)
 **Responsibility:** Canvas 2D drawing, tile rendering
 

@@ -137,13 +137,44 @@ export class MobileControls {
         if (this.game.gameState === 'overworld') {
             this.game.overworldMap.moveCursor(dx, dy);
             this.game.render();
-        } else if (this.game.interactMode) {
+            return;
+        }
+
+        // First-person view: the d-pad is relative to facing.
+        // Up = forward, Down = backpedal, Left/Right = turn (or select a side
+        // target while interacting / inspecting).
+        if (this.game.isFirstPerson()) {
+            const intent = dy < 0 ? 'forward' : dy > 0 ? 'back' : dx < 0 ? 'left' : 'right';
+            if (this.game.interactMode || this.game.inspectMode) {
+                const d = this.game.relativeDelta(intent);
+                if (this.game.interactMode) this.game.interactInDirection(d.dx, d.dy);
+                else this.game.moveInspectCursor(d.dx, d.dy);
+                return;
+            }
+            if (this.game.autoTravelTarget) this.game.cancelAutoTravel();
+            this.game.processTurn(this.game.input.firstPersonAction(intent, false));
+            return;
+        }
+
+        if (this.game.interactMode) {
             this.game.interactInDirection(dx, dy);
         } else if (this.game.inspectMode) {
             this.game.moveInspectCursor(dx, dy);
         } else if (this.game.gameState === 'playing') {
             this.game.processTurn({ type: 'move', dx, dy });
         }
+    }
+
+    /** Sidestep without turning (first-person only). */
+    handleStrafe(side) {
+        if (!this.game.isRunning || this.game.gameState !== 'playing') return;
+        if (this.game.interactMode || this.game.inspectMode) return;
+        if (!this.game.isFirstPerson()) {
+            this.handleMove(side === 'left' ? -1 : 1, 0);
+            return;
+        }
+        if (this.game.autoTravelTarget) this.game.cancelAutoTravel();
+        this.game.processTurn(this.game.input.firstPersonAction(side, true));
     }
 
     handleAction(action) {
@@ -258,6 +289,20 @@ export class MobileControls {
 
             case 'more_menu':
                 this.toggleMoreMenu();
+                break;
+
+            case 'toggle_view':
+                if (this.game.gameState === 'playing') {
+                    this.game.toggleViewMode();
+                }
+                break;
+
+            case 'strafe_left':
+                this.handleStrafe('left');
+                break;
+
+            case 'strafe_right':
+                this.handleStrafe('right');
                 break;
 
             case 'overworld':

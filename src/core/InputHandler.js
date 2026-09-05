@@ -25,6 +25,22 @@ export class InputHandler {
     init() {
         document.addEventListener('keydown', (e) => this.handleKeyDown(e));
     }
+
+    /**
+     * Map a movement key to a view-relative intent.
+     * In first-person view: forward / back / left / right (left & right turn,
+     * or strafe when Shift is held). In top-down view the same keys are
+     * absolute screen directions and are handled by keyMap instead.
+     */
+    _relativeIntent(key) {
+        switch (key) {
+            case 'w': case 'W': case 'ArrowUp':    return 'forward';
+            case 's': case 'S': case 'ArrowDown':  return 'back';
+            case 'a': case 'A': case 'ArrowLeft':  return 'left';
+            case 'd': case 'D': case 'ArrowRight': return 'right';
+            default: return null;
+        }
+    }
     
     handleKeyDown(e) {
         // Allow typing in input fields (e.g. wiki search) without triggering game keys
@@ -79,6 +95,14 @@ export class InputHandler {
         if (e.key === '?') {
             e.preventDefault();
             this.game.ui.toggleHelpScreen();
+            return;
+        }
+
+        if (e.key === '`' || e.key === '~') {
+            e.preventDefault();
+            if (this.game.gameState === 'playing') {
+                this.game.toggleViewMode();
+            }
             return;
         }
         
@@ -233,8 +257,24 @@ export class InputHandler {
 
         if (this.game.gameState !== 'playing') return;
         
+        const firstPerson = this.game.isFirstPerson();
+        const intent = this._relativeIntent(e.key);
+
         // Interact mode: direction keys select a target
         if (this.game.interactMode) {
+            if (e.key === ' ') {
+                e.preventDefault();
+                this.game.interactInDirection(0, 0);
+                return;
+            }
+            if (firstPerson) {
+                if (intent) {
+                    e.preventDefault();
+                    const d = this.game.relativeDelta(intent);
+                    this.game.interactInDirection(d.dx, d.dy);
+                }
+                return;
+            }
             const action = this.keyMap[e.key];
             if (action && action.type === 'move') {
                 e.preventDefault();
@@ -244,11 +284,29 @@ export class InputHandler {
         }
         
         if (this.game.inspectMode) {
+            if (firstPerson) {
+                if (intent) {
+                    e.preventDefault();
+                    const d = this.game.relativeDelta(intent);
+                    this.game.moveInspectCursor(d.dx, d.dy);
+                }
+                return;
+            }
             const action = this.keyMap[e.key];
             if (action && action.type === 'move') {
                 e.preventDefault();
                 this.game.moveInspectCursor(action.dx, action.dy);
             }
+            return;
+        }
+
+        // First-person movement: W forward, S backpedal, A/D turn, Shift+A/D strafe
+        if (firstPerson && intent) {
+            e.preventDefault();
+            if (this.game.autoTravelTarget) {
+                this.game.cancelAutoTravel();
+            }
+            this.game.processTurn(this.firstPersonAction(intent, e.shiftKey));
             return;
         }
         
@@ -260,5 +318,26 @@ export class InputHandler {
             }
             this.game.processTurn(action);
         }
+    }
+
+    /**
+     * Build the processTurn action for a first-person movement intent.
+     * @param {'forward'|'back'|'left'|'right'} intent
+     * @param {boolean} strafe - true to sidestep instead of turning
+     */
+    firstPersonAction(intent, strafe = false) {
+        if (intent === 'forward') {
+            const d = this.game.relativeDelta('forward');
+            return { type: 'move', dx: d.dx, dy: d.dy };
+        }
+        if (intent === 'back') {
+            const d = this.game.relativeDelta('back');
+            return { type: 'move', dx: d.dx, dy: d.dy, keepFacing: true };
+        }
+        if (strafe) {
+            const d = this.game.relativeDelta(intent);
+            return { type: 'move', dx: d.dx, dy: d.dy, keepFacing: true };
+        }
+        return { type: 'turn', steps: intent === 'left' ? -1 : 1 };
     }
 }
