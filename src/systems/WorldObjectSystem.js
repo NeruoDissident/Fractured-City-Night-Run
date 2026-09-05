@@ -199,14 +199,6 @@ export class WorldObjectSystem {
             object.updateVisuals();
             this.game.world.updateTileAt(object.x, object.y, object.z, object.getTile());
 
-            // Goal flag: destroying a container counts as destroying a stash
-            if (object.isContainer && this.game.player) {
-                const p = this.game.player;
-                if (!p.goalsData) p.goalsData = {};
-                p.goalsData.stashDestroyed = true;
-                if (this.game.goalSystem) this.game.goalSystem.checkGoals(p);
-            }
-            
             // Drop materials (reduced yield from smashing)
             const materials = this.rollDropTable(object.dropTable, 0.5);
             this.dropMaterials(materials, object.x, object.y, object.z);
@@ -403,9 +395,6 @@ export class WorldObjectSystem {
             }
             if (!object.state) object.state = {};
             object.state.accessed = true;
-            if (!player.goalsData) player.goalsData = {};
-            player.goalsData.terminalAccessed = true;
-            if (this.game.goalSystem) this.game.goalSystem.checkGoals(player);
             this.game.advanceTurn(3);
             return { success: true, message: 'You access the terminal. Data streams flicker past. [Terminal Accessed]' };
         }

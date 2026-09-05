@@ -20,7 +20,6 @@ export class World {
         this.entities = [];
         this.items = [];
         this.worldObjects = []; // Doors, furniture, etc.
-        this.pointsOfInterest = [];
         this.extractionPoint = null;
         this.spawnPoint = null;
         this.activeRadius = 2;
@@ -213,29 +212,6 @@ export class World {
         return { x: 5, y: 5 };
     }
     
-    getPointsOfInterest(discoveredOnly = false) {
-        if (!discoveredOnly) return [...this.pointsOfInterest];
-        return this.pointsOfInterest.filter(poi => poi.discovered);
-    }
-
-    updatePointOfInterestDiscovery(exploredTiles) {
-        if (!exploredTiles || !this.pointsOfInterest.length) return;
-
-        for (const poi of this.pointsOfInterest) {
-            if (poi.discovered) continue;
-            scanPoi:
-            for (let y = poi.y - poi.radius; y <= poi.y + poi.radius; y++) {
-                for (let x = poi.x - poi.radius; x <= poi.x + poi.radius; x++) {
-                    if (Math.abs(x - poi.x) + Math.abs(y - poi.y) > poi.radius) continue;
-                    if (exploredTiles.has(`${x},${y},0`) || exploredTiles.has(`${x},${y}`)) {
-                        poi.discovered = true;
-                        break scanPoi;
-                    }
-                }
-            }
-        }
-    }
-
     /**
      * Process world turn. actionCost is the player's action cost in energy units.
      * NPCs gain energy proportional to actionCost (100 = 1 full turn).
@@ -391,16 +367,10 @@ export class World {
         if (entity === this.game.player) {
             return { sheet: 'player', index: 0 };
         }
-        // NPCs by type — indices match npc.png spritesheet order
-        const NPC_SPRITE_INDEX = {
-            raider: 0,
-            scavenger: 1,
-            armed_raider: 2,
-            brute: 3,
-            stalker: 4,     // row 1, col 0
-        };
-        if (entity.type && NPC_SPRITE_INDEX[entity.type] !== undefined) {
-            return { sheet: 'npcs', index: NPC_SPRITE_INDEX[entity.type] };
+        // NPCs: the catalog entry names its sprite index (npc.png order)
+        const idx = entity.profile?.spriteIndex;
+        if (idx !== undefined && idx !== null) {
+            return { sheet: 'npcs', index: idx };
         }
         return null;
     }

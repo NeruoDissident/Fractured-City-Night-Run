@@ -16,6 +16,8 @@ The game is being reworked into a **first-person, grid-based, turn-based cyberpu
 - Mobile d-pad is relative (up forward, down back, left/right turn) with strafe and VIEW buttons in the more row.
 - Backtick toggles back to the top-down map at any time for debugging and map tuning.
 
+**Removal pass (same month):** QuestSystem, GoalSystem, the Street Kid intro chain, delivery errands, POIs / Known Places / auto-travel-to-POI, and the hardcoded NPC roster are gone. `src/content/NpcCatalog.js` holds two placeholder templates and `F9` / `Shift+F9` (`game.debugSpawn()`) drops one in front of the player so combat and detection stay testable. NPC.js keeps the AI shell. Zone generators no longer spawn NPCs or register POIs; `ZoneCanvas.addNpc` fails soft on unknown types. `CLAUDE.md` documents the current state and conventions.
+
 Phase 2 is the map redesign: interior-first, corridor-and-room zone generators so the crawler view has geometry to read. Phase 3 is cone FoV, facing-aware combat, textures and sprites for walls and billboards.
 
 ## Current Pivot

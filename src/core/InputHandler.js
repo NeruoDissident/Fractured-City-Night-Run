@@ -70,16 +70,10 @@ export class InputHandler {
             return;
         }
 
-        if (e.key === 'j' || e.key === 'J') {
-            e.preventDefault();
-            this.game.ui.toggleQuestJournal();
-            return;
-        }
-
-        if (e.key === 'p' || e.key === 'P') {
+        if (e.key === 'F9') {
             e.preventDefault();
             if (this.game.gameState === 'playing') {
-                this.game.ui.togglePointOfInterestList();
+                this.game.debugSpawn(e.shiftKey ? 'debug_neutral' : 'debug_hostile');
             }
             return;
         }

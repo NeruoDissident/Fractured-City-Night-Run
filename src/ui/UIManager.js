@@ -38,170 +38,6 @@ export class UIManager {
         }
     }
 
-    toggleQuestJournal() {
-        if (!this.questJournalModal) return;
-        if (this.questJournalModal.classList.contains('hidden')) {
-            this.questJournalModal.classList.remove('hidden');
-            this.renderQuestJournal();
-        } else {
-            this.questJournalModal.classList.add('hidden');
-        }
-    }
-
-    renderQuestJournal() {
-        if (!this.questJournalContent) return;
-        if (!this.game.questSystem) {
-            this.questJournalContent.innerHTML = `
-                <div style="padding:20px;text-align:center;color:#777;">
-                    Objectives are being rebuilt around world zones, occupations, and named situations.
-                </div>`;
-            return;
-        }
-        const qs = this.game.questSystem;
-        const player = this.game.player;
-
-        let html = '';
-
-        const active = qs.getActiveQuests(player);
-        if (active.length > 0) {
-            html += `<h3 style="color:#ffaa00;margin:12px 0 8px;">Current</h3>`;
-            for (const q of active) {
-                html += `<div style="padding:10px;background:#1a1a1a;border-left:3px solid #ffaa00;margin-bottom:8px;">`;
-                const category = q.category === 'intro' ? 'Start' : 'Current';
-                html += `<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">`;
-                html += `<div style="font-weight:bold;color:#fff;">${q.title}</div>`;
-                html += `<div style="font-size:10px;text-transform:uppercase;color:#111;background:#ffaa00;padding:2px 6px;">${category}</div>`;
-                html += `</div>`;
-                html += `<div style="font-size:12px;color:#888;margin-top:3px;">${q.description}</div>`;
-                html += `<div style="font-size:12px;color:#ffaa00;margin-top:4px;">`;
-                html += `Objective: ${q.stageText}`;
-                html += `</div>`;
-                if (q.targetHint) {
-                    html += `<div style="font-size:12px;color:#ddd;margin-top:6px;border-top:1px solid #333;padding-top:6px;">`;
-                    html += `<span style="color:#ffaa00;">Target:</span> ${q.targetHint}`;
-                    html += `</div>`;
-                }
-                html += `</div>`;
-            }
-        }
-
-        const completed = qs.getCompletedQuests(player);
-        if (completed.length > 0) {
-            html += `<h3 style="color:#44ff44;margin:12px 0 8px;">Done</h3>`;
-            for (const q of completed) {
-                html += `<div style="padding:8px;background:#1a1a1a;border-left:3px solid #44ff44;margin-bottom:6px;">`;
-                html += `<div style="font-size:13px;color:#aaa;">${q.title}</div>`;
-                html += `</div>`;
-            }
-        }
-
-        // Errands (delivery requests)
-        const activeDeliveries = qs.getActiveDeliveries(player);
-        if (activeDeliveries.length > 0) {
-            html += `<h3 style="color:#00aaff;margin:12px 0 8px;">Errands</h3>`;
-            for (const d of activeDeliveries) {
-                html += `<div style="padding:8px;background:#1a1a1a;border-left:3px solid #00aaff;margin-bottom:6px;">`;
-                html += `<div style="font-size:13px;color:#ddd;">Find ${d.label} for ${d.npcName}</div>`;
-                html += `</div>`;
-            }
-        }
-
-        const completedDeliveries = qs.getCompletedDeliveries(player);
-        if (completedDeliveries.length > 0) {
-            html += `<h3 style="color:#888;margin:12px 0 8px;">Finished Errands</h3>`;
-            for (const d of completedDeliveries) {
-                html += `<div style="padding:6px;background:#1a1a1a;border-left:3px solid #888;margin-bottom:4px;">`;
-                html += `<div style="font-size:12px;color:#888;">Delivered ${d.label} to ${d.npcName}</div>`;
-                html += `</div>`;
-            }
-        }
-
-        if (active.length === 0 && completed.length === 0 && activeDeliveries.length === 0 && completedDeliveries.length === 0) {
-            html += `<div style="padding:20px;text-align:center;color:#666;">No active entries.</div>`;
-        }
-
-        this.questJournalContent.innerHTML = html;
-    }
-
-    togglePointOfInterestList() {
-        this.ensurePointOfInterestModal();
-        if (!this.pointOfInterestModal) return;
-
-        if (this.pointOfInterestModal.classList.contains('hidden')) {
-            this.renderPointOfInterestList();
-            this.pointOfInterestModal.classList.remove('hidden');
-        } else {
-            this.pointOfInterestModal.classList.add('hidden');
-        }
-    }
-
-    ensurePointOfInterestModal() {
-        if (this.pointOfInterestModal) return;
-
-        let modal = document.getElementById('point-of-interest-list');
-        if (!modal) {
-            modal = document.createElement('div');
-            modal.id = 'point-of-interest-list';
-            modal.className = 'modal hidden';
-            modal.innerHTML = `
-                <div class="modal-content" style="max-width: 680px;">
-                    <h2>Known Places</h2>
-                    <button id="close-poi-btn" class="small-btn" style="float:right;margin-top:-44px;">Close</button>
-                    <div id="point-of-interest-content"></div>
-                </div>`;
-            document.body.appendChild(modal);
-        }
-
-        this.pointOfInterestModal = modal;
-        this.pointOfInterestContent = document.getElementById('point-of-interest-content');
-        document.getElementById('close-poi-btn')?.addEventListener('click', () => {
-            this.pointOfInterestModal.classList.add('hidden');
-        });
-    }
-
-    renderPointOfInterestList() {
-        this.ensurePointOfInterestModal();
-        if (!this.pointOfInterestContent) return;
-
-        const player = this.game.player;
-        const pois = (this.game.world?.getPointsOfInterest?.(true) || [])
-            .slice()
-            .sort((a, b) => {
-                const da = Math.abs(a.x - player.x) + Math.abs(a.y - player.y);
-                const db = Math.abs(b.x - player.x) + Math.abs(b.y - player.y);
-                return da - db;
-            });
-
-        if (!pois.length) {
-            this.pointOfInterestContent.innerHTML = `
-                <div style="padding:20px;text-align:center;color:#777;">
-                    No known places in this zone yet.
-                </div>`;
-            return;
-        }
-
-        let html = `<div style="font-size:12px;color:#888;margin-bottom:10px;">Places are recorded when you get close enough to reveal them.</div>`;
-        for (const poi of pois) {
-            const dist = Math.abs(poi.x - player.x) + Math.abs(poi.y - player.y);
-            html += `<div style="display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px;background:#1a1a1a;border-left:3px solid #00aaff;margin-bottom:8px;">`;
-            html += `<div style="min-width:0;">`;
-            html += `<div style="font-weight:bold;color:#fff;">${this.escapeHtml(poi.name)}</div>`;
-            html += `<div style="font-size:12px;color:#888;">${this.escapeHtml(poi.type || 'place')} - ${dist} steps</div>`;
-            html += `</div>`;
-            html += `<button class="small-btn" data-travel-poi="${this.escapeHtml(poi.id)}" style="min-width:88px;">Travel</button>`;
-            html += `</div>`;
-        }
-
-        this.pointOfInterestContent.innerHTML = html;
-        this.pointOfInterestContent.querySelectorAll('[data-travel-poi]').forEach(button => {
-            button.addEventListener('click', () => {
-                const poiId = button.getAttribute('data-travel-poi');
-                this.pointOfInterestModal.classList.add('hidden');
-                this.game.startAutoTravelToPoi(poiId);
-            });
-        });
-    }
-
     escapeHtml(value) {
         return String(value ?? '')
             .replace(/&/g, '&amp;')
@@ -216,7 +52,7 @@ export class UIManager {
         this.npcDialogueName.textContent = npc.name || 'Someone';
         this.npcDialogueGlyph.textContent = npc.glyph || '?';
         this.npcDialogueGlyph.style.color = npc.color || '#aaa';
-        this.npcDialogueSubtitle.textContent = npc.type || 'survivor';
+        this.npcDialogueSubtitle.textContent = npc.profile?.name || npc.type || '';
         this.npcDialogueText.innerHTML = text;
         this._npcDialogueCallback = onChoice;
 
@@ -261,8 +97,6 @@ export class UIManager {
         this.helpModal = document.getElementById('help-screen');
         this.abilityPanelModal = document.getElementById('ability-panel');
         this.abilityPopup = document.getElementById('ability-popup');
-        this.questJournalModal = document.getElementById('quest-journal');
-        this.questJournalContent = document.getElementById('quest-journal-content');
 
         // NPC dialogue modal
         this.npcDialogueModal = document.getElementById('npc-dialogue');
@@ -295,13 +129,6 @@ export class UIManager {
         document.getElementById('close-ability-btn').addEventListener('click', () => {
             this.abilityPanelModal.classList.add('hidden');
         });
-
-        const closeQuestBtn = document.getElementById('close-quest-btn');
-        if (closeQuestBtn) {
-            closeQuestBtn.addEventListener('click', () => {
-                this.questJournalModal.classList.add('hidden');
-            });
-        }
         
         const closeCombatBtn = document.getElementById('close-combat-btn');
         if (closeCombatBtn) {
@@ -396,46 +223,7 @@ export class UIManager {
         html += `<div class="stat-line"><span class="stat-label">Turn:</span> <span class="stat-value">${this.game.turnCount}</span></div>`;
         html += '<br>';
 
-        // ── Goal Board ──────────────────────────────────────────────────
-        if (player.archetypeLabel) {
-            html += `<div style="color:#00ffff;font-size:12px;text-transform:uppercase;border-bottom:1px solid #333;padding-bottom:3px;margin-bottom:5px;">${player.archetypeLabel}</div>`;
 
-            // Primary goal
-            if (player.primaryGoal) {
-                const pg = player.primaryGoal;
-                const pgColor = pg.completed ? '#44ff44' : '#ffaa00';
-                const pgMark  = pg.completed ? '✓' : '○';
-                html += `<div style="font-size:12px;color:${pgColor};margin-bottom:4px;">${pgMark} <em>${pg.text}</em></div>`;
-            }
-
-            // Floor goals
-            for (const goal of (player.floorGoals || [])) {
-                const gc = goal.completed ? '#44ff44' : '#888';
-                const gm = goal.completed ? '✓' : '·';
-                html += `<div style="font-size:11px;color:${gc};margin-bottom:2px;">${gm} ${goal.text}</div>`;
-            }
-
-            // XP
-            if ((player.xp || 0) > 0) {
-                html += `<div style="font-size:11px;color:#8888ff;margin-top:4px;">XP: ${player.xp}</div>`;
-            }
-            html += '<br>';
-        }
-
-        if (this.game.questSystem) {
-            const activeQuests = this.game.questSystem.getActiveQuests(player);
-            if (activeQuests.length > 0) {
-                const q = activeQuests[0];
-                html += `<div style="color:#ffaa00;font-size:12px;text-transform:uppercase;border-bottom:1px solid #333;padding-bottom:3px;margin-bottom:5px;">Current</div>`;
-                html += `<div style="font-size:12px;color:#fff;margin-bottom:3px;">${q.title}</div>`;
-                html += `<div style="font-size:11px;color:#ffaa00;margin-bottom:6px;">${q.stageText}</div>`;
-                if (q.targetHint) {
-                    html += `<div style="font-size:11px;color:#888;margin-bottom:8px;">${q.targetHint}</div>`;
-                }
-                html += '<br>';
-            }
-        }
-        
         const encumbrance = player.getEncumbranceLevel();
         const encumbranceColors = {
             light: '#00ff00',
@@ -618,28 +406,6 @@ export class UIManager {
             html += `<div class="stat-line"><span class="stat-label">Extraction:</span> <span class="stat-value" style="color: #00ff00;">${dist} tiles</span></div>`;
         }
 
-        // Visible survivors
-        if (this.game.world && this.game.fov) {
-            const visibleNpcs = this.game.world.entities.filter(e =>
-                e !== player &&
-                e.z === player.z &&
-                this.game.fov.isVisible(e.x, e.y, player.z)
-            );
-            const questNpcs = visibleNpcs.filter(e => e.questRole === 'giver');
-            for (const qn of questNpcs) {
-                const dist = Math.floor(Math.sqrt(Math.pow(qn.x - player.x, 2) + Math.pow(qn.y - player.y, 2)));
-                html += `<div class="stat-line" style="color:#ffcc44;"><span class="stat-label">Contact:</span> <span class="stat-value">${qn.name} ${dist} tiles [E to talk]</span></div>`;
-            }
-
-            const survivors = visibleNpcs.filter(e => e.type === 'survivor' && e.questRole !== 'giver');
-            for (const s of survivors) {
-                const dist = Math.floor(Math.sqrt(Math.pow(s.x - player.x, 2) + Math.pow(s.y - player.y, 2)));
-                const req = s.deliveryRequest;
-                const needs = req && !req.fulfilled ? ` — needs ${req.label}` : req?.fulfilled ? ' — helped' : '';
-                html += `<div class="stat-line" style="color:#aaffaa;"><span class="stat-label">Survivor:</span> <span class="stat-value">${dist} tiles${needs} [E to talk]</span></div>`;
-            }
-        }
-        
         const accessCard = this.game.world.items.find(item => item.id === 'access_card');
         if (accessCard && !player.inventory.some(item => item.id === 'access_card')) {
             const dist = Math.floor(Math.sqrt(Math.pow(accessCard.x - player.x, 2) + Math.pow(accessCard.y - player.y, 2)));
@@ -783,7 +549,6 @@ export class UIManager {
             const terrainLabel = (tile.terrain || tile.biome).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
             const threatColor = ['#448844','#888844','#aa7722','#cc4422','#ff2222'][tile.threatLevel - 1] || '#888888';
             const stars = '★'.repeat(tile.threatLevel) + '☆'.repeat(5 - tile.threatLevel);
-            const isQuestTarget = this.game.isActiveQuestTarget?.(ow.cursorCol, ow.cursorRow);
 
             // ── Intel tables ─────────────────────────────────────────────────
             const BIOME_INTEL = {
@@ -842,9 +607,6 @@ export class UIManager {
             html += `<div class="stat-line"><span class="stat-label">Size:</span> <span class="stat-value" style="color:#888888;">${tile.zone.width}×${tile.zone.height}</span></div>`;
             if (tile.explored) {
                 html += `<div class="stat-line"><span class="stat-value" style="color:#00ff88;">✓ Visited</span></div>`;
-            }
-            if (isQuestTarget) {
-                html += `<div class="stat-line"><span class="stat-value" style="color:#ffaa00;">! Active target</span></div>`;
             }
 
             html += `<div style="border-top:1px solid #333;margin:6px 0 4px;"></div>`;
@@ -3587,16 +3349,6 @@ export class UIManager {
             closedAny = true;
         }
 
-        if (this.questJournalModal && !this.questJournalModal.classList.contains('hidden')) {
-            this.questJournalModal.classList.add('hidden');
-            closedAny = true;
-        }
-
-        if (this.pointOfInterestModal && !this.pointOfInterestModal.classList.contains('hidden')) {
-            this.pointOfInterestModal.classList.add('hidden');
-            closedAny = true;
-        }
-
         if (this.npcDialogueModal && !this.npcDialogueModal.classList.contains('hidden')) {
             this.npcDialogueModal.classList.add('hidden');
             this._npcDialogueCallback = null;
@@ -4133,7 +3885,9 @@ export class UIManager {
         html += '<div class="stat-line"><span class="stat-label">G:</span> <span class="stat-value">Pick up item at feet</span></div>';
         html += '<div class="stat-line"><span class="stat-label">E:</span> <span class="stat-value">Interact with door/object</span></div>';
         html += '<div class="stat-line"><span class="stat-label">X:</span> <span class="stat-value">Inspect mode (cursor starts on the cell ahead; WASD moves it relative to facing)</span></div>';
-        html += '<div class="stat-line"><span class="stat-label">F:</span> <span class="stat-value">Toggle explore mode (auto-walk)</span></div>';
+        html += '<div class="stat-line"><span class="stat-label">O:</span> <span class="stat-value">Auto-explore toward unexplored ground</span></div>';
+        html += '<div class="stat-line"><span class="stat-label">F:</span> <span class="stat-value">Toggle explore mode (freezes hunger/thirst)</span></div>';
+        html += '<div class="stat-line"><span class="stat-label">F9:</span> <span class="stat-value">Debug: spawn a hostile a few cells ahead</span></div>';
         html += '<div class="stat-line"><span class="stat-label">Escape:</span> <span class="stat-value">Close any open window</span></div>';
         html += '</div>';
         
@@ -4145,7 +3899,6 @@ export class UIManager {
         html += '<div class="stat-line"><span class="stat-label">V:</span> <span class="stat-value">Workshop — craft and disassemble</span></div>';
         html += '<div class="stat-line"><span class="stat-label">T:</span> <span class="stat-value">Cycle combat stance</span></div>';
         html += '<div class="stat-line"><span class="stat-label">Q:</span> <span class="stat-value">Combat abilities panel</span></div>';
-        html += '<div class="stat-line"><span class="stat-label">J:</span> <span class="stat-value">Quest journal — active and completed quests</span></div>';
         html += '<div class="stat-line"><span class="stat-label">B:</span> <span class="stat-value">Toggle combat detail overlay</span></div>';
         html += '<div class="stat-line"><span class="stat-label">?:</span> <span class="stat-value">This help screen</span></div>';
         html += '</div>';

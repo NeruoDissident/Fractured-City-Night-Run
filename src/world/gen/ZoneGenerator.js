@@ -25,7 +25,6 @@ export class ZoneGenerator {
         world.entities = [];
         world.items = [];
         world.worldObjects = [];
-        world.pointsOfInterest = [];
         world.extractionPoint = null;
 
         const rng = mulberry32(world.worldSeed || 12345);
@@ -107,7 +106,6 @@ function generateSafeHub(z) {
     z.placeFurniture('chair', 26, 20, 'commercial_store', 'Mismatched Chair');
     z.placeFurniture('cabinet', 32, 15, 'commercial_store', 'Community Cabinet');
     z.placeFurniture('filing_cabinet', 15, 15, 'office', 'Notice Board');
-    z.addPoi('downstairs_commons', 'Downstairs Commons', 'settlement', 24, 20, 9);
 
     z.drawRect(46, 12, 20, 18, ZoneTiles.wall, ZoneTiles.breakFloor, 'Crew Bunks');
     z.placeDoor('wood_basic', 56, 29, { name: 'Bunkroom Door', open: true });
@@ -115,20 +113,17 @@ function generateSafeHub(z) {
         z.placeFurniture('bed', x, y, 'residential_bedroom', 'Thin Bunk');
     }
     z.placeFurniture('locker', 63, 17, 'residential_bedroom', 'Crew Locker');
-    z.addPoi('crew_bunks', 'Crew Bunks', 'settlement', 56, 21, 7);
 
     z.drawRect(12, 50, 22, 16, ZoneTiles.wall, ZoneTiles.stockFloor, 'Food Cage');
     z.placeDoor('metal', 23, 50, { name: 'Food Cage Door', locked: true });
     z.placeFurniture('crate', 18, 58, 'commercial_backroom', 'Ration Crate');
     z.placeFurniture('shelf', 28, 57, 'commercial_backroom', 'Dry Shelf');
-    z.addPoi('food_cage', 'Food Cage', 'storage', 23, 58, 7);
 
     z.drawRect(48, 48, 20, 18, ZoneTiles.wall, ZoneTiles.garageFloor, 'Clinic Workshop');
     z.placeDoor('wood_basic', 58, 48, { name: 'Workshop Door' });
     z.placeFurniture('workbench', 62, 56, 'garage_tools', 'Patchwork Bench');
     z.placeFurniture('cabinet', 52, 56, 'medical_storage', 'Medical Cabinet');
     z.placeFurniture('sink', 52, 61, 'medical_storage', 'Wash Basin');
-    z.addPoi('clinic_workshop', 'Clinic Workshop', 'settlement', 59, 57, 8);
 
     z.fillRect(14, 33, 16, 10, ZoneTiles.dirt, { name: 'Planter Beds' });
     for (let x = 15; x < 29; x += 3) z.vLine(x, 34, 8, ZoneTiles.grass, { name: 'Planter Row' });
@@ -136,27 +131,6 @@ function generateSafeHub(z) {
     z.placeFurniture('crate', 54, 37, 'garage_tools', 'Parts Crate');
     z.placeFurniture('workbench', 61, 38, 'garage_tools', 'Outdoor Workbench');
 
-    const rook = z.addNpc('survivor', 24, 54, 'Rook', '!', '#ffcc44');
-    rook.questId = 'streetkid_intro';
-    rook.questIds = ['streetkid_intro', 'streetkid_rations'];
-    rook.questRole = 'giver';
-    rook.questDialogues = {
-        streetkid_intro: {
-            complete: `"You made it back. Good. We are down to scraps, and people are starting to count cans out loud. Inez is holding a ration bundle for us at the market corner. Bring it back and we eat tonight."`,
-            after: `"Market corner. Bodega counter. Keep your eyes open on the way."`
-        },
-        streetkid_rations: {
-            offer: `"Inez is holding a ration bundle for us at the market corner. Bring it back and we eat tonight."`,
-            remind: `"Market corner, bodega counter. Ask around if you need to, but don't come back empty."`,
-            complete: `"That's it. Good. You kept the crew fed one more day."`,
-            after: `"Take a breath. We bought ourselves one more day."`
-        }
-    };
-    z.addNpc('survivor', 26, 23, 'Mara, Cook', '@', '#aaffaa');
-    z.addNpc('survivor', 57, 21, 'Sleepless Runner', 'r', '#aaffaa');
-    z.addNpc('scavenger', 59, 39, 'Parts Kid', 's', '#c8b080');
-    z.addNpc('survivor', 39, 66, 'South Gate Watch', 'w', '#9fd8ff');
-    z.addNpc('survivor', 68, 39, 'East Gate Watch', 'w', '#9fd8ff');
     z.world.spawnPoint = { x: 54, y: 27 };
 }
 
@@ -191,7 +165,6 @@ function generateUrbanCornerBlock(z) {
     drawServiceAlley(z, 69, 18, 33);
 
     z.placeSign(78, 72, 'Crooked Street Sign');
-    z.addNpc('drifter', 79, 71, 'Intersection Watcher', 'w', '#d8d0a0');
     z.world.spawnPoint = { x: 64, y: 72 };
 }
 
@@ -219,18 +192,6 @@ function generateUrbanMarketCorner(z) {
 
     drawBodega(z, 7, 18, { idPrefix: 'west_bodega', name: 'West Bodega', clerkName: 'Inez, Bodega Clerk' });
     z.placeFurniture('crate', 19, 37, 'commercial_backroom', 'Marked Ration Crate');
-    z.placeItem({
-        id: 'crew_rations',
-        familyId: 'crew_rations',
-        name: 'Crew Ration Bundle',
-        type: 'quest_item',
-        glyph: '%',
-        color: '#ffaa44',
-        weight: 900,
-        volume: 1200,
-        stackable: false,
-        description: 'A wrapped bundle of sealed cans, water, and old protein bars marked for Rook.'
-    }, 22, 37);
     drawClinic(z, 63, 18, { idPrefix: 'street_clinic', name: 'Street Clinic' });
     drawGasStation(z, 88, 58, { idPrefix: 'mini_gas', attendantName: 'Patch, Pump Watcher' });
     drawLaundromat(z, 10, 94, { idPrefix: 'south_laundry' });
@@ -243,7 +204,6 @@ function generateUrbanMarketCorner(z) {
         z.placeFurniture('crate', 63, y, 'commercial_backroom', 'Market Cart');
         z.placeFurniture('crate', 73, y, 'commercial_backroom', 'Market Cart');
     }
-    z.addPoi('street_market_stalls', 'Street Market Stalls', 'market', 68, 64, 9);
 
     z.placeFurniture('crate', 37, 72, 'garage_tools', 'Street Barricade');
     z.placeFurniture('crate', 51, 72, 'garage_tools', 'Street Barricade');
@@ -261,16 +221,10 @@ function generateUrbanMarketCorner(z) {
     z.fillRect(108, 52, 4, 1, ZoneTiles.alley, { name: 'Fence Gap' });
     z.placeFurniture('crate', 92, 49, 'commercial_backroom', 'Trash Barricade');
     z.placeFurniture('locker', 114, 49, 'garage_tools', 'Utility Cage');
-    z.addPoi('rear_cut_through', 'Rear Cut-Through', 'route', 101, 49, 8);
 
     z.placeSign(46, 87, 'Bus Stop Marker');
     z.placeFurniture('chair', 32, 88, 'commercial_store', 'Bus Stop Bench');
     z.placeFurniture('chair', 35, 88, 'commercial_store', 'Bus Stop Bench');
-    z.addPoi('bus_stop', 'Bus Stop', 'transit', 34, 88, 5);
-    z.addNpc('drifter', 47, 86, 'Bus Stop Prophet', 'p', '#d8d0a0');
-    z.addNpc('scavenger', 69, 64, 'Stall Picker', 's', '#c8b080');
-    z.addNpc('ganger', 88, 50, 'Alley Shakedown', 'l', '#d06a5f');
-    z.addNpc('ganger', 113, 48, 'Fence Lookout', 'l', '#d06a5f');
     z.world.spawnPoint = { x: 60, y: 86 };
 }
 
@@ -292,8 +246,6 @@ function generateNeonRow(z) {
     z.placeFurniture('counter', 13, 49, 'commercial_store', 'Lit Bar Counter');
     z.placeFurniture('table', 28, 49, 'commercial_store', 'Sticky Table');
     z.placeSign(38, 31, 'Buzzing Neon Sign');
-    z.addNpc('survivor', 38, 34, 'Fixer in Pink Glasses', 'f', '#ff66cc');
-    z.addPoi('neon_row_market', 'Neon Row Market', 'trade', Math.floor(z.width / 2), 22, 14);
     z.world.spawnPoint = { x: Math.floor(z.width / 2), y: Math.floor(z.height / 2) + 8 };
 }
 
@@ -329,9 +281,6 @@ function generateDeadMall(z) {
     }
 
     z.scatter(ZoneTiles.rubble, 45, (tile) => !tile.blocked && !tile.worldObjectId);
-    z.addNpc('ganger', mallX + mallW - 18, midY, 'Mall Lookout', 'l', '#d06a5f');
-    z.addNpc('brute', mallX + mallW - 12, midY + 5, 'Food Court Heavy', 'B', '#ff7766');
-    z.addPoi('dead_mall_concourse', 'Dead Mall Concourse', 'mall', mallX + Math.floor(mallW / 2), midY, 18);
     z.world.spawnPoint = { x: mallX + Math.floor(mallW / 2), y: mallY + mallH - 6 };
 }
 
@@ -361,8 +310,6 @@ function generateCivicComplex(z) {
     z.placeFurniture('terminal', x + 12, y + h - 18, 'technical', 'Active Terminal');
     z.placeFurniture('cabinet', x + w - 17, y + 10, 'medical_storage', 'Supply Cabinet');
     z.placeFurniture('counter', x + Math.floor(w / 2) - 4, y + h - 8, 'office', 'Reception Counter');
-    z.addNpc('survivor', x + Math.floor(w / 2), y + h - 10, 'Desk Survivor', '@', '#9fd8ff');
-    z.addPoi('civic_lobby', 'Civic Lobby', 'civic', x + Math.floor(w / 2), y + h - 12, 12);
     z.world.spawnPoint = { x: x + Math.floor(w / 2), y: z.height - 20 };
 }
 
@@ -392,10 +339,6 @@ function generateIndustrialYard(z) {
 
     z.placeFurniture('locker', 14, 33, 'garage_tools', 'Tool Locker');
     z.placeFurniture('crate', yardX + 8, 49, 'commercial_backroom', 'Salvage Crate');
-    z.addNpc('scavenger', yardX + 12, 42, 'Yard Picker', 's', '#c8b080');
-    z.addNpc('scavenger', 22, 25, 'Plant Hand', 'h', '#c8b080');
-    z.addPoi('machine_hall', 'Machine Hall', 'industrial', 28, 25, 12);
-    z.addPoi('scrap_yard', 'Scrap Yard', 'salvage', yardX + 18, 34, 16);
     z.world.spawnPoint = { x: Math.floor(z.width / 2), y: z.height - 20 };
 }
 
@@ -411,9 +354,7 @@ function generateWaterfront(z, id) {
         z.placeSign(Math.floor(z.width / 2) + 9, Math.floor(z.height / 2) - 8, id === 'toll_bridge' ? 'Toll Warning Sign' : 'River Crossing Sign');
         if (id === 'toll_bridge') {
             z.placeFurniture('crate', Math.floor(z.width / 2) + 12, Math.floor(z.height / 2), 'commercial_backroom', 'Toll Barricade');
-            z.addNpc('ganger', Math.floor(z.width / 2) + 16, Math.floor(z.height / 2) + 2, 'Bridge Tollhand', 't', '#d06a5f');
         }
-        z.addPoi('bridge_crossing', 'Bridge Crossing', 'travel', Math.floor(z.width / 2), Math.floor(z.height / 2), 14);
         z.world.spawnPoint = { x: Math.floor(z.width / 2), y: z.height - 10 };
         return;
     }
@@ -426,14 +367,12 @@ function generateWaterfront(z, id) {
         if (id === 'marina_ruins') {
             for (let x = 10; x < z.width - 12; x += 18) z.vLine(x, 18, 30, ZoneTiles.dock, { name: 'Broken Dock' });
             z.placeFurniture('crate', 22, 52, 'commercial_backroom', 'Waterlogged Crate');
-            z.addNpc('scavenger', 28, 54, 'Dock Salvager', 's', '#c8b080');
         } else if (id === 'flooded_camp') {
             z.drawRect(14, 52, 20, 14, ZoneTiles.wall, ZoneTiles.stockFloor, 'Flooded Camp Shack');
             z.placeDoor('wood_basic', 24, 52, { name: 'Swollen Shack Door' });
             z.placeFurniture('crate', 21, 60, 'commercial_backroom', 'Damp Supply Crate');
         }
         z.scatter(ZoneTiles.brush, 25, (tile, x, y) => y > Math.floor(z.height * 0.45) && !tile.blocked);
-        z.addPoi('shoreline', 'Shoreline', 'water', Math.floor(z.width / 2), Math.floor(z.height * 0.42), 16);
         z.world.spawnPoint = { x: Math.floor(z.width / 2), y: z.height - 10 };
         return;
     }
@@ -446,8 +385,6 @@ function generateWaterfront(z, id) {
         z.set(cx - 14, cy, ZoneTiles.rubble);
         z.set(cx + 14, cy, ZoneTiles.rubble);
         z.placeFurniture('crate', cx, cy, 'commercial_backroom', 'Sealed Salvage Box');
-        z.addNpc('scavenger', cx + 5, cy + 2, 'Wreck Diver', 'd', '#c8b080');
-        z.addPoi('wreck_marker', 'Half-Sunk Wreck', 'salvage', cx, cy, 12);
         z.world.spawnPoint = { x: cx, y: cy + 8 };
         return;
     }
@@ -474,8 +411,6 @@ function generateGreenZone(z, id) {
 
     z.scatter(ZoneTiles.tree, 35, (tile) => !tile.blocked && !tile.worldObjectId);
     z.scatter(ZoneTiles.brush, 50, (tile) => !tile.blocked && !tile.worldObjectId);
-    z.addNpc('drifter', Math.floor(z.width / 2), Math.floor(z.height / 2), 'Trail Drifter', 'd', '#c9c0a8');
-    z.addPoi('green_zone', z.world.zoneTemplate?.name || 'Green Zone', 'wild', Math.floor(z.width / 2), Math.floor(z.height / 2), 18);
     z.world.spawnPoint = { x: Math.floor(z.width / 2), y: z.height - 10 };
 }
 
@@ -500,11 +435,7 @@ function generateResidentialBlock(z, id) {
         z.placeFurniture('cabinet', house.x + house.w - 6, house.y + 6, 'residential_kitchen', 'Kitchen Cabinet');
     }
     if (id === 'safehouse_block') {
-        z.addNpc('survivor', 20, Math.floor(z.height / 2) + 21, 'Safehouse Quartermaster', 'q', '#ffcc88');
-        z.addPoi('safehouse', 'Safehouse', 'settlement', 20, Math.floor(z.height / 2) + 21, 8);
     } else {
-        z.addNpc('scavenger', 54, 20, 'Porch Scavenger', 's', '#c8b080');
-        z.addPoi('residential_block', z.world.zoneTemplate?.name || 'Residential Block', 'residential', Math.floor(z.width / 2), Math.floor(z.height / 2), 18);
     }
     z.world.spawnPoint = { x: Math.floor(z.width / 2), y: Math.floor(z.height / 2) + 8 };
 }
@@ -515,6 +446,5 @@ function generateEmptyLot(z) {
     z.scatter(ZoneTiles.rubble, 35, (tile) => !tile.blocked && !tile.worldObjectId);
     z.scatter(ZoneTiles.brush, 25, (tile) => !tile.blocked && !tile.worldObjectId);
     z.placeSign(Math.floor(z.width / 2), z.height - 18, z.world.zoneTemplate?.name || 'Empty Lot');
-    z.addPoi('empty_lot', z.world.zoneTemplate?.name || 'Empty Lot', 'exterior', Math.floor(z.width / 2), Math.floor(z.height / 2), 16);
     z.world.spawnPoint = { x: Math.floor(z.width / 2), y: z.height - 10 };
 }

@@ -440,8 +440,6 @@ export class Player extends Entity {
         const extraction = this.game.world.extractionPoint;
         if (extraction && extraction.x === this.x && extraction.y === this.y) {
             if (extraction.canUse(this)) {
-                if (!this.goalsData) this.goalsData = {};
-                this.goalsData.reachedExtraction = true;
                 this.game.completeRun();
             } else {
                 this.game.ui.log(`${extraction.name}: ${extraction.getRequirementText()}`, 'warning');
@@ -503,12 +501,6 @@ export class Player extends Entity {
         const result = this.addToInventory(item);
         if (result.success) {
             this.game.world.removeItem(item);
-            if (!this.goalsData) this.goalsData = {};
-            this.goalsData.gearSalvaged = true;
-            if (item.isEchoFragment) {
-                this.goalsData.fragmentsAttuned = (this.goalsData.fragmentsAttuned || 0) + 1;
-            }
-            if (this.game.goalSystem) this.game.goalSystem.checkGoals(this);
             const weight = this.containerSystem.formatWeight(item.weight || this.containerSystem.estimateWeight(item));
             this.game.ui.log(`Picked up ${item.name} (${weight}) → ${result.location}`, 'info');
             
@@ -545,11 +537,6 @@ export class Player extends Entity {
             const result = this.addToInventory(item);
             if (result.success) {
                 this.game.world.removeItem(item);
-                if (!this.goalsData) this.goalsData = {};
-                this.goalsData.gearSalvaged = true;
-                if (item.isEchoFragment) {
-                    this.goalsData.fragmentsAttuned = (this.goalsData.fragmentsAttuned || 0) + 1;
-                }
                 picked++;
             } else {
                 failed++;
@@ -557,7 +544,6 @@ export class Player extends Entity {
         }
         
         if (picked > 0) {
-            if (this.game.goalSystem) this.game.goalSystem.checkGoals(this);
             this.game.ui.log(`Grabbed ${picked} item(s).`, 'info');
             const encumbrance = this.getEncumbranceLevel();
             if (encumbrance === 'heavy') {
@@ -611,7 +597,6 @@ export class Player extends Entity {
         
         if (result.killed && target.die) {
             target.die();
-            if (this.game.goalSystem) this.game.goalSystem.recordKill(this);
         }
     }
     
