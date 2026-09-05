@@ -48,12 +48,30 @@ Implemented in the current slice:
 - Early QuestSystem/Journal prototype for named NPC objective chains
 - Canvas rendering with ASCII and optional sprites
 
+## View
+
+The game now plays as a **first-person grid crawler**: the map is the same
+turn-based tile world, but you see it from inside your cell, looking along
+your facing. Press `` ` `` (backtick) at any time to flip to the classic
+top-down map view and back. Both views share the same simulation, FoV, and
+lighting rules.
+
 ## Controls
+
+First-person view (default):
+
+- `W` / Up: step forward (bump into a creature to attack it)
+- `S` / Down: step back without turning
+- `A` / `D`, Left / Right: turn left / right (free action, no world tick)
+- `Shift` + `A` / `D`: sidestep left / right
+- `` ` ``: toggle first-person / top-down view
+
+Top-down view:
 
 - `WASD` / Arrow Keys: move
 - `Space`: wait
 - `G`: pick up item
-- `E`: interact with nearby object/NPC
+- `E`: interact with nearby object/NPC (in first person: `W`/`S`/`A`/`D` pick ahead/behind/left/right, `Space` picks your own tile)
 - `M`: cycle movement mode
 - `T`: cycle combat stance
 - `Q`: talent and ability panel
@@ -65,7 +83,7 @@ Implemented in the current slice:
 - `I`: inventory
 - `C`: character sheet
 - `V`: workshop
-- `X`: inspect mode
+- `X`: inspect mode (in first person the cursor starts on the cell ahead and moves relative to your facing)
 - `F`: debug explore mode, freezes hunger/thirst
 - `<` / `>`: stairs/manholes/ladders
 - `?`: help

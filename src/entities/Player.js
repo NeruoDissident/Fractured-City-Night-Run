@@ -344,16 +344,32 @@ export class Player extends Entity {
         return Math.round(cost);
     }
     
-    tryMove(dx, dy) {
+    /**
+     * Attempt to move by (dx, dy).
+     * @param {number} dx
+     * @param {number} dy
+     * @param {object} [opts]
+     * @param {boolean} [opts.keepFacing] - true for strafing/backpedaling in the
+     *        first-person view: facing is preserved and bumping into a creature
+     *        does not attack it (you only swing in the direction you face).
+     */
+    tryMove(dx, dy, opts = {}) {
+        const keepFacing = !!opts.keepFacing;
         // Update facing direction regardless of whether move succeeds
-        this.facing = this.getFacingFromDelta(dx, dy);
-        
+        if (!keepFacing) {
+            this.facing = this.getFacingFromDelta(dx, dy);
+        }
+
         const newX = this.x + dx;
         const newY = this.y + dy;
-        
+
         if (this.game.world.isBlocked(newX, newY, this.z)) {
             const entity = this.game.world.getEntityAt(newX, newY, this.z);
             if (entity && entity !== this) {
+                if (keepFacing) {
+                    this.game.ui.log(`${entity.name} is in the way.`, 'info');
+                    return false;
+                }
                 this.attack(entity);
                 // Store attack action cost for energy system
                 this.lastActionCost = this.getAttackActionCost();
