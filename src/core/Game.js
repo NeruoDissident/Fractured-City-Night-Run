@@ -196,12 +196,23 @@ export class Game {
         // Init all zone-dependent systems
         this._initZoneSystems();
 
+        // Generation may resize the zone (interior sites own their footprint),
+        // so read the dimensions back off the world rather than the template.
+        const activeW = this.world.zoneWidth;
+        const activeH = this.world.zoneHeight;
+
         // Determine player spawn position based on entry edge
         let spawnX, spawnY;
-        if (entryEdge === 'west')  { spawnX = 2;        spawnY = Math.floor(zh / 2); }
-        else if (entryEdge === 'east')  { spawnX = zw - 3;    spawnY = Math.floor(zh / 2); }
-        else if (entryEdge === 'north') { spawnX = Math.floor(zw / 2); spawnY = 2; }
-        else if (entryEdge === 'south') { spawnX = Math.floor(zw / 2); spawnY = zh - 3; }
+        if (this.world.isInterior) {
+            // You always arrive at a site's entrance, whichever way you travelled.
+            const sp = this.world.getSpawnPosition();
+            spawnX = sp.x;
+            spawnY = sp.y;
+        }
+        else if (entryEdge === 'west')  { spawnX = 2;        spawnY = Math.floor(activeH / 2); }
+        else if (entryEdge === 'east')  { spawnX = activeW - 3;    spawnY = Math.floor(activeH / 2); }
+        else if (entryEdge === 'north') { spawnX = Math.floor(activeW / 2); spawnY = 2; }
+        else if (entryEdge === 'south') { spawnX = Math.floor(activeW / 2); spawnY = activeH - 3; }
         else {
             // Initial drop-in from overworld: use world spawn position
             const sp = this.world.getSpawnPosition();
@@ -214,6 +225,9 @@ export class Game {
         this.player.x = found.x;
         this.player.y = found.y;
         this.player.z = 0;
+        if (this.world.spawnFacing) {
+            this.player.facing = this.world.spawnFacing;
+        }
 
         // Add player to world (remove from previous world entity list first)
         if (!this.world.entities.includes(this.player)) {
@@ -234,7 +248,9 @@ export class Game {
         if (this.timeSystem) {
             this.ui.log(`Time: ${this.timeSystem.getTimeString()} - ${this.timeSystem.getTimePeriod()}`, 'info');
         }
-
+        if (this.world.isInterior) {
+            this.ui.log('Inside. [<] at the entrance to leave, [<] / [>] at the stairwell to change floors.', 'info');
+        }
 
         this.updateFoV();
         this.render();
@@ -339,8 +355,9 @@ export class Game {
             this.updateFoV();
         } else if (action.type === 'move') {
             playerActed = this.player.tryMove(action.dx, action.dy, { keepFacing: !!action.keepFacing });
-            // Zone edge transition: if move was blocked and target is outside zone bounds
-            if (!playerActed && this.world && this.world.zoneMode) {
+            // Zone edge transition: if move was blocked and target is outside zone
+            // bounds. Interiors are sealed; you leave them through the entrance.
+            if (!playerActed && this.world && this.world.zoneMode && !this.world.isInterior) {
                 const nx = this.player.x + action.dx;
                 const ny = this.player.y + action.dy;
                 if (nx < 0 || nx >= this.world.zoneWidth || ny < 0 || ny >= this.world.zoneHeight) {
@@ -361,6 +378,12 @@ export class Game {
             playerActed = this.player.cycleMovementMode();
             this.player.lastActionCost = 0; // free action — no world tick
         } else if (action.type === 'ascend') {
+            const here = this.world.getTile(this.player.x, this.player.y, this.player.z);
+            if (here?.isSiteExit) {
+                this.ui.log(`You step back out of ${this.world.siteName || 'the building'}.`, 'info');
+                this.returnToOverworld();
+                return;
+            }
             playerActed = this.player.tryAscend();
             this.player.lastActionCost = this.player.getMovementActionCost();
         } else if (action.type === 'descend') {
@@ -748,7 +771,7 @@ export class Game {
             const worldObj = this.world.getWorldObjectAt(cx, cy, this.player.z);
             const groundItems = (dir.dx === 0 && dir.dy === 0) ? this.world.getItemsAt(cx, cy, this.player.z) : [];
             const tile = this.world.getTile(cx, cy, this.player.z);
-            const hasStairs = tile && (tile.isStaircase || tile.isManhole || tile.isLadder);
+            const hasStairs = tile && (tile.isStaircase || tile.isManhole || tile.isLadder || tile.isSiteExit);
             const npc = this.world.entities.find(e => e !== this.player && e.x === cx && e.y === cy && e.z === this.player.z);
             
             if (worldObj || groundItems.length > 0 || (hasStairs && dir.dx === 0 && dir.dy === 0) || npc) {
@@ -809,7 +832,9 @@ export class Game {
             this.ui.showGroundItemsModal();
         } else if (candidate.hasStairs) {
             const tile = this.world.getTile(candidate.x, candidate.y, this.player.z);
-            if (tile.isStaircase || tile.isManhole || tile.isLadder) {
+            if (tile.isSiteExit) {
+                this.ui.log('Press < here to step back outside.', 'info');
+            } else if (tile.isStaircase || tile.isManhole || tile.isLadder) {
                 this.ui.log('Use < or > to go up/down stairs.', 'info');
             }
         }
@@ -850,21 +875,38 @@ export class Game {
      */
     debugSpawn(type = 'debug_hostile', distance = 3) {
         if (!this.world || !this.player || this.gameState !== 'playing') return null;
+
+        const drop = (x, y, where) => {
+            const npc = new NPC(this, type, x, y);
+            npc.z = this.player.z;
+            this.world.addEntity(npc);
+            this.ui.log(`[debug] Spawned ${npc.name} ${where}.`, 'warning');
+            this.updateFoV();
+            this.render();
+            return npc;
+        };
+
+        // Straight ahead reads best, so try that first.
         const f = this.relativeDelta('forward');
         for (let d = distance; d >= 1; d--) {
             const x = this.player.x + f.dx * d;
             const y = this.player.y + f.dy * d;
-            if (!this.world.isBlocked(x, y, this.player.z)) {
-                const npc = new NPC(this, type, x, y);
-                npc.z = this.player.z;
-                this.world.addEntity(npc);
-                this.ui.log(`[debug] Spawned ${npc.name} ${d} cell(s) ahead.`, 'warning');
-                this.updateFoV();
-                this.render();
-                return npc;
+            if (!this.world.isBlocked(x, y, this.player.z)) return drop(x, y, `${d} cell(s) ahead`);
+        }
+
+        // Interiors are tight; fall back to the nearest open cell in any direction.
+        for (let r = 1; r <= Math.max(2, distance); r++) {
+            for (let dy = -r; dy <= r; dy++) {
+                for (let dx = -r; dx <= r; dx++) {
+                    if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+                    const x = this.player.x + dx;
+                    const y = this.player.y + dy;
+                    if (!this.world.isBlocked(x, y, this.player.z)) return drop(x, y, `${r} cell(s) away`);
+                }
             }
         }
-        this.ui.log('[debug] No open cell ahead to spawn into.', 'warning');
+
+        this.ui.log('[debug] No open cell nearby to spawn into.', 'warning');
         return null;
     }
 

@@ -13,6 +13,9 @@ depend on which view is active.
 ## Current state of the rework
 - **Done:** first-person renderer, relative movement (W/S/A/D, Shift+A/D strafe),
   facing-aware interact/inspect, automap facing arrow.
+- **Done:** interior *sites* - multi-floor building interiors you drop into from
+  the overworld (`src/world/gen/InteriorGenerator.js`,
+  `src/content/SiteCatalog.js`). Street zones still generate as before.
 - **Removed (do not resurrect):** QuestSystem, GoalSystem, the Street Kid intro
   chain, delivery errands, POIs / Known Places / auto-travel-to-POI, the old NPC
   roster (raider, brute, survivor, ganger...).
@@ -24,11 +27,31 @@ depend on which view is active.
   of the player so combat stays testable. The real roster arrives with the new
   run flow.
 
+## Sites (interiors)
+A *site* is a building you enter from the overworld instead of a street map.
+`getSiteProfile(zoneId)` decides: if an overworld zone id has a profile,
+`ZoneGenerator` hands off to `generateSite()` and the zone becomes an interior.
+
+- Each site is a stack of floors sharing one **stair core** at fixed x/y, plus a
+  single **entrance** on z 0. `<` at the entrance leaves; `<` / `>` at the
+  stairwell changes floor. Interiors are sealed - no walking off the zone edge.
+- Layouts: `spine` (corridors with rooms both sides), `bsp` (irregular
+  sublevels), `ring` (corridor loop, shops outside, subdivided core).
+- Rooms are capped at 8x8 on purpose. Bigger than that stops reading as a room
+  in first person and the floor turns into a warehouse.
+- Room `type` must be a `FURNITURE_LOOT` key (see `Furniture.js`) so room-aware
+  loot and furniture keep working.
+- Emergency lighting is baked at generation time into `world.staticLights` and
+  picked up by `LightingSystem`'s constructor. Corridors are lit enough to
+  navigate; rooms mostly are not, so a carried light still matters.
+- **To add a site:** add a profile to `SITE_PROFILES` keyed by an overworld zone
+  id (or alias an existing one). Nothing else needs touching.
+
 ## Next phases
-1. Define the run flow (start, pull, end) before building maps for it.
-2. Interior-first zone generators: corridors, rooms, doors, multiple z-levels.
-3. UI cleanup around what the crawler view actually shows.
-4. Cone FoV, facing-aware combat, wall textures / billboard sprites.
+1. Define the run flow (start, pull, end) before building content for it.
+2. UI cleanup around what the crawler view actually shows.
+3. Cone FoV, facing-aware combat, wall textures / billboard sprites.
+4. Set pieces and encounter budgets per level, once the roster exists.
 
 ## Conventions
 - ES modules, no bundler. Keep files importable directly by the browser.

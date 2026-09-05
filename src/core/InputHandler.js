@@ -210,7 +210,7 @@ export class InputHandler {
         if ((e.key === '<' || e.key === '>') && this.game.gameState === 'playing' && !this.game.inspectMode) {
             e.preventDefault();
             const tile = this.game.world.getTile(this.game.player.x, this.game.player.y, this.game.player.z);
-            if (tile.isStaircase || tile.isManhole || tile.isLadder) {
+            if (tile.isStaircase || tile.isManhole || tile.isLadder || tile.isSiteExit) {
                 const action = this.keyMap[e.key];
                 this.game.processTurn(action);
             } else {

@@ -31,8 +31,50 @@ export const ZoneTiles = {
     pipe: tile('o', '#a88a66', '#16100c', 'Pipework', { blocked: true, blocksLight: false, blocksVision: false }),
     hazard: tile('x', '#d8b45f', '#241b08', 'Hazard Marking'),
     dock: tile('=', '#9b7653', '#18100a', 'Weathered Dock'),
-    water: tile('~', '#4aa3ff', '#061525', 'Shallow Water', { isWater: true })
+    water: tile('~', '#4aa3ff', '#061525', 'Shallow Water', { isWater: true }),
+
+    // ── Interior construction (site generator) ──────────────────────────────
+    // Walls carry isWall so the first-person view draws them as solid faces and
+    // isExterior:false so LightingSystem treats the space as indoors.
+    interiorWall: tile('#', '#a09a8c', '#0d0d0c', 'Interior Wall', { blocked: true, blocksLight: true, blocksVision: true, isExterior: false, isWall: true }),
+    concreteWall: tile('#', '#8c8c88', '#0c0c0c', 'Concrete Wall', { blocked: true, blocksLight: true, blocksVision: true, isExterior: false, isWall: true }),
+    metalWall: tile('#', '#8e9aa0', '#0b0e10', 'Steel Bulkhead', { blocked: true, blocksLight: true, blocksVision: true, isExterior: false, isWall: true }),
+    partitionWall: tile('#', '#b4ad9c', '#111010', 'Partition Wall', { blocked: true, blocksLight: true, blocksVision: true, isExterior: false, isWall: true }),
+    glassPartition: tile('"', '#9fd8ff', '#141c22', 'Glass Partition', { blocked: true, blocksLight: false, blocksVision: false, isExterior: false }),
+
+    corridor: tile('.', '#8f8f86', '#171717', 'Corridor', { isExterior: false }),
+    serviceCorridor: tile('.', '#7d8486', '#131515', 'Service Corridor', { isExterior: false }),
+    carpet: tile('.', '#6f6560', '#1a1618', 'Carpet', { isExterior: false }),
+    tileFloor: tile('.', '#b0b6b8', '#1a1c1c', 'Tiled Floor', { isExterior: false }),
+    grating: tile('=', '#9aa2a4', '#141616', 'Steel Grating', { isExterior: false }),
+    stairwellFloor: tile('.', '#9a9a92', '#151515', 'Stairwell', { isExterior: false }),
+    lobbyFloor: tile('.', '#bdb6a4', '#1c1a16', 'Lobby Floor', { isExterior: false })
 };
+
+/**
+ * Stairwell tile. `up`/`down` control which directions are usable, matching the
+ * canAscend/canDescend flags Player.tryAscend/tryDescend read.
+ */
+export function stairsTile(up, down, name = 'Stairwell') {
+    const glyph = up && down ? '\u2261' : up ? '<' : '>';
+    return tile(glyph, '#7fe8ff', '#101a1c', name, {
+        isExterior: false,
+        isStaircase: true,
+        canAscend: !!up,
+        canDescend: !!down
+    });
+}
+
+/**
+ * The way back out of a site. Handled by Game before tryAscend so it returns to
+ * the overworld instead of changing z-level.
+ */
+export function siteExitTile(name = 'Exit') {
+    return tile('\u2302', '#8fffa8', '#0e1a10', name, {
+        isExterior: false,
+        isSiteExit: true
+    });
+}
 
 export function tile(glyph, fgColor, bgColor, name, options = {}) {
     return {
